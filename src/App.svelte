@@ -17,8 +17,11 @@
   import MealsScreen from './screens/MealsScreen.svelte'
   import SettingsScreen from './screens/SettingsScreen.svelte'
   import ShoppingScreen from './screens/ShoppingScreen.svelte'
+  import SignInScreen from './screens/SignInScreen.svelte'
   import { TABS, parseRoute, type RouteId, type TabId } from './lib/router'
   import { strings } from './lib/strings'
+  import { auth, watchAuth } from './lib/auth.svelte'
+  import { clearHousehold, loadHousehold } from './lib/household.svelte'
 
   let route = $state<RouteId>(parseRoute(location.hash))
 
@@ -44,33 +47,60 @@
     const tab = TABS.find((t) => t.id === route)
     if (tab) lastTab = tab.id
   })
+
+  // One subscription for the life of the app. It reports the stored session on
+  // its own, so this is also what moves us off the 'loading' screen at boot.
+  $effect(() => watchAuth())
+
+  // Fetch (or create) the household as soon as we know who's signed in, and
+  // drop it on the way out so nothing carries into the next account.
+  $effect(() => {
+    if (auth.status === 'signed-in') {
+      void loadHousehold()
+    } else {
+      clearHousehold()
+    }
+  })
 </script>
 
-<div class="shell">
-  <AppHeader {route} title={titles[route]} backTo={lastTab} />
+{#if auth.status === 'loading'}
+  <!-- Deliberately almost empty. This shows for a few hundred milliseconds while
+       the stored session is read, and a spinner that fast reads as a flicker. -->
+  <div class="booting"></div>
+{:else if auth.status === 'signed-out'}
+  <SignInScreen />
+{:else}
+  <div class="shell">
+    <AppHeader {route} title={titles[route]} backTo={lastTab} />
 
-  <main id="main">
-    <div class="content">
-      {#if route === 'shopping'}
-        <ShoppingScreen />
-      {:else if route === 'meals'}
-        <MealsScreen />
-      {:else if route === 'calendar'}
-        <CalendarScreen />
-      {:else}
-        <SettingsScreen />
-      {/if}
-    </div>
-  </main>
+    <main id="main">
+      <div class="content">
+        {#if route === 'shopping'}
+          <ShoppingScreen />
+        {:else if route === 'meals'}
+          <MealsScreen />
+        {:else if route === 'calendar'}
+          <CalendarScreen />
+        {:else}
+          <SettingsScreen />
+        {/if}
+      </div>
+    </main>
 
-  <BottomNav {route} />
-</div>
+    <BottomNav {route} />
+  </div>
+{/if}
 
 <style>
   .shell {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     height: 100%;
+  }
+
+  .booting {
+    height: 100%;
+    background: var(--color-bg);
   }
 
   main {

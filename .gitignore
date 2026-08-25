@@ -2,7 +2,14 @@ node_modules/
 dist/
 .DS_Store
 *.local
-.env
-.env.*
-!.env.example
 .vite/
+
+# Note: `.env` is deliberately NOT ignored. It holds the Supabase project URL and
+# the anon key, both of which are compiled into the public bundle anyway — they
+# are public by design, and Row Level Security is what protects the data. Keeping
+# them in the repo means the GitHub Pages build gets them with no extra setup.
+#
+# `.env.local` IS ignored, and overrides `.env`, so a different Supabase project
+# can be used locally without touching the committed one.
+.env.local
+.env.*.local

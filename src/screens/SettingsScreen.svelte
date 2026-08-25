@@ -9,6 +9,8 @@
   showing a button that would do nothing.
 -->
 <script lang="ts">
+  import { auth, signOut } from '../lib/auth.svelte'
+  import { household } from '../lib/household.svelte'
   import { install, promptInstall } from '../lib/install.svelte'
   import { strings } from '../lib/strings'
 </script>
@@ -35,20 +37,50 @@
     </div>
   </div>
 
-  <div class="card">
-    <div class="row muted">
-      <div class="text">
-        <h2>{strings.settings.accountTitle}</h2>
-        <p>{strings.settings.accountBody}</p>
+  {#if auth.status === 'signed-in'}
+    <div class="card">
+      <div class="row">
+        <div class="text">
+          <h2>{strings.settings.accountTitle}</h2>
+          <p>{strings.settings.signedInAs} {auth.email ?? ''}</p>
+        </div>
+        <button class="button ghost" onclick={signOut}>{strings.auth.signOut}</button>
+      </div>
+      <div class="row">
+        <div class="text">
+          <h2>{strings.settings.householdTitle}</h2>
+          <p>
+            {#if household.error}
+              {household.error}
+            {:else if household.name}
+              {household.name}
+            {:else}
+              {strings.household.loading}
+            {/if}
+          </p>
+        </div>
       </div>
     </div>
-    <div class="row muted">
-      <div class="text">
-        <h2>{strings.settings.householdTitle}</h2>
-        <p>{strings.settings.householdBody}</p>
+
+    {#if auth.error}
+      <p class="error" role="alert">{auth.error}</p>
+    {/if}
+  {:else}
+    <div class="card">
+      <div class="row muted">
+        <div class="text">
+          <h2>{strings.settings.notConnectedTitle}</h2>
+          <p>{strings.settings.notConnectedBody}</p>
+        </div>
+      </div>
+      <div class="row muted">
+        <div class="text">
+          <h2>{strings.settings.householdTitle}</h2>
+          <p>{strings.settings.householdBody}</p>
+        </div>
       </div>
     </div>
-  </div>
+  {/if}
 
   <p class="version">{strings.settings.version}</p>
 </section>
@@ -112,6 +144,28 @@
 
   .button:active {
     background: var(--color-accent-hover);
+  }
+
+  /* Sign out is destructive-ish and shouldn't compete with Install for
+     attention, so it gets an outline rather than the filled accent. */
+  .button.ghost {
+    background: none;
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text-muted);
+    padding: 0 var(--space-4);
+  }
+
+  .button.ghost:active {
+    background: var(--color-surface-sunken);
+  }
+
+  .error {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--color-accent-soft);
+    color: var(--color-danger);
+    font-size: var(--text-sm);
+    text-align: center;
   }
 
   .version {

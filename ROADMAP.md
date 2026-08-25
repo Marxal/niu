@@ -102,3 +102,49 @@ there's no switching mechanism, just the one file.
 
 Reload the installed app (see the note on updates in the round 1 message) — every screen,
 the nav labels, and Settings should now read in English.
+
+---
+
+## Round 2 — Google sign-in and the household
+
+**Branch:** `claude/vite-svelte-pwa-skeleton-g39cik`
+
+### What changed
+
+Niu has a backend and knows who you are.
+
+- **Google sign-in.** The app now sits behind a sign-in screen. Signing out lives
+  in Settings, next to the account you're signed in as.
+- **Households, with Row Level Security.** Two tables — `households` and
+  `household_members` — and the policies that mean a member can only ever read
+  their own household. `supabase/migrations/0001_households.sql`.
+- **You get a home on first sign-in.** A database function, `ensure_household()`,
+  creates one the first time you sign in and hands back the existing one every
+  time after, so two devices signing in at once can't leave you with two homes.
+- **A guard against the wrong key.** The build refuses to start if the key in the
+  bundle looks like a Supabase `service_role` key, which would bypass every
+  policy above. Unit tested.
+
+### Two decisions worth knowing about
+
+**PKCE, not the default flow.** Supabase's OAuth defaults to the implicit flow,
+which returns the session in the URL hash (`#access_token=…`). Niu routes on the
+hash, so that would have landed on top of the router and opened the app on a
+junk route. PKCE returns `?code=…` in the query string instead and cleans it up
+itself, leaving the hash alone.
+
+**The app still works with no backend.** If the Supabase settings are missing,
+the app skips sign-in and behaves exactly as it did in round 1, with Settings
+explaining why. `main` deploys automatically, so this round had to be able to
+land before the Supabase project existed without turning the live site blank.
+
+### Deliberately not done
+
+Inviting a second person, and any actual shopping/meal/calendar data. The tables
+have no insert or delete policies yet — no policy means no access, which is the
+safe direction to be wrong in. Those arrive with the invite flow.
+
+### Next up
+
+The shopping list: its table, its RLS policy, and realtime so both phones stay
+in sync.
