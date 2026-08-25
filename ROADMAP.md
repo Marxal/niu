@@ -36,9 +36,8 @@ to the bottom above the gesture bar.
 
 ### How to test it
 
-See the end of the round-1 message. In short: open
-`https://marxal.github.io/niu-/` on the phone, install it from the Chrome menu, and check
-the three tabs and the Settings icon.
+Open `https://marxal.github.io/niu/` on the phone, install it from the Chrome menu, and
+check the three tabs and the Settings icon.
 
 ### Deliberately not done
 
@@ -47,3 +46,31 @@ Supabase, Google sign-in, any real data, offline caching, notifications.
 ### Next up
 
 Google sign-in + the households table with its RLS policy.
+
+---
+
+## Round 1.1 — Fix: stop hard-coding the repo name in the URL
+
+**Branch:** `claude/vite-svelte-pwa-skeleton-g39cik`
+
+### What went wrong
+
+Round 1 built the site with `base: '/niu-/'`, because that was the repo name. The repo was
+then renamed to `niu`, and the published page went looking for its JavaScript and CSS at
+`/niu-/assets/…` — a path that no longer exists. Every asset 404'd, so the page came up
+white.
+
+### The fix
+
+`base: './'`. Every URL in the built site is now relative to the folder it's served from,
+so the app works at `/niu/`, at any other repo name, at a custom domain later, or from a
+different folder entirely — with nothing to keep in sync. Verified by serving the same
+build from two differently-named folders and checking that the assets, the icons, the
+service worker scope and all four screens come up clean in both.
+
+Also dropped the `id` field from the manifest, which was the other place the old repo name
+was written down. With no `id`, the spec says the app's identity is its `start_url`, which
+is already relative.
+
+**One consequence:** the app's identity changed, so if Niu was already on the home screen
+it's now a different app to Chrome. Remove the old icon and install it again.

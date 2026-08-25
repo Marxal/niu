@@ -4,8 +4,9 @@
 #   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 # Without that, this workflow runs green but the site never appears.
 #
-# The site lands at https://marxal.github.io/niu-/ , which is why vite.config.ts
-# sets base: '/niu-/'.
+# The site lands at https://marxal.github.io/niu/ . vite.config.ts uses a relative
+# base, so that path isn't hard-coded anywhere — renaming the repo again won't
+# break the build.
 
 name: Deploy to GitHub Pages
 
