@@ -18,6 +18,7 @@
   import SettingsScreen from './screens/SettingsScreen.svelte'
   import ShoppingScreen from './screens/ShoppingScreen.svelte'
   import { TABS, parseRoute, type RouteId, type TabId } from './lib/router'
+  import { strings } from './lib/strings'
 
   let route = $state<RouteId>(parseRoute(location.hash))
 
@@ -25,10 +26,10 @@
   let lastTab = $state<TabId>('shopping')
 
   const titles: Record<RouteId, string> = {
-    shopping: 'Compra',
-    meals: 'Menús',
-    calendar: 'Calendari',
-    settings: 'Ajustos',
+    shopping: strings.tabs.shopping.label,
+    meals: strings.tabs.meals.label,
+    calendar: strings.tabs.calendar.label,
+    settings: strings.header.settings,
   }
 
   $effect(() => {

@@ -10,26 +10,27 @@
 -->
 <script lang="ts">
   import { install, promptInstall } from '../lib/install.svelte'
+  import { strings } from '../lib/strings'
 </script>
 
 <section class="settings">
   <div class="card">
     <div class="row">
       <div class="text">
-        <h2>Instal·la Niu</h2>
+        <h2>{strings.settings.installTitle}</h2>
         <p>
           {#if install.installed}
-            Ja el tens instal·lat. Obre'l des de la icona del mòbil.
+            {strings.settings.installedBody}
           {:else if install.available}
-            Afegeix Niu a la pantalla d'inici perquè s'obri com una app.
+            {strings.settings.availableBody}
           {:else}
-            Si no veus el botó, fes-ho des del menú del navegador:
-            <strong>Afegeix a la pantalla d'inici</strong>.
+            {strings.settings.unavailableBody}
+            <strong>{strings.settings.unavailableAction}</strong>.
           {/if}
         </p>
       </div>
       {#if install.available}
-        <button class="button" onclick={promptInstall}>Instal·la</button>
+        <button class="button" onclick={promptInstall}>{strings.settings.installButton}</button>
       {/if}
     </div>
   </div>
@@ -37,19 +38,19 @@
   <div class="card">
     <div class="row muted">
       <div class="text">
-        <h2>Compte</h2>
-        <p>L'inici de sessió amb Google arribarà a la propera ronda.</p>
+        <h2>{strings.settings.accountTitle}</h2>
+        <p>{strings.settings.accountBody}</p>
       </div>
     </div>
     <div class="row muted">
       <div class="text">
-        <h2>La casa</h2>
-        <p>Convidar la parella i compartir llistes, més endavant.</p>
+        <h2>{strings.settings.householdTitle}</h2>
+        <p>{strings.settings.householdBody}</p>
       </div>
     </div>
   </div>
 
-  <p class="version">Niu · esquelet (ronda 1)</p>
+  <p class="version">{strings.settings.version}</p>
 </section>
 
 <style>

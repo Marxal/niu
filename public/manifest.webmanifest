@@ -1,8 +1,8 @@
 {
   "name": "Niu",
   "short_name": "Niu",
-  "description": "El nostre organitzador de casa: compra, menús i calendari.",
-  "lang": "ca",
+  "description": "Our household organiser: shopping, meals and the calendar.",
+  "lang": "en",
   "dir": "ltr",
   "start_url": ".",
   "scope": "./",

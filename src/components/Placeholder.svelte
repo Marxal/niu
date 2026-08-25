@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
   import type { RouteId } from '../lib/router'
+  import { strings } from '../lib/strings'
   import TabIcon from './TabIcon.svelte'
 
   let { name, heading, blurb }: { name: RouteId; heading: string; blurb: string } = $props()
@@ -19,7 +20,7 @@
   </div>
   <h2>{heading}</h2>
   <p>{blurb}</p>
-  <span class="tag">Encara per fer</span>
+  <span class="tag">{strings.placeholder.tag}</span>
 </div>
 
 <style>
