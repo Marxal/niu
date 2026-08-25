@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
   import { hrefFor, type RouteId, type TabId } from '../lib/router'
+  import { strings } from '../lib/strings'
   import TabIcon from './TabIcon.svelte'
 
   let { route, title, backTo }: { route: RouteId; title: string; backTo: TabId } = $props()
@@ -22,7 +23,7 @@
     class="action"
     class:active={inSettings}
     href={inSettings ? hrefFor(backTo) : hrefFor('settings')}
-    aria-label={inSettings ? 'Tanca els ajustos' : 'Ajustos'}
+    aria-label={inSettings ? strings.header.closeSettings : strings.header.settings}
   >
     {#if inSettings}
       <svg

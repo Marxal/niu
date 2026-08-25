@@ -74,3 +74,31 @@ is already relative.
 
 **One consequence:** the app's identity changed, so if Niu was already on the home screen
 it's now a different app to Chrome. Remove the old icon and install it again.
+
+---
+
+## Round 1.2 — Fix: interface into English
+
+**Branch:** `claude/vite-svelte-pwa-skeleton-g39cik`
+
+### What went wrong
+
+Round 1 was written in Catalan on a guess, without checking. It also hand-typed the
+strings inline in five different components, so changing the language meant editing every
+one of those files a second time.
+
+### The fix
+
+Pulled every piece of user-facing text into one file, `src/lib/strings.ts`, and wrote it
+in English. Every component now reads its copy from there — none of them hard-code text
+any more. `index.html`'s `lang` attribute and the manifest's `lang` field were updated to
+match.
+
+This also sets up whatever comes next on language: if Niu ever needs Catalan too, this
+file is what becomes `en.ts` sitting next to a `ca.ts` with the same keys. Right now
+there's no switching mechanism, just the one file.
+
+### How to test it
+
+Reload the installed app (see the note on updates in the round 1 message) — every screen,
+the nav labels, and Settings should now read in English.

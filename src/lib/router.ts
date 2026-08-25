@@ -12,6 +12,8 @@
  * "fail soft" rule applied to routing.
  */
 
+import { strings } from './strings'
+
 export type TabId = 'shopping' | 'meals' | 'calendar'
 export type RouteId = TabId | 'settings'
 
@@ -26,9 +28,9 @@ export interface Tab {
 }
 
 export const TABS: readonly Tab[] = [
-  { id: 'shopping', label: 'Compra', title: 'Llista de la compra' },
-  { id: 'meals', label: 'Menús', title: 'Planificador de menús' },
-  { id: 'calendar', label: 'Calendari', title: 'Calendari compartit' },
+  { id: 'shopping', ...strings.tabs.shopping },
+  { id: 'meals', ...strings.tabs.meals },
+  { id: 'calendar', ...strings.tabs.calendar },
 ]
 
 const KNOWN_ROUTES: readonly RouteId[] = [...TABS.map((t) => t.id), 'settings']

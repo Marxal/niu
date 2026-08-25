@@ -12,12 +12,13 @@
 -->
 <script lang="ts">
   import { TABS, hrefFor, type RouteId } from '../lib/router'
+  import { strings } from '../lib/strings'
   import TabIcon from './TabIcon.svelte'
 
   let { route }: { route: RouteId } = $props()
 </script>
 
-<nav class="nav" aria-label="Seccions principals">
+<nav class="nav" aria-label={strings.nav.label}>
   {#each TABS as tab (tab.id)}
     {@const active = route === tab.id}
     <a
