@@ -18,5 +18,14 @@ npm run icons    # regenerate the app icons after a brand colour change
 Deploys happen automatically: every push to `main` runs the build and publishes to GitHub
 Pages.
 
+## Backend
+
+Niu stores everything in Supabase. Connecting it is a one-time browser task —
+see [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md). Until that's done the app
+still runs, but nothing is saved and Settings says "Not connected yet".
+
+The SQL that creates the tables and their Row Level Security policies lives in
+`supabase/migrations/`.
+
 See `CLAUDE.md` for the rules this repo is built under, and `ROADMAP.md` for what changed
 in each round.

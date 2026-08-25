@@ -52,6 +52,23 @@ export const strings = {
     },
   },
 
+  auth: {
+    tagline: 'The shopping, the meals and the calendar — in one place, for the two of you.',
+    googleButton: 'Continue with Google',
+    signingIn: 'Taking you to Google…',
+    signInFailed: "Couldn't reach Google just now. Check your connection and try again.",
+    signOutFailed: "Couldn't sign out just now. Try again in a moment.",
+    signOut: 'Sign out',
+    privacy: 'Niu only asks Google for your name and email address.',
+  },
+
+  household: {
+    title: 'Household',
+    loading: 'Loading…',
+    loadFailed: "Couldn't load your household just now. Pull down to try again.",
+    defaultName: 'Our home',
+  },
+
   settings: {
     installTitle: 'Install Niu',
     installedBody: "You've already got it installed. Open it from your phone's home screen.",
@@ -60,9 +77,12 @@ export const strings = {
     unavailableAction: 'Add to Home screen',
     installButton: 'Install',
     accountTitle: 'Account',
-    accountBody: 'Google sign-in is coming in the next round.',
+    signedInAs: 'Signed in as',
     householdTitle: 'Household',
     householdBody: 'Inviting your partner and sharing lists, further down the line.',
-    version: 'Niu · skeleton (round 1)',
+    notConnectedTitle: 'Not connected yet',
+    notConnectedBody:
+      'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
+    version: 'Niu · round 2',
   },
 } as const
