@@ -36,7 +36,7 @@ to the bottom above the gesture bar.
 
 ### How to test it
 
-Open `https://marxal.github.io/Niu/` on the phone, install it from the Chrome menu, and
+Open `https://marxal.github.io/niu/` on the phone, install it from the Chrome menu, and
 check the three tabs and the Settings icon.
 
 ### Deliberately not done
@@ -56,13 +56,14 @@ Google sign-in + the households table with its RLS policy.
 ### What went wrong
 
 Round 1 built the site with `base: '/niu-/'`, because that was the repo name. The repo was
-then renamed to `Niu`, and the published page went looking for its JavaScript and CSS at
-`/niu-/assets/…` — a path that no longer exists. Every asset 404'd.
+then renamed to `niu`, and the published page went looking for its JavaScript and CSS at
+`/niu-/assets/…` — a path that no longer exists. Every asset 404'd, so the page came up
+white.
 
 ### The fix
 
 `base: './'`. Every URL in the built site is now relative to the folder it's served from,
-so the app works at `/Niu/`, at a lowercase `/niu/`, at a custom domain later, or from a
+so the app works at `/niu/`, at any other repo name, at a custom domain later, or from a
 different folder entirely — with nothing to keep in sync. Verified by serving the same
 build from two differently-named folders and checking that the assets, the icons, the
 service worker scope and all four screens come up clean in both.

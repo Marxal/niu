@@ -1,7 +1,7 @@
 // Vite config. The only non-obvious thing here is `base`.
 //
 // GitHub Pages serves a project repo from a sub-folder named after the repo
-// (https://marxal.github.io/Niu/), not from the domain root, so asset URLs need a
+// (https://marxal.github.io/niu/), not from the domain root, so asset URLs need a
 // prefix. It used to be hard-coded to '/niu-/', which broke the moment the repo was
 // renamed: every script and stylesheet 404'd.
 //

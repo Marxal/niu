@@ -3,7 +3,7 @@
 A family organiser PWA for one household: a shopping list, a meal planner and a shared
 calendar. Phone-first, Android, installable.
 
-**Live:** https://marxal.github.io/Niu/
+**Live:** https://marxal.github.io/niu/
 
 ## Working on it
 
