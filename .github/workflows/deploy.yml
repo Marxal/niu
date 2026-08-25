@@ -1,0 +1,62 @@
+# Builds Niu and publishes it to GitHub Pages on every push to main.
+#
+# One-time setup in the repo, which a workflow cannot do for you:
+#   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+# Without that, this workflow runs green but the site never appears.
+#
+# The site lands at https://marxal.github.io/niu-/ , which is why vite.config.ts
+# sets base: '/niu-/'.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Lets you re-run a deploy by hand from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# If two pushes land close together, let the running deploy finish and queue the
+# newer one rather than cancelling it — a half-deployed Pages site is worse than
+# a slightly late one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Type errors and failing unit tests stop the deploy, so main is never
+      # published broken.
+      - run: npm run check
+      - run: npm test
+      - run: npx vite build
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
