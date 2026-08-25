@@ -1,0 +1,142 @@
+/*
+ * The single source of truth for every colour, space, radius, size and duration
+ * in Niu. Components must never contain a raw hex value or a magic pixel number —
+ * if a component needs a value that isn't here, the value gets added here first.
+ *
+ * Two things to know before editing:
+ *  1. Tokens are *semantic*, not literal. `--color-surface` is "the colour of a card",
+ *     not "white". That's what lets dark mode work by overriding one block at the
+ *     bottom of this file instead of touching every component.
+ *  2. The spacing scale is a 4px grid. Stick to the steps; don't invent 13px.
+ *
+ * This is a first pass — colours and type sizes are expected to move once it has
+ * been looked at on a real phone.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* ---- Brand ------------------------------------------------------------ */
+  /* Niu means "nest". Warm clay on warm paper: domestic, not corporate. */
+  --color-accent: #c25a3a;
+  --color-accent-hover: #ab4b2e;
+  --color-accent-ink: #ffffff;      /* text/icons sitting on --color-accent */
+  --color-accent-soft: #f7e4dc;     /* tinted fill: selected rows, chips */
+
+  /* Per-tab tints. Deliberately quiet — a hint of identity, not a theme swap. */
+  --color-tab-shopping: #c25a3a;
+  --color-tab-meals: #5f7d52;
+  --color-tab-calendar: #3f6f8f;
+
+  /* ---- Surfaces --------------------------------------------------------- */
+  --color-bg: #fbf7f2;              /* the page */
+  --color-surface: #ffffff;         /* cards, the bottom nav */
+  --color-surface-sunken: #f3ede5;  /* inset areas, empty states */
+  --color-border: #e7ddd1;
+  --color-border-strong: #d3c4b3;
+  --color-overlay: rgb(42 35 32 / 0.45);
+
+  /* ---- Text ------------------------------------------------------------- */
+  --color-text: #2a2320;
+  --color-text-muted: #7a6e64;
+  --color-text-faint: #a89b8f;
+
+  /* ---- Status ----------------------------------------------------------- */
+  --color-success: #3f7d5a;
+  --color-warning: #b3801f;
+  --color-danger: #c0433b;
+
+  /* ---- Spacing: a 4px grid --------------------------------------------- */
+  --space-0: 0;
+  --space-1: 0.25rem;   /*  4px */
+  --space-2: 0.5rem;    /*  8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px — the default gutter */
+  --space-5: 1.5rem;    /* 24px */
+  --space-6: 2rem;      /* 32px */
+  --space-7: 3rem;      /* 48px */
+  --space-8: 4rem;      /* 64px */
+
+  /* ---- Radius ----------------------------------------------------------- */
+  --radius-sm: 0.5rem;   /*  8px — inputs, small chips */
+  --radius-md: 0.875rem; /* 14px — cards, list rows */
+  --radius-lg: 1.5rem;   /* 24px — sheets, big panels */
+  --radius-full: 999px;
+
+  /* ---- Type ------------------------------------------------------------- */
+  /* System stack: zero download, and it already looks native on his phone. */
+  --font-sans: ui-rounded, "Segoe UI", Roboto, -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Roboto Mono", "SF Mono", Menlo, monospace;
+
+  --text-xs: 0.75rem;    /* 12px — nav labels, meta */
+  --text-sm: 0.875rem;   /* 14px — secondary text */
+  --text-base: 1rem;     /* 16px — body. Never smaller for anything tappable. */
+  --text-lg: 1.125rem;   /* 18px — list item titles */
+  --text-xl: 1.375rem;   /* 22px — screen titles */
+  --text-2xl: 1.75rem;   /* 28px — hero numbers */
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 650;
+
+  /* ---- Elevation -------------------------------------------------------- */
+  --shadow-1: 0 1px 2px rgb(42 35 32 / 0.06), 0 1px 3px rgb(42 35 32 / 0.08);
+  --shadow-2: 0 4px 12px rgb(42 35 32 / 0.10);
+  --shadow-nav: 0 -1px 0 var(--color-border), 0 -6px 20px rgb(42 35 32 / 0.06);
+
+  /* ---- Layout ----------------------------------------------------------- */
+  --tap-min: 3rem;        /* 48px. The floor for anything a thumb touches. */
+  --nav-height: 4rem;     /* 64px, before safe-area padding is added */
+  --header-height: 3.5rem;
+  --content-max: 34rem;   /* keeps it sane if it's ever opened on a tablet */
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* ---- Stacking --------------------------------------------------------- */
+  --z-nav: 100;
+  --z-sheet: 200;
+  --z-toast: 300;
+}
+
+/*
+ * Dark mode. Only colour tokens are redefined — spacing, type and radius are
+ * identical in both themes, on purpose.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-accent: #e8825e;
+    --color-accent-hover: #f0997a;
+    --color-accent-ink: #2a1109;
+    --color-accent-soft: #33211b;
+
+    --color-tab-shopping: #e8825e;
+    --color-tab-meals: #96b487;
+    --color-tab-calendar: #7fadcc;
+
+    --color-bg: #14110f;
+    --color-surface: #1d1917;
+    --color-surface-sunken: #100e0d;
+    --color-border: #302a26;
+    --color-border-strong: #453d37;
+    --color-overlay: rgb(0 0 0 / 0.6);
+
+    --color-text: #f2ebe4;
+    --color-text-muted: #a2958a;
+    --color-text-faint: #7b6f66;
+
+    --color-success: #6ba884;
+    --color-warning: #d6a44a;
+    --color-danger: #e3695f;
+
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 4px 12px rgb(0 0 0 / 0.5);
+    --shadow-nav: 0 -1px 0 var(--color-border), 0 -6px 20px rgb(0 0 0 / 0.35);
+  }
+}
