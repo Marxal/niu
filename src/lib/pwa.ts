@@ -17,8 +17,9 @@ export async function registerServiceWorker(): Promise<void> {
   if (import.meta.env.DEV) return
 
   try {
-    // BASE_URL is '/niu-/' in production, so the worker's scope covers the app
-    // and nothing else on marxal.github.io.
+    // BASE_URL is './' (see vite.config.ts), which the browser resolves against the
+    // page's folder — so the worker and its scope land wherever the app is served
+    // from, and cover the app and nothing else on marxal.github.io.
     await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, {
       scope: import.meta.env.BASE_URL,
     })
