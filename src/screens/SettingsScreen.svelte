@@ -237,6 +237,13 @@
     border-top: 1px solid var(--color-border);
   }
 
+  /* A flex item's default min-width is its content's natural width, not 0 — so
+     a long unbroken string (an email address, a household name) couldn't
+     shrink and pushed the row, and the page, wider than the screen. */
+  .text {
+    min-width: 0;
+  }
+
   /* The theme picker needs its control under the label, not beside it — three
      segments won't fit next to a heading at 412px. */
   .row.stack {
@@ -294,12 +301,14 @@
   h2 {
     font-size: var(--text-base);
     font-weight: var(--weight-medium);
+    overflow-wrap: anywhere;
   }
 
   p {
     margin-top: var(--space-1);
     color: var(--color-text-muted);
     font-size: var(--text-sm);
+    overflow-wrap: anywhere;
   }
 
   .button {

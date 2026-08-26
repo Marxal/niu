@@ -162,8 +162,17 @@
   .content {
     /* A single-cell grid so the screen inside stretches to fill the viewport (the
        empty states centre themselves in it) but can still grow past it once
-       there's real content. */
+       there's real content.
+
+       The column needs minmax(0, 1fr), not the bare default 'auto': an
+       unconstrained grid track sizes itself to the min-content width of
+       whatever's inside, so a screen with several nested flex columns (Settings
+       is the deepest) could quietly push this a few pixels wider than the
+       viewport — invisible at rest, but real, and it turns the whole app
+       horizontally scrollable. minmax(0, …) is what lets the track shrink back
+       down to the space actually available, same as .shell's row below. */
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 100%;
     max-width: var(--content-max);
     margin-inline: auto;
