@@ -22,6 +22,7 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isConfigured, supabaseAnonKey, supabaseUrl } from './config'
+import { resolveBase } from './url'
 
 export const supabase: SupabaseClient | null = isConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -38,8 +39,10 @@ export const supabase: SupabaseClient | null = isConfigured
 /**
  * Where Google sends you back to. It has to be the app's own folder with no
  * hash, and it must be listed in Supabase under Authentication → URL
- * Configuration → Redirect URLs, or the sign-in will bounce.
+ * Configuration → Redirect URLs, or Supabase silently falls back to whatever
+ * "Site URL" is set to instead — which is how this broke the first time round.
+ * See url.ts for the resolution logic and why it isn't just `location.origin`.
  */
 export function authRedirectTo(): string {
-  return new URL(import.meta.env.BASE_URL, window.location.origin).toString()
+  return resolveBase(import.meta.env.BASE_URL, window.location.href)
 }
