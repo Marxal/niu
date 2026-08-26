@@ -611,3 +611,68 @@ genuinely buy on a rhythm.
 ### Next up
 
 Feature round 5: dishes — the bridge to the meal planner.
+
+---
+
+## Round 7.1 — Fix: the real app icon
+
+**Branch:** `claude/shopping-sync-form-fixes-e164qi`
+
+Marçal's own "niu" wordmark replaces the placeholder bowl-and-egg mark on the
+home screen, the install prompt, and every other size Android and iOS ask for.
+
+### What changed
+
+- `assets/brand/app-icon-source.png` — his 1254×1254 master, kept outside
+  `public/` on purpose: nothing links to it directly, and `public/` is copied
+  verbatim into the deployed site, so an 800+KB source file sitting in there
+  would just be dead weight every visitor downloads for nothing.
+- `scripts/generate-icons.mjs` rewritten to derive the four icon files from
+  that source instead of drawing shapes by formula — the wordmark is a
+  photograph-like 3D render, not something a distance function can describe.
+  `sharp` joined as a devDependency for exactly this script; it never ships in
+  the app itself.
+- The **maskable** icon needed more than a resize. Android crops it to a
+  circle, and the wordmark is wide — measured against the source, its own
+  corners sit at ~85% of the icon's half-width from centre, well past the
+  ~40%-radius safe zone a maskable icon gets. Left alone, the ends of the *n*
+  and the *u* would be cut off on a lot of phones. The script now measures the
+  artwork's own bounding box and shrinks it by whatever that specific image
+  needs — checked by masking the output to a circle and confirming the full
+  wordmark clears it with room to spare.
+
+### What it looks like
+
+The three "any"-purpose sizes (192, 512, the 180 iOS wants for "Add to Home
+Screen") show the wordmark close to full size, matching the source's own
+generous margins. The maskable one is visibly smaller within its square — that
+is what a maskable icon is supposed to look like unmasked; the safe zone really
+is a small centered region, and Android's own icons look the same way before
+the launcher's shape is applied.
+
+### Known inconsistency, not touched
+
+Two other places still carry the old bowl-and-egg mark, and this round left
+them alone deliberately — swapping the *symbol* for the *wordmark* in-app is a
+different decision than fixing the install icon, and touches colour choices
+this round wasn't asked to make:
+
+- `public/favicon.svg` — the browser-tab icon, hand-drawn to match the old mark
+- `src/components/NestMark.svelte` — shown at the top of the sign-in screen
+
+Both are still the clay-orange bowl. Worth a decision, not an assumption:
+should the sign-in screen and browser tab move to the wordmark too, and if so,
+on its own dark-green identity or recoloured to the app's existing clay accent?
+
+### How to test it
+
+Reload the app once this deploys, remove the old Niu icon from your home
+screen (its artwork changed, but its identity — see round 1.1 — didn't, so
+Android will treat "update" and "reinstall" differently depending on how it
+cached the old one; removing and reinstalling is the reliable path), and
+install it again from **Settings → Install Niu**. Check it at the size it
+actually shows on your home screen, not just this file.
+
+### Next up
+
+Feature round 5: dishes — the bridge to the meal planner.
