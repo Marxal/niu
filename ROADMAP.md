@@ -247,3 +247,66 @@ data or a feature that isn't built.
 
 Either the meal planner, or inviting your wife so the sharing is real rather
 than theoretical.
+
+---
+
+## Round 4 — The Bring!-style redesign
+
+**Branch:** `claude/vite-svelte-pwa-skeleton-g39cik`
+
+### What changed
+
+The shopping tab was rebuilt around the reference app's shape.
+
+- **Line-art icons, one colour.** 69 hand-drawn outline icons replace the emoji.
+  Everything takes the tile's colour, so a grid reads as one set. About 95% of
+  the 361 items have a drawing; the rest show their **outlined initial**, drawn
+  in the same weight and colour so it looks deliberate rather than missing.
+- **No more "Add items" button.** The catalogue sits directly under the list, so
+  adding never leaves the screen. The search field took the button's place,
+  pinned above the nav where a thumb reaches.
+- **Categories are collapsible and closed by default.** Ten open categories over
+  360 items would bury the list itself.
+- **The first tiles you see are learned.** A new `catalogue_usage` table counts
+  how often each household puts each item on the list, and the top row is
+  ordered by it. Before there's any history it falls back to a hand-picked order
+  of ~20 things nearly everyone buys, so the row is useful on day one.
+- **Press and hold a catalogue tile to remove it for good**, with a confirmation.
+- **Grid animations.** Adding or ticking something scales it in or out in place
+  while the neighbours glide to their new cells (FLIP), so the grid visibly
+  rearranges rather than items sliding up and down a list.
+- **An illustration on the empty state** — a line-drawn basket, same language as
+  the icons.
+- **Light / dark / match-phone selector** in Settings.
+
+### On "remove for good"
+
+It's a hide, not a delete, and that is deliberate. Most of the catalogue is the
+shared seed that belongs to no household — one household deleting `anchovies`
+must not remove it for everyone else, and the policies rightly forbid that. A
+per-household `catalogue_hidden` row is the only thing that can mean "gone, for
+us". It also destroys nothing, so unhiding later is possible.
+
+### How it was checked
+
+The four migrations were run in order against a real PostgreSQL 16, then run
+again to confirm they're re-runnable. As a second household, every crossing
+attempt was refused: hiding a tile in someone else's household, forging
+`hidden_by`, and writing an arbitrary number into the usage counter (there is no
+insert policy — the counting function is the only writer). Hiding milk for one
+household was confirmed to leave it visible for the other.
+
+The UI was driven in a real Chromium at 412×915 in both themes: category rows
+closed by default, opening one, search replacing the categories, the new-word
+Add button, long-press opening the remove dialog, the theme selector actually
+switching `data-theme`, and the empty state. Zero console errors.
+
+### Known rough edge
+
+A handful of the 69 icons are more abstract than others at 28px — `croissant`,
+`meat` and `shrimp` in particular lean on the label underneath. Every tile shows
+its name, so nothing is unidentifiable, but they're worth another pass.
+
+### Next up
+
+The meal planner, or inviting a second person.

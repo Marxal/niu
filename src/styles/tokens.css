@@ -106,11 +106,23 @@
 }
 
 /*
- * Dark mode. Only colour tokens are redefined — spacing, type and radius are
- * identical in both themes, on purpose.
+ * Dark mode, in three states.
+ *
+ * The theme has to answer to two things: the phone's own setting, and an
+ * explicit choice made in Settings that must override it. So the same token
+ * block appears twice —
+ *
+ *   1. under prefers-color-scheme, guarded by :not([data-theme='light']) so
+ *      picking Light in the app wins over a dark phone;
+ *   2. under [data-theme='dark'], so picking Dark wins over a light phone.
+ *
+ * Never define a colour *only* inside one of these blocks: the light values on
+ * bare :root above are the base, and these override. `data-theme` is set on
+ * <html> by src/lib/theme.svelte.ts, and absent when following the phone.
  */
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --color-accent: #e8825e;
     --color-accent-hover: #f0997a;
     --color-accent-ink: #2a1109;
@@ -139,4 +151,34 @@
     --shadow-2: 0 4px 12px rgb(0 0 0 / 0.5);
     --shadow-nav: 0 -1px 0 var(--color-border), 0 -6px 20px rgb(0 0 0 / 0.35);
   }
+}
+
+:root[data-theme='dark'] {
+  --color-accent: #e8825e;
+  --color-accent-hover: #f0997a;
+  --color-accent-ink: #2a1109;
+  --color-accent-soft: #33211b;
+
+  --color-tab-shopping: #e8825e;
+  --color-tab-meals: #96b487;
+  --color-tab-calendar: #7fadcc;
+
+  --color-bg: #14110f;
+  --color-surface: #1d1917;
+  --color-surface-sunken: #100e0d;
+  --color-border: #302a26;
+  --color-border-strong: #453d37;
+  --color-overlay: rgb(0 0 0 / 0.6);
+
+  --color-text: #f2ebe4;
+  --color-text-muted: #a2958a;
+  --color-text-faint: #7b6f66;
+
+  --color-success: #6ba884;
+  --color-warning: #d6a44a;
+  --color-danger: #e3695f;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 4px 12px rgb(0 0 0 / 0.5);
+  --shadow-nav: 0 -1px 0 var(--color-border), 0 -6px 20px rgb(0 0 0 / 0.35);
 }

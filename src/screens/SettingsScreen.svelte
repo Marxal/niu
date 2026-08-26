@@ -12,10 +12,37 @@
   import { auth, signOut } from '../lib/auth.svelte'
   import { household } from '../lib/household.svelte'
   import { install, promptInstall } from '../lib/install.svelte'
+  import { setTheme, theme, type ThemeChoice } from '../lib/theme.svelte'
   import { strings } from '../lib/strings'
+
+  const choices: { id: ThemeChoice; label: string }[] = [
+    { id: 'system', label: strings.theme.system },
+    { id: 'light', label: strings.theme.light },
+    { id: 'dark', label: strings.theme.dark },
+  ]
 </script>
 
 <section class="settings">
+  <div class="card">
+    <div class="row stack">
+      <div class="text">
+        <h2>{strings.theme.title}</h2>
+      </div>
+      <div class="segmented" role="group" aria-label={strings.theme.title}>
+        {#each choices as choice (choice.id)}
+          <button
+            class="segment"
+            class:on={theme.choice === choice.id}
+            aria-pressed={theme.choice === choice.id}
+            onclick={() => setTheme(choice.id)}
+          >
+            {choice.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="row">
       <div class="text">
@@ -106,13 +133,45 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-4);
-    /* Extra room at the bottom so the last card never hugs the nav bar. */
-    padding: var(--space-4) var(--space-4) var(--space-6);
+    padding: var(--space-4);
     min-height: var(--tap-min);
   }
 
   .row + .row {
     border-top: 1px solid var(--color-border);
+  }
+
+  /* The theme picker needs its control under the label, not beside it — three
+     segments won't fit next to a heading at 412px. */
+  .row.stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .segmented {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-sunken);
+  }
+
+  .segment {
+    min-height: 2.5rem;
+    border-radius: var(--radius-full);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    transition:
+      background var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease);
+  }
+
+  .segment.on {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
   }
 
   .row.muted h2,

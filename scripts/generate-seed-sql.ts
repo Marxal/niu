@@ -33,7 +33,12 @@ function sql(value: string | null): string {
 const rows = flattenSeed()
 
 const values = rows
-  .map((row) => `  (${sql(row.name)}, ${sql(row.category)}, ${sql(row.icon)}, ${row.sortOrder})`)
+  .map(
+    (row) =>
+      `  (${sql(row.name)}, ${sql(row.category)}, ${sql(row.icon)}, ${row.sortOrder}, ${
+        row.suggestedRank ?? 'null'
+      })`,
+  )
   .join(',\n')
 
 const file = `-- Round 3: the seeded catalogue — the tiles you tap instead of typing.
@@ -46,18 +51,22 @@ const file = `-- Round 3: the seeded catalogue — the tiles you tap instead of 
 -- creating rows like that from the app, so this has to be run here, in the SQL
 -- editor, where policies don't apply.
 --
--- Safe to re-run: on conflict it updates the category, icon and order, so
--- re-running after re-ordering the catalogue applies the new order rather than
--- erroring or duplicating.
+-- Safe to re-run: on conflict it updates the category, icon, order and
+-- suggested rank, so re-running after changing the catalogue applies the new
+-- values rather than erroring or duplicating. Re-running this is also how the
+-- old emoji icons get swapped for line-drawing slugs.
+--
+-- Requires 0004 to have run first (it adds the suggested_rank column).
 
-insert into public.catalogue_items (name, category, icon, sort_order)
+insert into public.catalogue_items (name, category, icon, sort_order, suggested_rank)
 values
 ${values}
 on conflict (lower(trim(name))) where household_id is null
 do update set
   category = excluded.category,
   icon = excluded.icon,
-  sort_order = excluded.sort_order;
+  sort_order = excluded.sort_order,
+  suggested_rank = excluded.suggested_rank;
 `
 
 writeFileSync(OUT, file)

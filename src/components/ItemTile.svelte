@@ -1,24 +1,28 @@
 <!--
-  One grocery tile — an emoji (or a generated first-letter square), a name, and
+  One grocery tile: a line icon (or the item's outlined initial), a name, and
   optional badges.
 
-  Used in two places with different meanings, which is why `state` exists rather
-  than the component reading anything global:
-    - in the catalogue sheet, `on-list` means "already added, tapping does
-      nothing", per NIU.md §4.1
-    - on the list itself, `checked` means "in the trolley", greyed out
+  One colour, always. The icon, the letter and the label all take the tile's
+  `color`, and the tile picks that from its state — accent while it's something
+  you still need, muted once it's in the trolley, faint in the picker. Nothing
+  inside sets a colour of its own, which is what keeps a grid of 40 mixed tiles
+  looking like one set rather than a sticker album.
 
-  Sized so three fit across a 412px phone with comfortable gutters, and the whole
-  tile is the tap target — never just the label.
+  Three states, and they mean different things in the two places this is used:
+    list    something on the shopping list, still to buy
+    checked in the trolley — greyed, struck through
+    pick    a catalogue tile you can tap to add
+
+  Sized so the whole tile is the tap target, never just the label.
 -->
 <script lang="ts">
-  import { initialFor } from '../lib/list-view'
+  import GroceryIcon from './GroceryIcon.svelte'
   import { strings } from '../lib/strings'
 
   let {
     name,
     icon = null,
-    state = 'default',
+    state = 'list',
     isNew = false,
     urgent = false,
     detail = null,
@@ -26,19 +30,19 @@
     onlongpress,
   }: {
     name: string
+    /** Icon slug, or null for the outlined initial. */
     icon?: string | null
-    state?: 'default' | 'on-list' | 'checked'
+    state?: 'list' | 'checked' | 'pick'
     isNew?: boolean
     urgent?: boolean
     /** Small line under the name — quantity, or a note. */
     detail?: string | null
     onclick?: () => void
-    /** Press and hold. Used for the optional details, which are rarely needed. */
+    /** Press and hold. Details on the list; remove-for-good in the picker. */
     onlongpress?: () => void
   } = $props()
 
-  // Tap ticks an item off; press-and-hold opens its details. Tap gets the
-  // frequent action because it's the one done a dozen times per shop.
+  // Tap does the frequent thing; press-and-hold does the rare one.
   const LONG_PRESS_MS = 450
 
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -63,7 +67,7 @@
   }
 
   function handleClick() {
-    // A completed long press already did its thing; don't also tick the item.
+    // A completed long press already did its thing; don't also fire the tap.
     if (fired) {
       fired = false
       return
@@ -73,29 +77,20 @@
 </script>
 
 <button
-  class="tile"
-  class:on-list={state === 'on-list'}
-  class:checked={state === 'checked'}
+  class="tile {state}"
   onclick={handleClick}
   onpointerdown={start}
   onpointerup={cancel}
   onpointerleave={cancel}
   onpointercancel={cancel}
   oncontextmenu={(event) => {
-    // Android shows a text-selection menu on long press otherwise, which lands
-    // on top of the sheet we just opened.
+    // Android pops a text-selection menu on long press otherwise, right on top
+    // of whatever the long press just opened.
     if (onlongpress) event.preventDefault()
   }}
-  disabled={state === 'on-list'}
-  aria-label={state === 'on-list' ? `${name} — ${strings.shopping.alreadyOnList}` : name}
+  aria-label={name}
 >
-  <span class="glyph" aria-hidden="true">
-    {#if icon}
-      {icon}
-    {:else}
-      <span class="initial">{initialFor(name)}</span>
-    {/if}
-  </span>
+  <span class="glyph"><GroceryIcon {icon} {name} size={30} /></span>
 
   <span class="name">{name}</span>
 
@@ -114,37 +109,38 @@
 <style>
   .tile {
     position: relative;
+    /* A button sizes to its content even as a flex container, so without these
+       the tiles come out different widths and heights inside equal grid cells. */
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
     gap: var(--space-1);
-    padding: var(--space-3) var(--space-2);
-    min-height: 5.5rem;
+    padding: var(--space-3) var(--space-1);
+    min-height: 5.75rem;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: var(--color-surface);
     text-align: center;
     transition:
       transform var(--dur-fast) var(--ease),
-      opacity var(--dur-fast) var(--ease);
+      background var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
   }
 
-  .tile:active:not(:disabled) {
-    transform: scale(0.96);
-    background: var(--color-surface-sunken);
+  /* On the list and still needed: the accent. */
+  .tile.list {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
   }
 
-  /* Already on the list: visibly inert, because tapping it deliberately does
-     nothing rather than adding a second copy. */
-  .tile.on-list {
-    opacity: 0.4;
-    cursor: default;
-  }
-
-  /* In the trolley. */
+  /* In the trolley: drained of colour, but still readable. */
   .tile.checked {
-    opacity: 0.55;
+    color: var(--color-text-faint);
     background: var(--color-surface-sunken);
   }
 
@@ -152,25 +148,19 @@
     text-decoration: line-through;
   }
 
+  /* In the picker: quiet, so the list above stays the loud thing. */
+  .tile.pick {
+    color: var(--color-text-muted);
+  }
+
+  .tile:active {
+    transform: scale(0.94);
+  }
+
   .glyph {
     display: grid;
     place-items: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    font-size: 1.6rem;
-    line-height: 1;
-  }
-
-  .initial {
-    display: grid;
-    place-items: center;
-    width: 100%;
-    height: 100%;
-    border-radius: var(--radius-sm);
-    background: var(--color-accent-soft);
-    color: var(--color-accent);
-    font-size: var(--text-lg);
-    font-weight: var(--weight-bold);
+    height: 1.875rem;
   }
 
   .name {
@@ -182,12 +172,14 @@
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    overflow-wrap: anywhere;
   }
 
   .detail {
-    color: var(--color-text-muted);
-    font-size: var(--text-xs);
+    opacity: 0.75;
+    font-size: 0.6875rem;
     font-weight: var(--weight-medium);
+    line-height: var(--leading-tight);
   }
 
   .badge {

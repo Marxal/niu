@@ -72,20 +72,27 @@ export const strings = {
   shopping: {
     // Empty states
     emptyTitle: 'Nothing on the list',
-    emptyBlurb: 'Tap the button below to open the catalogue and start adding.',
+    emptyBlurb: 'Tap something below, or type what you need.',
     // The two sections of the list
     toBuy: 'To buy',
     inTrolley: 'In the trolley',
     clearTrolley: 'Clear',
-    // Catalogue sheet
-    browse: 'Add items',
-    catalogueTitle: 'Add to the list',
-    searchPlaceholder: 'Search or type something new',
+    // Picker
+    searchPlaceholder: 'I need…',
     addNewWord: 'Add',
     alreadyOnList: 'Already on the list',
     ourWordsCategory: 'Our own words',
-    noResults: 'Nothing matches. Type it out and tap Add to create it.',
+    noResults: 'Nothing matches. Tap Add to create it.',
     close: 'Close',
+    suggested: 'Suggested',
+    recentlyUsed: 'Often bought',
+    searchResults: 'Matches',
+    allCategories: 'Everything else',
+    // Removing a tile from the picker for good
+    hideTitle: 'Remove for good?',
+    hideBody: 'It disappears from your catalogue. It stays on the list if it is already there.',
+    hideConfirm: 'Remove',
+    hideCancel: 'Keep it',
     // Item detail
     quantity: 'Quantity',
     unit: 'Unit',
@@ -109,6 +116,13 @@ export const strings = {
     updateFailed: "Couldn't save that just now. Try again in a moment.",
   },
 
+  theme: {
+    title: 'Appearance',
+    system: 'Match phone',
+    light: 'Light',
+    dark: 'Dark',
+  },
+
   settings: {
     installTitle: 'Install Niu',
     installedBody: "You've already got it installed. Open it from your phone's home screen.",
@@ -123,6 +137,6 @@ export const strings = {
     notConnectedTitle: 'Not connected yet',
     notConnectedBody:
       'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
-    version: 'Niu · round 2',
+    version: 'Niu · round 4',
   },
 } as const

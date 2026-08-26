@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   type DisplayItem,
+  type PickerItem,
+  categoriesInOrder,
+  categoryPicks,
+  suggestedPicks,
   floatUrgent,
   groupByCategory,
   initialFor,
@@ -144,5 +148,104 @@ describe('matchesSearch', () => {
   it('treats an empty query as matching everything', () => {
     expect(matchesSearch('anything', '')).toBe(true)
     expect(matchesSearch('anything', '   ')).toBe(true)
+  })
+})
+
+function pick(overrides: Partial<PickerItem> & { id: string }): PickerItem {
+  return {
+    name: overrides.id,
+    category: 'Pantry',
+    icon: null,
+    sortOrder: 0,
+    suggestedRank: null,
+    useCount: 0,
+    ...overrides,
+  }
+}
+
+describe('suggestedPicks', () => {
+  it('falls back to the hand-picked order when nothing has been used', () => {
+    const catalogue = [
+      pick({ id: 'rice', suggestedRank: 3 }),
+      pick({ id: 'milk', suggestedRank: 1 }),
+      pick({ id: 'bread', suggestedRank: 2 }),
+      pick({ id: 'capers' }),
+    ]
+    expect(suggestedPicks(catalogue, new Set()).map((i) => i.id)).toEqual([
+      'milk',
+      'bread',
+      'rice',
+    ])
+  })
+
+  it('puts what the household actually buys above the suggestions', () => {
+    const catalogue = [
+      pick({ id: 'milk', suggestedRank: 1 }),
+      pick({ id: 'bread', suggestedRank: 2 }),
+      pick({ id: 'anchovies', useCount: 9 }),
+    ]
+    // Used beats seeded even when the seeded item is rank 1.
+    expect(suggestedPicks(catalogue, new Set()).map((i) => i.id)).toEqual([
+      'anchovies',
+      'milk',
+      'bread',
+    ])
+  })
+
+  it('orders used items by how often, most first', () => {
+    const catalogue = [
+      pick({ id: 'a', useCount: 2 }),
+      pick({ id: 'b', useCount: 7 }),
+      pick({ id: 'c', useCount: 4 }),
+    ]
+    expect(suggestedPicks(catalogue, new Set()).map((i) => i.id)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('leaves out anything already on the list', () => {
+    const catalogue = [
+      pick({ id: 'milk', suggestedRank: 1 }),
+      pick({ id: 'bread', suggestedRank: 2 }),
+    ]
+    expect(suggestedPicks(catalogue, new Set(['milk'])).map((i) => i.id)).toEqual(['bread'])
+  })
+
+  it('respects the limit', () => {
+    const catalogue = Array.from({ length: 30 }, (_, i) =>
+      pick({ id: `i${i}`, suggestedRank: i + 1 }),
+    )
+    expect(suggestedPicks(catalogue, new Set(), 5)).toHaveLength(5)
+  })
+
+  it('returns nothing rather than throwing on an empty catalogue', () => {
+    expect(suggestedPicks([], new Set())).toEqual([])
+  })
+})
+
+describe('categoriesInOrder', () => {
+  it('orders categories by where their items sit, not alphabetically', () => {
+    const catalogue = [
+      pick({ id: 'toilet paper', category: 'Household', sortOrder: 8000 }),
+      pick({ id: 'apples', category: 'Fruit & vegetables', sortOrder: 0 }),
+      pick({ id: 'bread', category: 'Bakery', sortOrder: 1000 }),
+    ]
+    expect(categoriesInOrder(catalogue)).toEqual([
+      'Fruit & vegetables',
+      'Bakery',
+      'Household',
+    ])
+  })
+})
+
+describe('categoryPicks', () => {
+  it('returns one category in grid order', () => {
+    const catalogue = [
+      pick({ id: 'pears', category: 'Fruit & vegetables', sortOrder: 5 }),
+      pick({ id: 'rice', category: 'Pantry', sortOrder: 4000 }),
+      pick({ id: 'apples', category: 'Fruit & vegetables', sortOrder: 1 }),
+    ]
+    expect(categoryPicks(catalogue, 'Fruit & vegetables').map((i) => i.id)).toEqual([
+      'apples',
+      'pears',
+    ])
   })
 })
