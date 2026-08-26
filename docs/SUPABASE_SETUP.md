@@ -108,3 +108,26 @@ The list won't sync between phones without this. In the Supabase dashboard go to
 **Database → Replication** (or **Realtime**), and make sure `list_items` is
 included in the `supabase_realtime` publication. The migration tries to add it
 automatically, but the dashboard is where to check it actually took.
+
+---
+
+## Round 4: icons, hiding tiles, and the learned order
+
+One more SQL file, then **re-run the seed**. In this order, in the **SQL Editor**:
+
+1. `supabase/migrations/0004_icons_and_hidden.sql` — adds the suggested-order
+   column, the "removed for good" table, and the per-household usage counter
+   that the picker learns from.
+2. `supabase/migrations/0003_catalogue_seed.sql` — **run this again.** The icon
+   column used to hold an emoji and now holds the name of a line drawing, so
+   the seed has to be re-applied to swap them over. It updates the existing
+   rows rather than duplicating them.
+
+Running 3 before 4 will fail, because the seed writes the column that 4 adds.
+
+### Realtime
+
+`0004` also puts `catalogue_items` and `catalogue_hidden` on the realtime
+stream, so a word one of you invents shows up on the other phone. Same check as
+before: **Database → Replication**, confirm all four tables are in the
+`supabase_realtime` publication.

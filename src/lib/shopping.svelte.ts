@@ -32,8 +32,11 @@ export interface CatalogueItem {
   id: string
   name: string
   category: string
+  /** Slug from src/lib/icons.ts, or null for the outlined-letter tile. */
   icon: string | null
   sortOrder: number
+  /** Rank in the hand-picked "typical stuff" order. Null for most items. */
+  suggestedRank: number | null
   /** Null for the shared seed, set for a word this household invented. */
   householdId: string | null
 }
@@ -53,11 +56,22 @@ export interface ListItem {
 class ShoppingState {
   catalogue = $state<CatalogueItem[]>([])
   items = $state<ListItem[]>([])
+  /** Catalogue ids this household has removed from their picker for good. */
+  hidden = $state<Set<string>>(new Set())
+  /**
+   * How many times each catalogue item has been put on the list, ever.
+   * This is what makes the picker's first row get better with use — it is the
+   * first piece of the learned ordering NIU.md §4.1 asks for.
+   */
+  useCounts = $state<Record<string, number>>({})
   loading = $state(false)
   error = $state<string | null>(null)
 
   /** Catalogue ids currently on the list — what the grid uses to grey a tile. */
   onList = $derived(new Set(this.items.map((item) => item.catalogueItemId)))
+
+  /** The catalogue minus anything hidden — what the picker actually shows. */
+  visibleCatalogue = $derived(this.catalogue.filter((item) => !this.hidden.has(item.id)))
 }
 
 export const shopping = new ShoppingState()
@@ -72,6 +86,7 @@ interface CatalogueRow {
   category: string
   icon: string | null
   sort_order: number
+  suggested_rank: number | null
   household_id: string | null
 }
 
@@ -94,6 +109,7 @@ function toCatalogueItem(row: CatalogueRow): CatalogueItem {
     category: row.category,
     icon: row.icon,
     sortOrder: row.sort_order,
+    suggestedRank: row.suggested_rank,
     householdId: row.household_id,
   }
 }
@@ -121,15 +137,17 @@ export async function loadShopping(): Promise<void> {
 
   // RLS already limits the catalogue to the shared seed plus this household's
   // own words, so there is no filter to write here — the database does it.
-  const [catalogueResult, listResult] = await Promise.all([
+  const [catalogueResult, listResult, hiddenResult, usageResult] = await Promise.all([
     supabase
       .from('catalogue_items')
-      .select('id, name, category, icon, sort_order, household_id')
+      .select('id, name, category, icon, sort_order, suggested_rank, household_id')
       .order('sort_order'),
     supabase
       .from('list_items')
       .select('id, catalogue_item_id, quantity, unit, note, urgent, checked_at, added_at, added_by')
       .eq('household_id', household.id),
+    supabase.from('catalogue_hidden').select('catalogue_item_id'),
+    supabase.from('catalogue_usage').select('catalogue_item_id, use_count'),
   ])
 
   shopping.loading = false
@@ -141,6 +159,24 @@ export async function loadShopping(): Promise<void> {
 
   shopping.catalogue = (catalogueResult.data as CatalogueRow[]).map(toCatalogueItem)
   shopping.items = (listResult.data as ListRow[]).map(toListItem)
+
+  // Hidden tiles fail soft on their own: if that one query fails the picker
+  // just shows everything, which is a worse experience but not a broken one.
+  if (!hiddenResult.error && hiddenResult.data) {
+    shopping.hidden = new Set(
+      (hiddenResult.data as { catalogue_item_id: string }[]).map((r) => r.catalogue_item_id),
+    )
+  }
+
+  // Same: without counts the picker falls back to the hand-picked order, which
+  // is exactly what a brand-new household sees anyway.
+  if (!usageResult.error && usageResult.data) {
+    const counts: Record<string, number> = {}
+    for (const row of usageResult.data as { catalogue_item_id: string; use_count: number }[]) {
+      counts[row.catalogue_item_id] = row.use_count
+    }
+    shopping.useCounts = counts
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -223,6 +259,15 @@ export async function addToList(catalogueItemId: string, userId: string): Promis
   if (!shopping.items.some((item) => item.id === row.id)) {
     shopping.items = [...shopping.items, row]
   }
+
+  // Bump the local count straight away so the picker reorders without waiting,
+  // then tell the server. A failed count is not worth surfacing — the item is
+  // on the list, which is what the tap was for.
+  shopping.useCounts = {
+    ...shopping.useCounts,
+    [catalogueItemId]: (shopping.useCounts[catalogueItemId] ?? 0) + 1,
+  }
+  void supabase.rpc('record_catalogue_use', { item_id: catalogueItemId })
 }
 
 /** Ticks an item off, or puts it back. Records who, for the future shop-order learning. */
@@ -333,11 +378,11 @@ export async function addNewWord(rawName: string, userId: string): Promise<void>
       household_id: household.id,
       name,
       category: strings.shopping.ourWordsCategory,
-      icon: null, // null means the UI draws a first-letter tile
+      icon: null, // null means the UI draws the outlined-initial tile
       created_by: userId,
       sort_order: 99_000, // after every seeded category
     })
-    .select('id, name, category, icon, sort_order, household_id')
+    .select('id, name, category, icon, sort_order, suggested_rank, household_id')
     .maybeSingle()
 
   if (error || !data) {
@@ -350,10 +395,38 @@ export async function addNewWord(rawName: string, userId: string): Promise<void>
   await addToList(item.id, userId)
 }
 
+/**
+ * Takes a tile out of this household's picker for good.
+ *
+ * A hide, not a delete. Most of the catalogue is the shared seed that belongs to
+ * no household, and one household must not be able to remove 'anchovies' for
+ * everyone — the policies rightly forbid it. A hidden row says "gone, for us",
+ * works the same for a seeded tile and an invented word, and destroys nothing.
+ */
+export async function hideCatalogueItem(catalogueItemId: string, userId: string): Promise<void> {
+  if (!supabase || !household.id) return
+
+  const previous = shopping.hidden
+  shopping.hidden = new Set([...previous, catalogueItemId])
+
+  const { error } = await supabase.from('catalogue_hidden').insert({
+    household_id: household.id,
+    catalogue_item_id: catalogueItemId,
+    hidden_by: userId,
+  })
+
+  if (error) {
+    shopping.hidden = previous
+    shopping.error = strings.shopping.updateFailed
+  }
+}
+
 /** Clears everything on sign-out so nothing carries into the next account. */
 export function clearShopping(): void {
   shopping.catalogue = []
   shopping.items = []
+  shopping.hidden = new Set()
+  shopping.useCounts = {}
   shopping.error = null
   shopping.loading = false
 }

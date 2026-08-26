@@ -23,6 +23,7 @@
   import { auth, watchAuth } from './lib/auth.svelte'
   import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
   import { clearShopping, loadShopping, watchShopping } from './lib/shopping.svelte'
+  import { watchTheme } from './lib/theme.svelte'
 
   let route = $state<RouteId>(parseRoute(location.hash))
 
@@ -48,6 +49,10 @@
     const tab = TABS.find((t) => t.id === route)
     if (tab) lastTab = tab.id
   })
+
+  // Applies the stored light/dark choice, and keeps following the phone's own
+  // setting while the choice is "system".
+  $effect(() => watchTheme())
 
   // One subscription for the life of the app. It reports the stored session on
   // its own, so this is also what moves us off the 'loading' screen at boot.

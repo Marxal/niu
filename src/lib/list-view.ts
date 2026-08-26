@@ -29,6 +29,19 @@ export interface DisplayItem {
 
 export type SortMode = 'shop-order' | 'recent' | 'category'
 
+/** A catalogue tile as the picker needs it. */
+export interface PickerItem {
+  id: string
+  name: string
+  category: string
+  icon: string | null
+  sortOrder: number
+  /** Rank in the hand-picked "typical stuff" order. Null for most items. */
+  suggestedRank: number | null
+  /** How many times this household has actually put it on the list. */
+  useCount: number
+}
+
 /** A group of items under a heading, as rendered. */
 export interface Group {
   key: string
@@ -124,4 +137,58 @@ export function matchesSearch(name: string, query: string): boolean {
   const q = normalise(query)
   if (q === '') return true
   return normalise(name).includes(q)
+}
+
+/**
+ * The tiles shown before any category is opened — Bring!'s "Recently Used" row,
+ * and the first thing seen on the Shopping tab.
+ *
+ * Ordering is "what this household actually buys, falling back to what everyone
+ * buys". Items the household has used are ranked by use, most-used first; below
+ * them come the hand-picked suggestions for a brand-new account that has no
+ * history at all. That means the row is useful on day one and gets more useful
+ * with every shop, without needing a switch to flip between the two.
+ *
+ * Anything already on the list is left out: it is showing up above, in the list
+ * itself, and a tile you cannot tap is wasted space in the row that should be
+ * the fastest to scan.
+ */
+export function suggestedPicks(
+  catalogue: readonly PickerItem[],
+  onList: ReadonlySet<string>,
+  limit = 12,
+): PickerItem[] {
+  const available = catalogue.filter((item) => !onList.has(item.id))
+
+  const used = available
+    .filter((item) => item.useCount > 0)
+    .sort((a, b) => b.useCount - a.useCount || a.sortOrder - b.sortOrder)
+
+  const seeded = available
+    .filter((item) => item.useCount === 0 && item.suggestedRank !== null)
+    .sort((a, b) => (a.suggestedRank ?? 0) - (b.suggestedRank ?? 0))
+
+  return [...used, ...seeded].slice(0, limit)
+}
+
+/** Catalogue items in one category, in grid order, minus anything on the list. */
+export function categoryPicks(
+  catalogue: readonly PickerItem[],
+  category: string,
+): PickerItem[] {
+  return catalogue
+    .filter((item) => item.category === category)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
+/** Category names in the order their items appear, so the grid order holds. */
+export function categoriesInOrder(catalogue: readonly PickerItem[]): string[] {
+  const firstSeen = new Map<string, number>()
+  for (const item of catalogue) {
+    const seen = firstSeen.get(item.category)
+    if (seen === undefined || item.sortOrder < seen) {
+      firstSeen.set(item.category, item.sortOrder)
+    }
+  }
+  return [...firstSeen.entries()].sort((a, b) => a[1] - b[1]).map(([name]) => name)
 }
