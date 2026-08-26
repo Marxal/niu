@@ -77,6 +77,9 @@ export const strings = {
     toBuy: 'To buy',
     inTrolley: 'In the trolley',
     clearTrolley: 'Clear',
+    shoppingDone: 'Shopping done!',
+    shoppingDoneHint: 'Empties the trolley and starts a fresh list.',
+    trolleyNote: 'Tap anything here to put it back on the list.',
     // Picker
     searchPlaceholder: 'I need…',
     addNewWord: 'Add',
@@ -88,6 +91,11 @@ export const strings = {
     recentlyUsed: 'Often bought',
     searchResults: 'Matches',
     allCategories: 'Everything else',
+    // Long-press menu on a catalogue tile
+    tileMenuTitle: 'What would you like to do?',
+    changeIcon: 'Change icon',
+    pickIconTitle: 'Pick an icon',
+    resetIcon: 'Use the default icon',
     // Removing a tile from the picker for good
     hideTitle: 'Remove for good?',
     hideBody: 'It disappears from your catalogue. It stays on the list if it is already there.',
@@ -116,6 +124,17 @@ export const strings = {
     updateFailed: "Couldn't save that just now. Try again in a moment.",
   },
 
+  prefs: {
+    iconsTitle: 'Icons',
+    iconsLine: 'Lines',
+    iconsColour: 'Colour',
+    iconsHint: 'Colour uses your phone’s emoji where an item has one, and a line icon everywhere else.',
+    viewTitle: 'List view',
+    viewGrid4: 'Grid of 4',
+    viewGrid3: 'Grid of 3',
+    viewList: 'List',
+  },
+
   theme: {
     title: 'Appearance',
     system: 'Match phone',
@@ -137,6 +156,6 @@ export const strings = {
     notConnectedTitle: 'Not connected yet',
     notConnectedBody:
       'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
-    version: 'Niu · round 4',
+    version: 'Niu · round 5',
   },
 } as const

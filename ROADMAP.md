@@ -310,3 +310,60 @@ its name, so nothing is unidentifiable, but they're worth another pass.
 ### Next up
 
 The meal planner, or inviting a second person.
+
+---
+
+## Round 5 — Trolley, colours, and two display preferences
+
+**Branch:** `claude/vite-svelte-pwa-skeleton-g39cik`
+
+### What changed
+
+- **The trolley is a marked temporary space.** Boxed in a dashed border, faded,
+  with its own trolley icon and a line saying you can tap anything to put it
+  back. While there's still something to buy the action is a quiet "Clear"; once
+  the list is empty it becomes a full-width green **"Shopping done!"**.
+- **Trolley order is most-recently-ticked first.** Whatever you just tapped is
+  what you might have tapped by mistake, so the correction is always at the top.
+- **Three tile colours**: red still to buy, green in the picker, grey in the
+  trolley. Both reds and greens are muted well below full saturation.
+- **An icon style preference** — Lines or Colour. Colour uses the phone's emoji
+  where an item has one, desaturated with a CSS filter, and falls back to the
+  line drawing otherwise.
+- **The icon set grew from 69 to 88**, and coverage from 95% to **99%** — only
+  two of the 361 items now fall back to a letter.
+- **Long-press a catalogue tile** now opens a small menu: change its icon, or
+  remove it for good. Picking an icon opens the whole set in a grid, with a way
+  back to the default.
+- **The search field floats** — no bar, no background, just the field with a
+  shadow over a short fade to the page colour.
+- **A view preference**: grid of 4 (default), grid of 3, or a single-column list.
+
+### On going back to the coloured icons
+
+Worth recording, because the premise turned out to be wrong. The old "coloured
+pack" was not an icon set — it was emoji, rendered by the phone's own font. It
+covered **136 of 361 items (37%)**, leaving 225 showing bare letters. The line
+set covers 359 of 361 (99%). So the old set looked more varied because it was
+multicolour, not because it had more in it.
+
+Rather than choose, Colour mode layers the emoji *on top of* the line set: emoji
+where one exists, line drawing everywhere else. That keeps 99% coverage and adds
+the colour back. Saturation is pulled down with `filter: saturate(0.62)` so a
+grid of them doesn't shout.
+
+### How it was checked
+
+All five migrations run in order against a real PostgreSQL 16 and re-run to
+confirm they're idempotent. As a second household: setting an icon in someone
+else's household and forging `set_by` were both refused, my icon choice was
+invisible to them, and the shared catalogue row was untouched.
+
+Every view mode and both icon styles were rendered in a real Chromium at
+412×915, plus the all-ticked state to confirm "Shopping done!" only appears once
+nothing is left to buy, and that the trolley really does order most-recent-first.
+
+### Next up
+
+Inviting a second Google account into the household — currently every account
+gets its own, which is why syncing only works within one account.

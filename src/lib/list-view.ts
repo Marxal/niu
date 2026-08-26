@@ -17,6 +17,7 @@ export interface DisplayItem {
   name: string
   category: string
   icon: string | null
+  emoji: string | null
   sortOrder: number
   quantity: number | null
   unit: string | null
@@ -35,6 +36,7 @@ export interface PickerItem {
   name: string
   category: string
   icon: string | null
+  emoji: string | null
   sortOrder: number
   /** Rank in the hand-picked "typical stuff" order. Null for most items. */
   suggestedRank: number | null
@@ -64,14 +66,23 @@ export function initialFor(name: string): string {
 /**
  * Splits the list into what's still to buy and what's in the trolley.
  * "the tile greys out and drops into an 'in the trolley' section below" (§4.1).
+ *
+ * The trolley is ordered most-recently-ticked first. That way the thing you
+ * just put in the trolley is the first one you see, which is what you want if
+ * you tapped the wrong tile and need to put it back — the correction is always
+ * at the top, never buried at the end of a long list.
  */
 export function splitByChecked(items: readonly DisplayItem[]): {
   toBuy: DisplayItem[]
   inTrolley: DisplayItem[]
 } {
+  const inTrolley = items
+    .filter((item) => item.checkedAt !== null)
+    .sort((a, b) => (b.checkedAt ?? '').localeCompare(a.checkedAt ?? ''))
+
   return {
     toBuy: items.filter((item) => item.checkedAt === null),
-    inTrolley: items.filter((item) => item.checkedAt !== null),
+    inTrolley,
   }
 }
 

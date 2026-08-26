@@ -23,6 +23,23 @@
   --color-accent-ink: #ffffff;      /* text/icons sitting on --color-accent */
   --color-accent-soft: #f7e4dc;     /* tinted fill: selected rows, chips */
 
+  /* ---- Shopping tile states --------------------------------------------
+     Three colours that have to be told apart at a glance, mid-shop, at arm's
+     length: red = still to buy, green = a tile you can add, grey = in the
+     trolley. Both the red and the green are muted well below full saturation —
+     a grid of forty saturated tiles is exhausting to look at. */
+  --color-need: #c2472e;
+  --color-need-soft: #fae7e1;
+  --color-need-border: #e9b7a8;
+
+  --color-pick: #4d7a52;
+  --color-pick-soft: #eaf1e9;
+  --color-pick-border: #b9cfb8;
+
+  --color-done: #8a7f76;
+  --color-done-soft: #f0ebe4;
+  --color-done-border: #ded4c8;
+
   /* Per-tab tints. Deliberately quiet — a hint of identity, not a theme swap. */
   --color-tab-shopping: #c25a3a;
   --color-tab-meals: #5f7d52;
@@ -123,6 +140,18 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
+    --color-need: #f08a6b;
+    --color-need-soft: #38201a;
+    --color-need-border: #5c3529;
+
+    --color-pick: #8fbf92;
+    --color-pick-soft: #1b2a1d;
+    --color-pick-border: #344a36;
+
+    --color-done: #8d8178;
+    --color-done-soft: #201c1a;
+    --color-done-border: #37302b;
+
     --color-accent: #e8825e;
     --color-accent-hover: #f0997a;
     --color-accent-ink: #2a1109;
@@ -154,6 +183,18 @@
 }
 
 :root[data-theme='dark'] {
+  --color-need: #f08a6b;
+  --color-need-soft: #38201a;
+  --color-need-border: #5c3529;
+
+  --color-pick: #8fbf92;
+  --color-pick-soft: #1b2a1d;
+  --color-pick-border: #344a36;
+
+  --color-done: #8d8178;
+  --color-done-soft: #201c1a;
+  --color-done-border: #37302b;
+
   --color-accent: #e8825e;
   --color-accent-hover: #f0997a;
   --color-accent-ink: #2a1109;

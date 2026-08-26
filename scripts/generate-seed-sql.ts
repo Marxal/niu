@@ -35,9 +35,9 @@ const rows = flattenSeed()
 const values = rows
   .map(
     (row) =>
-      `  (${sql(row.name)}, ${sql(row.category)}, ${sql(row.icon)}, ${row.sortOrder}, ${
-        row.suggestedRank ?? 'null'
-      })`,
+      `  (${sql(row.name)}, ${sql(row.category)}, ${sql(row.icon)}, ${sql(row.emoji)}, ${
+        row.sortOrder
+      }, ${row.suggestedRank ?? 'null'})`,
   )
   .join(',\n')
 
@@ -56,15 +56,17 @@ const file = `-- Round 3: the seeded catalogue — the tiles you tap instead of 
 -- values rather than erroring or duplicating. Re-running this is also how the
 -- old emoji icons get swapped for line-drawing slugs.
 --
--- Requires 0004 to have run first (it adds the suggested_rank column).
+-- Requires 0004 and 0005 to have run first (they add the suggested_rank and
+-- emoji columns).
 
-insert into public.catalogue_items (name, category, icon, sort_order, suggested_rank)
+insert into public.catalogue_items (name, category, icon, emoji, sort_order, suggested_rank)
 values
 ${values}
 on conflict (lower(trim(name))) where household_id is null
 do update set
   category = excluded.category,
   icon = excluded.icon,
+  emoji = excluded.emoji,
   sort_order = excluded.sort_order,
   suggested_rank = excluded.suggested_rank;
 `
