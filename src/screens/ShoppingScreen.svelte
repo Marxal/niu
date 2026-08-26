@@ -48,8 +48,10 @@
   import ShoppingDone from '../components/ShoppingDone.svelte'
   import ShopPicker from '../components/ShopPicker.svelte'
   import SuggestionStrip from '../components/SuggestionStrip.svelte'
+  import DishPickerSheet from '../components/DishPickerSheet.svelte'
+  import DishSheet from '../components/DishSheet.svelte'
   import { dishPicks, filterDishes } from '../lib/dishes'
-  import { addDishToList, dishes } from '../lib/dishes.svelte'
+  import { addDishToList, addItemToDish, dishes } from '../lib/dishes.svelte'
   import { learning, loadLearning } from '../lib/learning.svelte'
   import { chooseShop, shops } from '../lib/shops.svelte'
   import { sortByLearnedOrder } from '../lib/shop-order'
@@ -79,6 +81,10 @@
   let tileMenu = $state<PickerItem | null>(null)
   let pendingHide = $state<PickerItem | null>(null)
   let pendingIcon = $state<PickerItem | null>(null)
+  // Filing a tile into a dish: first which tile, then — if they want a new dish
+  // rather than an existing one — the editor, seeded with it.
+  let pendingDish = $state<PickerItem | null>(null)
+  let newDishFrom = $state<PickerItem | null>(null)
   let celebrating = $state(false)
   // What just happened after tapping a dish. See Flash.svelte for why it exists.
   let flash = $state<{ text: string; tone: 'good' | 'bad' } | null>(null)
@@ -89,7 +95,9 @@
   // Your own additions aren't news to you.
   const NEW_WINDOW_MS = 12 * 60 * 60 * 1000
 
-  let catalogueById = $derived(new Map(shopping.catalogue.map((item) => [item.id, item])))
+  // The store's map, not one built from `shopping.catalogue`: that raw array is
+  // the only copy without hand-picked icons applied to it.
+  let catalogueById = $derived(shopping.byId)
 
   /* ---- The list ---------------------------------------------------------- */
 
@@ -286,6 +294,24 @@
     // Long press opens a menu rather than one action, because there are two
     // things you might want and neither should happen by accident.
     tileMenu = item
+  }
+
+  /**
+   * Files the long-pressed tile into a dish. The flash is the confirmation:
+   * nothing on this screen changes, because a dish's ingredient list is not
+   * something the shopping tab shows.
+   */
+  async function fileInDish(dishId: string) {
+    const item = pendingDish
+    pendingDish = null
+    if (!item) return
+
+    const dish = dishes.byId.get(dishId)
+    const ok = await addItemToDish(dishId, item.id)
+
+    flash = ok
+      ? { text: strings.dishes.addedTo(dish?.name ?? ''), tone: 'good' }
+      : { text: strings.dishes.saveFailed, tone: 'bad' }
   }
 
   function applyIcon(icon: string) {
@@ -566,6 +592,15 @@
         <button
           class="menu-item"
           onclick={() => {
+            pendingDish = tileMenu
+            tileMenu = null
+          }}
+        >
+          {strings.shopping.addToDish}
+        </button>
+        <button
+          class="menu-item"
+          onclick={() => {
             pendingIcon = tileMenu
             tileMenu = null
           }}
@@ -595,6 +630,28 @@
         onClose={() => (pendingIcon = null)}
       />
     {/key}
+  {/if}
+
+  {#if pendingDish}
+    {@const item = pendingDish}
+    <DishPickerSheet
+      itemName={item.name}
+      onPick={(dishId) => void fileInDish(dishId)}
+      onNew={() => {
+        newDishFrom = item
+        pendingDish = null
+      }}
+      onClose={() => (pendingDish = null)}
+    />
+  {/if}
+
+  {#if newDishFrom}
+    <DishSheet
+      dish={null}
+      userId={auth.userId}
+      seedItemIds={[newDishFrom.id]}
+      onClose={() => (newDishFrom = null)}
+    />
   {/if}
 
   {#if pendingHide}

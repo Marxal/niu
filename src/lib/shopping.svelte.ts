@@ -94,18 +94,29 @@ class ShoppingState {
   onList = $derived(new Set(this.items.map((item) => item.catalogueItemId)))
 
   /**
-   * The catalogue as the UI should draw it: hidden tiles dropped, and any
-   * hand-picked icon already applied, so no component has to know overrides
-   * exist.
+   * The whole catalogue with any hand-picked icon already applied, so no
+   * component has to know overrides exist.
+   *
+   * Hiding is *not* applied here, and that is the point. A hidden item can
+   * still be on the list — "it stays on the list if it is already there" — so
+   * the list has to be able to look one up. Round 8 shipped with only the
+   * filtered version of this, which is why an icon someone picked showed up in
+   * the picker and then reverted to the letter as soon as the item reached the
+   * list: the list was reading the raw catalogue, the only copy without the
+   * overrides on it.
    */
-  visibleCatalogue = $derived(
-    this.catalogue
-      .filter((item) => !this.hidden.has(item.id))
-      .map((item) => {
-        const chosen = this.iconOverrides[item.id]
-        return chosen ? { ...item, icon: chosen } : item
-      }),
+  withIcons = $derived(
+    this.catalogue.map((item) => {
+      const chosen = this.iconOverrides[item.id]
+      return chosen ? { ...item, icon: chosen } : item
+    }),
   )
+
+  /** The same thing keyed by id, for resolving a list row to its tile. */
+  byId = $derived(new Map(this.withIcons.map((item) => [item.id, item])))
+
+  /** What the picker offers: everything above, minus what was hidden for good. */
+  visibleCatalogue = $derived(this.withIcons.filter((item) => !this.hidden.has(item.id)))
 
   /**
    * The same thing again in the shape the tile grids want, with this
@@ -500,26 +511,33 @@ export async function clearChecked(shopId: string | null): Promise<number> {
 }
 
 /**
- * Adds a word the catalogue doesn't know, then puts it straight on the list.
- * "Typing something the catalogue doesn't know adds it immediately" (§4.1) —
- * so this is one action from the user's point of view, not two.
+ * Puts a word into the catalogue, or hands back the one that is already there.
+ *
+ * Two callers now want this and they want different things afterwards: typing
+ * into the shopping search adds the word *and* puts it on the list, while
+ * typing into a dish's ingredient picker adds the word and puts it in the dish.
+ * Making the word is the shared half, so it lives here on its own and returns
+ * the item rather than assuming what happens next.
+ *
+ * Matching an existing name case-insensitively is not politeness, it is what
+ * the unique index in 0002 does — `lower(trim(name))` — so a word that would
+ * collide is found here rather than rejected by the database.
  */
-export async function addNewWord(rawName: string, userId: string): Promise<void> {
-  if (!supabase || !household.id) return
+export async function createCatalogueWord(
+  rawName: string,
+  userId: string,
+): Promise<CatalogueItem | null> {
+  if (!supabase || !household.id) return null
 
   const name = rawName.trim()
-  if (name === '') return
+  if (name === '') return null
 
   shopping.error = null
 
-  // If the catalogue already knows it, just add it — no duplicate word.
   const existing = shopping.catalogue.find(
-    (item) => item.name.toLowerCase() === name.toLowerCase(),
+    (item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
   )
-  if (existing) {
-    await addToList(existing.id, userId)
-    return
-  }
+  if (existing) return existing
 
   const { data, error } = await supabase
     .from('catalogue_items')
@@ -536,12 +554,22 @@ export async function addNewWord(rawName: string, userId: string): Promise<void>
 
   if (error || !data) {
     shopping.error = strings.shopping.addFailed
-    return
+    return null
   }
 
   const item = toCatalogueItem(data as CatalogueRow)
   shopping.catalogue = [...shopping.catalogue, item]
-  await addToList(item.id, userId)
+  return item
+}
+
+/**
+ * Adds a word the catalogue doesn't know, then puts it straight on the list.
+ * "Typing something the catalogue doesn't know adds it immediately" (§4.1) —
+ * so this is one action from the user's point of view, not two.
+ */
+export async function addNewWord(rawName: string, userId: string): Promise<void> {
+  const item = await createCatalogueWord(rawName, userId)
+  if (item) await addToList(item.id, userId)
 }
 
 /**

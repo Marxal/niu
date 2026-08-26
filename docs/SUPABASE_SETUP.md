@@ -242,3 +242,19 @@ add four things has to be right about the four.
 
 The Meals tab shows an empty library and says so, the Dishes category never
 appears in the shopping catalogue, and nothing anywhere shows an error.
+
+---
+
+## Round 8.1: a bigger catalogue
+
+No new migration. One file to **re-run** in the **SQL Editor**:
+
+1. `supabase/migrations/0003_catalogue_seed.sql` — regenerated, now 569 rows.
+
+It inserts the 208 new items and updates the existing ones in place: the whole
+file is one statement ending in `on conflict … do update`, so running it again
+is safe and nothing you have is duplicated, renamed or reset. Anything your
+household typed itself is untouched — those rows carry a `household_id` and this
+file only ever writes the shared, `household_id is null` ones.
+
+Nothing else changed in the database this round.

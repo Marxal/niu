@@ -168,6 +168,12 @@ switcher to week and month.
 **Adding:** tap a slot, pick from the library sorted by most-used. Dragging to move and
 rearrange dishes across days is wanted, at least for editing an existing plan.
 
+**A slot can hold a plain shopping item, not only a dish** (Marçal, after round 8).
+"Broccoli" on a Tuesday is a complete thought and should not need a dish written for it
+first. So the picker on a slot offers both: the dish library, and the catalogue behind it.
+A slot therefore points at *either* a dish or a catalogue item — worth knowing before the
+planner's schema is written, because retrofitting it is a table change.
+
 **Planning horizon:** a week.
 
 **"Shop for this week"** — one button, turns the week's plan into shopping list entries.
