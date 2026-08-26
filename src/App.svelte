@@ -21,7 +21,8 @@
   import { TABS, parseRoute, type RouteId, type TabId } from './lib/router'
   import { strings } from './lib/strings'
   import { auth, watchAuth } from './lib/auth.svelte'
-  import { clearHousehold, loadHousehold } from './lib/household.svelte'
+  import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
+  import { clearShopping, loadShopping, watchShopping } from './lib/shopping.svelte'
 
   let route = $state<RouteId>(parseRoute(location.hash))
 
@@ -59,7 +60,18 @@
       void loadHousehold()
     } else {
       clearHousehold()
+      clearShopping()
     }
+  })
+
+  // The list can only be fetched once the household is known, so this waits on
+  // household.id rather than on the sign-in status. Re-running when the id
+  // changes also tears down the old realtime channel via the returned cleanup.
+  $effect(() => {
+    if (!household.id) return
+
+    void loadShopping()
+    return watchShopping()
   })
 </script>
 

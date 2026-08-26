@@ -86,3 +86,25 @@ whatever we do — that's what the `VITE_` prefix means. It identifies the proje
 it doesn't grant access. What grants access is a signed-in user matching a Row
 Level Security policy, and those live in the database where nobody can edit them
 from the browser.
+
+---
+
+## Round 3: the shopping list tables
+
+Two more SQL files to run, in this order, same place (**SQL Editor**):
+
+1. `supabase/migrations/0002_shopping_list.sql` — the tables, their security
+   policies, and realtime so both phones stay in sync.
+2. `supabase/migrations/0003_catalogue_seed.sql` — the 361 grocery tiles.
+
+Both are safe to run twice. The second one is generated from
+`src/lib/catalogue-seed.ts`; if the catalogue ever changes, it's regenerated
+with `npm run seed:sql` and re-run, which updates the existing rows rather than
+duplicating them.
+
+### Turn on realtime
+
+The list won't sync between phones without this. In the Supabase dashboard go to
+**Database → Replication** (or **Realtime**), and make sure `list_items` is
+included in the `supabase_realtime` publication. The migration tries to add it
+automatically, but the dashboard is where to check it actually took.
