@@ -5,7 +5,7 @@ import {
   categoriesInOrder,
   categoryPicks,
   suggestedPicks,
-  floatUrgent,
+  byPriority,
   groupByCategory,
   initialFor,
   matchesSearch,
@@ -22,9 +22,9 @@ function item(overrides: Partial<DisplayItem> & { name: string }): DisplayItem {
     emoji: null,
     sortOrder: 0,
     quantity: null,
-    unit: null,
     note: null,
     urgent: false,
+    ifConvenient: false,
     checkedAt: null,
     addedAt: '2026-01-01T00:00:00.000Z',
     addedBy: 'user-1',
@@ -126,14 +126,32 @@ describe('sortItems', () => {
   })
 })
 
-describe('floatUrgent', () => {
+describe('byPriority', () => {
   it('lifts urgent items above the rest', () => {
     const items = [
       item({ name: 'milk' }),
       item({ name: 'nappies', urgent: true }),
       item({ name: 'bread' }),
     ]
-    expect(floatUrgent(items).map((i) => i.name)).toEqual(['nappies', 'milk', 'bread'])
+    expect(byPriority(items).map((i) => i.name)).toEqual(['nappies', 'milk', 'bread'])
+  })
+
+  it('sinks "if convenient" below the rest', () => {
+    const items = [
+      item({ name: 'olives', ifConvenient: true }),
+      item({ name: 'milk' }),
+      item({ name: 'bread' }),
+    ]
+    expect(byPriority(items).map((i) => i.name)).toEqual(['milk', 'bread', 'olives'])
+  })
+
+  it('puts the ordinary items between the two flags', () => {
+    const items = [
+      item({ name: 'olives', ifConvenient: true }),
+      item({ name: 'milk' }),
+      item({ name: 'nappies', urgent: true }),
+    ]
+    expect(byPriority(items).map((i) => i.name)).toEqual(['nappies', 'milk', 'olives'])
   })
 
   it('keeps the existing order within each group', () => {
@@ -143,7 +161,7 @@ describe('floatUrgent', () => {
       item({ name: 'c', urgent: true }),
       item({ name: 'd' }),
     ]
-    expect(floatUrgent(items).map((i) => i.name)).toEqual(['a', 'c', 'b', 'd'])
+    expect(byPriority(items).map((i) => i.name)).toEqual(['a', 'c', 'b', 'd'])
   })
 })
 

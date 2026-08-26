@@ -367,3 +367,114 @@ nothing is left to buy, and that the trolley really does order most-recent-first
 
 Inviting a second Google account into the household — currently every account
 gets its own, which is why syncing only works within one account.
+
+---
+
+## Round 6 — Sync the whole shop, and a simpler item form
+
+**Branch:** `claude/shopping-sync-form-fixes-e164qi`
+
+> A note on numbering, because two counts have drifted apart. This file counts
+> **build rounds**; `NIU.md` §10 counts **feature rounds**, and it said the
+> shopping list would take "two or three rounds". It took four: build rounds 3–6
+> are all feature round 3. Round 7 below is where feature round 4 starts.
+
+### What changed
+
+Five fixes, all found by using the thing on a phone.
+
+- **Clearing the trolley now reaches the other phone.** Adding and ticking off
+  always synced; emptying never did. Diagnosis and fix below — it was a database
+  setting, not app code.
+- **A missed sync now heals itself.** The list is re-read whenever the app comes
+  back to the foreground, and after any reconnection. Android suspends the
+  websocket when the screen goes off, so a phone in a pocket misses everything
+  that happens meanwhile and had no way to find out.
+- **The item form is three controls.** How many (with − and + buttons), two
+  tags, a note. **The unit field is gone.**
+- **Quantity shows on the tile**, as a `×3` pill. It never did before — the old
+  form bound a text field to `<input type="number">`, which Svelte coerces to a
+  number, and the save path then called `.trim()` on it and threw. So typing a
+  quantity looked like it worked and saved nothing.
+- **A long note can't stretch the grid any more.** It is clipped to one line with
+  an ellipsis; the whole note is in the sheet.
+- **The Done button clears the keyboard.**
+- **A third icon style, and a celebration.** Both below.
+
+### Why "Clear" wasn't syncing
+
+Realtime subscribes with a filter — `household_id=eq.<us>` — so each phone only
+receives its own household's changes. On an insert or an update the whole new row
+goes into Postgres's write-ahead log, so the filter can read `household_id` off
+it. On a delete there is no new row: Postgres logs only the *replica identity* of
+what was deleted, which by default is the primary key and nothing else. The event
+arrived carrying `{id: …}`, the filter looked for a `household_id` that wasn't
+there, and dropped it. Supabase documents exactly this limitation.
+
+`alter table list_items replica identity full` makes Postgres log the whole
+deleted row. Verified rather than assumed: a logical replication slot on a real
+PostgreSQL 16 shows the delete carrying no `household_id` before the change and
+carrying it after.
+
+### "If convenient", and where things sit
+
+Urgent floats an item to the top. **If convenient** is the other end of the same
+question — get it if you pass it — and sinks to the bottom. The two are mutually
+exclusive: the sheet only lets you pick one, and a check constraint means that's
+true of the data too, not just of the screen.
+
+### The third icon style: Inked
+
+`NIU.md` §6 said OpenMoji needed checking before we committed to it. Checked, and
+written up in `docs/OPENMOJI.md`: CC BY-SA 4.0, credit required (it's in
+Settings), share-alike only bites on *modified* icons — so we ship them
+byte-for-byte as published and desaturate with a CSS filter at display time
+instead. Selling Niu later stays possible. **The €15 icon budget wasn't needed.**
+
+Coverage: all 97 emoji the catalogue uses have an OpenMoji drawing. 257 kB of
+static files, none of it in the JavaScript bundle, and only the icons on screen
+are ever fetched.
+
+So Settings now offers **Lines / Emoji / Inked**, and long-pressing a tile →
+Change icon opens the same three as tabs. A picture picked for one item beats the
+style preference — a preference is about the whole grid, a pick is about that one
+thing.
+
+### How it was checked
+
+All six migrations run in order against a real PostgreSQL 16 and re-run to
+confirm they're idempotent. As the second household: reading, changing and
+deleting the first household's rows were all refused, the new `if_convenient`
+column included, and the first household's row was intact afterwards. Setting
+both flags at once was refused by the database.
+
+Every state was rendered in a real Chromium at 412×915 in both themes and all
+three icon styles: quantity pills, a 90-character note, both tags, the row
+layout, the detail sheet, the icon picker's three tabs and the celebration. The
+sheet was measured against a simulated 320px keyboard — the Done button's bottom
+edge lands 16px clear of it. Zero console errors.
+
+### How to test it
+
+1. Reload the app (open it, then swipe it away and open it again).
+2. **Long-press anything on the list.** Press − and + a few times, tap **Urgent**,
+   then tap **If convenient** — urgent should switch itself off. Type in the note.
+   **The Done button should stay visible above the keyboard.**
+3. Close the sheet. The tile shows `×3`, the urgent one has floated to the top and
+   the "if convenient" one has sunk to the bottom.
+4. Give something a very long note and check the tiles around it don't grow.
+5. **Settings → Icons → Inked.** Then long-press a catalogue tile → Change icon,
+   and try all three tabs.
+6. **Both phones**, with the app open on each: tick everything off on one and
+   press **Shopping done!** The other phone's trolley should empty within a second
+   or so, and both should show the celebration.
+
+### Known rough edge
+
+`interactive-widget=resizes-content` is the main keyboard fix and it's Chrome on
+Android. The measured fallback covers other browsers, but if you ever open Niu in
+Firefox and a sheet still hides behind the keyboard, that's why.
+
+### Next up
+
+Feature round 4: order and learning.

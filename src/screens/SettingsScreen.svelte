@@ -30,7 +30,8 @@
 
   const iconStyles: { id: IconStyle; label: string }[] = [
     { id: 'line', label: strings.prefs.iconsLine },
-    { id: 'colour', label: strings.prefs.iconsColour },
+    { id: 'emoji', label: strings.prefs.iconsEmoji },
+    { id: 'inked', label: strings.prefs.iconsInked },
   ]
 
   const viewModes: { id: ViewMode; label: string }[] = [
@@ -65,7 +66,7 @@
         <h2>{strings.prefs.iconsTitle}</h2>
         <p>{strings.prefs.iconsHint}</p>
       </div>
-      <div class="segmented two" role="group" aria-label={strings.prefs.iconsTitle}>
+      <div class="segmented" role="group" aria-label={strings.prefs.iconsTitle}>
         {#each iconStyles as style (style.id)}
           <button
             class="segment"
@@ -77,6 +78,13 @@
           </button>
         {/each}
       </div>
+      <!-- OpenMoji is CC BY-SA 4.0 and asks to be credited where it is used.
+           See docs/OPENMOJI.md for what that licence does and doesn't require. -->
+      <p class="credit">
+        <a href="https://openmoji.org" target="_blank" rel="noreferrer">
+          {strings.prefs.iconsCredit}
+        </a>
+      </p>
     </div>
 
     <div class="row stack">
@@ -224,8 +232,15 @@
       color var(--dur-fast) var(--ease);
   }
 
-  .segmented.two {
-    grid-template-columns: repeat(2, 1fr);
+
+  /* The licence credit. Quiet, but it has to be visible — see docs/OPENMOJI.md. */
+  .credit {
+    font-size: var(--text-xs);
+  }
+
+  .credit a {
+    color: var(--color-text-faint);
+    text-decoration: none;
   }
 
   .segment.on {

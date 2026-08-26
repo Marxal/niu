@@ -20,9 +20,9 @@ export interface DisplayItem {
   emoji: string | null
   sortOrder: number
   quantity: number | null
-  unit: string | null
   note: string | null
   urgent: boolean
+  ifConvenient: boolean
   checkedAt: string | null
   addedAt: string
   addedBy: string
@@ -108,11 +108,22 @@ export function sortItems(items: readonly DisplayItem[], mode: SortMode): Displa
 }
 
 /**
- * Urgent items float to the top of whatever order is in play — an urgency flag
- * that didn't change position wouldn't be doing anything.
+ * The two priority tags, applied to whatever order is in play: urgent floats to
+ * the top, "if convenient" sinks to the bottom, everything else keeps the order
+ * it arrived in. A flag that didn't change position wouldn't be doing anything.
+ *
+ * The two are mutually exclusive — the sheet only lets you pick one and the
+ * database refuses both — so this is a single rank, not two passes. Array.sort
+ * is stable, so items sharing a rank keep the sort that ran before this one.
  */
-export function floatUrgent(items: readonly DisplayItem[]): DisplayItem[] {
-  return [...items].sort((a, b) => Number(b.urgent) - Number(a.urgent))
+function rank(item: DisplayItem): number {
+  if (item.urgent) return 0
+  if (item.ifConvenient) return 2
+  return 1
+}
+
+export function byPriority(items: readonly DisplayItem[]): DisplayItem[] {
+  return [...items].sort((a, b) => rank(a) - rank(b))
 }
 
 /** Groups items under their category heading, keeping the given order. */

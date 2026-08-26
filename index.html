@@ -3,10 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover lets the app paint under Android's gesture bar; the
-         nav then adds env(safe-area-inset-bottom) back as padding. -->
+         nav then adds env(safe-area-inset-bottom) back as padding.
+
+         interactive-widget=resizes-content makes the on-screen keyboard shrink
+         the page instead of sliding over it, so anything pinned to the bottom —
+         the search field, a sheet's Done button — stays reachable while typing
+         instead of hiding underneath the keys. src/lib/keyboard.ts covers the
+         browsers that ignore this. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <title>Niu</title>
     <meta name="description" content="Our household organiser: shopping, meals and the calendar." />

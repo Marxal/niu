@@ -31,14 +31,15 @@
   import {
     type DisplayItem,
     type PickerItem,
+    byPriority,
     categoriesInOrder,
     categoryPicks,
-    floatUrgent,
     matchesSearch,
     sortItems,
     splitByChecked,
     suggestedPicks,
   } from '../lib/list-view'
+  import ShoppingDone from '../components/ShoppingDone.svelte'
   import IconPickerSheet from '../components/IconPickerSheet.svelte'
   import TrolleyIcon from '../components/TrolleyIcon.svelte'
   import { FLIP_MS, tileIn, tileOut } from '../lib/motion'
@@ -64,6 +65,7 @@
   let tileMenu = $state<PickerItem | null>(null)
   let pendingHide = $state<PickerItem | null>(null)
   let pendingIcon = $state<PickerItem | null>(null)
+  let celebrating = $state(false)
 
   let layout = $derived(prefs.viewMode === 'list' ? ('row' as const) : ('tile' as const))
 
@@ -89,9 +91,9 @@
           emoji: source.emoji,
           sortOrder: source.sortOrder,
           quantity: item.quantity,
-          unit: item.unit,
           note: item.note,
           urgent: item.urgent,
+          ifConvenient: item.ifConvenient,
           checkedAt: item.checkedAt,
           addedAt: item.addedAt,
           addedBy: item.addedBy,
@@ -101,9 +103,35 @@
   )
 
   let split = $derived(splitByChecked(display))
-  let toBuy = $derived(floatUrgent(sortItems(split.toBuy, 'shop-order')))
+  let toBuy = $derived(byPriority(sortItems(split.toBuy, 'shop-order')))
   let inTrolley = $derived(split.inTrolley)
   let openItem = $derived(display.find((item) => item.id === openItemId) ?? null)
+
+  /*
+   * The end of a shop, wherever it was pressed.
+   *
+   * This watches the list rather than the button, which is the point: the
+   * trolley emptying arrives on the other phone as a realtime delete, so
+   * whoever is still standing in the shop gets the same moment as whoever
+   * pressed Shopping done. It also means the celebration can never fire on a
+   * screen that hasn't finished loading — a list that was empty a tick ago was
+   * not a shop that just ended.
+   *
+   * Requiring the trolley to have had something in it is what stops "removed
+   * the last thing I didn't want after all" reading as a finished shop.
+   */
+  let hadInTrolley = false
+  let hadAnything = false
+
+  $effect(() => {
+    const total = display.length
+    const trolley = inTrolley.length
+
+    if (hadAnything && hadInTrolley && total === 0) celebrating = true
+
+    hadAnything = total > 0
+    hadInTrolley = trolley > 0
+  })
 
   /* ---- The picker -------------------------------------------------------- */
 
@@ -149,14 +177,6 @@
   function isNew(item: DisplayItem): boolean {
     if (item.addedBy === auth.userId) return false
     return Date.now() - new Date(item.addedAt).getTime() < NEW_WINDOW_MS
-  }
-
-  function detailFor(item: DisplayItem): string | null {
-    const parts: string[] = []
-    if (item.quantity !== null) parts.push(`${item.quantity}${item.unit ? ` ${item.unit}` : ''}`)
-    else if (item.unit) parts.push(item.unit)
-    if (item.note) parts.push(item.note)
-    return parts.length ? parts.join(' · ') : null
   }
 
   function handleAdd(catalogueItemId: string) {
@@ -245,8 +265,10 @@
                 {layout}
                 state="list"
                 urgent={item.urgent}
+                ifConvenient={item.ifConvenient}
                 isNew={isNew(item)}
-                detail={detailFor(item)}
+                quantity={item.quantity}
+                note={item.note}
                 onclick={() => handleToggle(item.id)}
                 onlongpress={() => (openItemId = item.id)}
               />
@@ -274,7 +296,8 @@
                 emoji={item.emoji}
                 {layout}
                 state="checked"
-                detail={detailFor(item)}
+                quantity={item.quantity}
+                note={item.note}
                 onclick={() => handleToggle(item.id)}
                 onlongpress={() => (openItemId = item.id)}
               />
@@ -382,6 +405,10 @@
       <button type="submit" class="add">{strings.shopping.addNewWord}</button>
     {/if}
   </form>
+
+  {#if celebrating}
+    <ShoppingDone onDone={() => (celebrating = false)} />
+  {/if}
 
   {#if openItem}
     <!-- Keyed so opening a different item mounts a fresh sheet: the draft

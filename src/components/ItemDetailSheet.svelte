@@ -1,13 +1,26 @@
 <!--
-  The optional extras on a list item: quantity, unit, note, urgency, remove.
+  The optional extras on a list item: how many, a note, and how urgent it is.
 
   "Quantity is an optional edit afterwards, not a step in adding" (NIU.md §4.1).
-  So this is only ever reached by long-pressing or tapping through from an item
-  already on the list — never in the path of adding one.
+  So this is only ever reached by long-pressing an item already on the list —
+  never in the path of adding one.
+
+  Round 6 cut this down. The unit field is gone: in practice nobody typed one,
+  "2" on a tile means two of whatever that thing is bought in, and a text field
+  you have to type into is the most expensive control on a phone. What is left is
+  three things — a stepper, two tags, a note — which fits without scrolling.
+
+  Two details that matter on a real phone:
+
+  - The stepper is the point of the quantity row. Typing is still allowed for the
+    rare "12", but the thumb path for 1 → 2 is one tap, not a keyboard.
+  - The sheet rides above the on-screen keyboard (--keyboard-inset, see
+    src/lib/keyboard.ts). Before that, opening the note field put the Done button
+    underneath the keys.
 
   Edits save as you make them rather than behind a Save button: there is nothing
   here that needs confirming, and a Save button you can forget to press loses
-  work.
+  work. Done just closes.
 -->
 <script lang="ts">
   import { strings } from '../lib/strings'
@@ -22,13 +35,16 @@
     item: DisplayItem
     onChange: (changes: {
       quantity?: number | null
-      unit?: string | null
       note?: string | null
       urgent?: boolean
+      ifConvenient?: boolean
     }) => void
     onRemove: () => void
     onClose: () => void
   } = $props()
+
+  /** Above this the numbers stop meaning anything on a shopping list. */
+  const MAX = 99
 
   // Local copies so typing feels instant and every keystroke isn't a round trip.
   // These deliberately snapshot the item once, on open, and do not re-sync: a
@@ -36,30 +52,39 @@
   // the field under someone's thumb. The sheet is keyed on the item id by its
   // parent, so opening a different item mounts a fresh component.
   /* svelte-ignore state_referenced_locally */
-  let quantity = $state(item.quantity === null ? '' : String(item.quantity))
-  /* svelte-ignore state_referenced_locally */
-  let unit = $state(item.unit ?? '')
+  let count = $state(item.quantity ?? 1)
   /* svelte-ignore state_referenced_locally */
   let note = $state(item.note ?? '')
 
-  function commitQuantity() {
-    const trimmed = quantity.trim()
-    if (trimmed === '') {
-      onChange({ quantity: null })
-      return
-    }
-    const parsed = Number(trimmed)
-    // The database rejects zero and negatives; don't send what it will refuse.
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      quantity = item.quantity === null ? '' : String(item.quantity)
-      return
-    }
-    onChange({ quantity: parsed })
+  // One is the same as "no quantity given", and that is what gets stored, so a
+  // tile isn't cluttered with a ×1 badge that tells nobody anything.
+  function commitCount(next: number) {
+    const clamped = Math.min(MAX, Math.max(1, Math.round(next)))
+    count = clamped
+    onChange({ quantity: clamped === 1 ? null : clamped })
   }
 
-  function commitText(field: 'unit' | 'note', value: string) {
-    const trimmed = value.trim()
-    onChange({ [field]: trimmed === '' ? null : trimmed })
+  function typed(value: string) {
+    // Digits only: an inputmode keypad can still produce a stray character, and
+    // the database rejects zero and negatives anyway.
+    const digits = value.replace(/\D/g, '')
+    if (digits === '') return
+    commitCount(Number(digits))
+  }
+
+  function commitNote() {
+    const trimmed = note.trim()
+    onChange({ note: trimmed === '' ? null : trimmed })
+  }
+
+  // Urgent and "if convenient" are opposite ends of one question, so picking one
+  // clears the other. Tapping the one that is already on turns it off.
+  function setUrgent() {
+    onChange({ urgent: !item.urgent, ifConvenient: false })
+  }
+
+  function setIfConvenient() {
+    onChange({ ifConvenient: !item.ifConvenient, urgent: false })
   }
 </script>
 
@@ -85,50 +110,74 @@
   </header>
 
   <div class="fields">
-    <div class="pair">
-      <label>
-        <span>{strings.shopping.quantity}</span>
+    <div class="row">
+      <span class="label" id="qty-label">{strings.shopping.quantity}</span>
+      <div class="stepper">
+        <button
+          class="step"
+          onclick={() => commitCount(count - 1)}
+          disabled={count <= 1}
+          aria-label={strings.shopping.fewer}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" aria-hidden="true"><path d="M6 12h12" /></svg>
+        </button>
         <input
-          type="number"
-          inputmode="decimal"
-          min="0"
-          step="any"
-          bind:value={quantity}
-          onblur={commitQuantity}
-        />
-      </label>
-      <label>
-        <span>{strings.shopping.unit}</span>
-        <input
+          class="count"
           type="text"
-          bind:value={unit}
-          maxlength="12"
-          autocapitalize="none"
-          onblur={() => commitText('unit', unit)}
+          inputmode="numeric"
+          maxlength="2"
+          value={count}
+          aria-labelledby="qty-label"
+          oninput={(event) => typed(event.currentTarget.value)}
+          onblur={(event) => (event.currentTarget.value = String(count))}
         />
-      </label>
+        <button
+          class="step"
+          onclick={() => commitCount(count + 1)}
+          disabled={count >= MAX}
+          aria-label={strings.shopping.more}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" aria-hidden="true"><path d="M12 6v12M6 12h12" /></svg>
+        </button>
+      </div>
     </div>
 
-    <label>
-      <span>{strings.shopping.note}</span>
+    <div class="tags">
+      <button class="tag urgent" class:on={item.urgent} aria-pressed={item.urgent} onclick={setUrgent}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M13 3.5 5.5 14H11l-1.5 6.5L18 10h-5.5L13 3.5Z" />
+        </svg>
+        {strings.shopping.urgent}
+      </button>
+      <button
+        class="tag later"
+        class:on={item.ifConvenient}
+        aria-pressed={item.ifConvenient}
+        onclick={setIfConvenient}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 4.6a7.4 7.4 0 1 0 0 14.8 7.4 7.4 0 0 0 0-14.8Z" />
+          <path d="M12 8.4V12l2.6 1.6" />
+        </svg>
+        {strings.shopping.ifConvenient}
+      </button>
+    </div>
+
+    <label class="note">
+      <span class="label">{strings.shopping.note}</span>
       <input
         type="text"
         bind:value={note}
         maxlength="200"
+        enterkeyhint="done"
         placeholder={strings.shopping.notePlaceholder}
-        onblur={() => commitText('note', note)}
+        onblur={commitNote}
       />
     </label>
-
-    <button
-      class="toggle"
-      class:on={item.urgent}
-      onclick={() => onChange({ urgent: !item.urgent })}
-      aria-pressed={item.urgent}
-    >
-      <span class="dot" aria-hidden="true"></span>
-      {strings.shopping.urgent}
-    </button>
   </div>
 
   <footer>
@@ -147,18 +196,26 @@
 
   .sheet {
     position: fixed;
-    inset: auto 0 0 0;
+    /* Sits on the keyboard's shoulder rather than under it. Zero when no field
+       has focus, so this is the ordinary bottom sheet the rest of the time. */
+    inset: auto 0 var(--keyboard-inset, 0px) 0;
     z-index: var(--z-sheet);
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
     max-width: var(--content-max);
+    /* A short phone with the keyboard up still gets a scrollable sheet rather
+       than a Done button pushed off the top. */
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     margin-inline: auto;
     padding: var(--space-4);
     padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
     background: var(--color-surface);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     box-shadow: var(--shadow-2);
+    transition: bottom var(--dur-fast) var(--ease);
   }
 
   header {
@@ -189,25 +246,124 @@
     gap: var(--space-3);
   }
 
-  .pair {
+  .label {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+  }
+
+  /* ---- Quantity ---------------------------------------------------------- */
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-full);
+  }
+
+  .step {
+    display: grid;
+    place-items: center;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-sunken);
+    color: var(--color-text);
+  }
+
+  .step svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .step:disabled {
+    color: var(--color-text-faint);
+    opacity: 0.5;
+  }
+
+  .step:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+
+  .count {
+    width: 3rem;
+    border: 0;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    /* 16px floor stops Android zooming in on focus. */
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+
+  /* ---- The two tags ------------------------------------------------------ */
+
+  .tags {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-3);
   }
 
-  label {
+  .tag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--tap-min);
+    padding: 0 var(--space-2);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-full);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    transition:
+      background var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease);
+  }
+
+  .tag svg {
+    flex: none;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .tag:active {
+    transform: scale(0.97);
+  }
+
+  .tag.urgent.on {
+    border-color: var(--color-need-border);
+    background: var(--color-need-soft);
+    color: var(--color-need);
+  }
+
+  .tag.later.on {
+    border-color: var(--color-pick-border);
+    background: var(--color-pick-soft);
+    color: var(--color-pick);
+  }
+
+  /* ---- Note -------------------------------------------------------------- */
+
+  .note {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
     min-width: 0;
   }
 
-  label span {
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-  }
-
-  input {
+  .note input {
     min-width: 0;
     min-height: var(--tap-min);
     padding: 0 var(--space-3);
@@ -216,35 +372,11 @@
     background: var(--color-bg);
     color: var(--color-text);
     font: inherit;
-    /* 16px floor stops Android zooming in on focus. */
     font-size: var(--text-base);
   }
 
-  .toggle {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    min-height: var(--tap-min);
-    padding: 0 var(--space-4);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-sm);
-    color: var(--color-text-muted);
-  }
-
-  .toggle.on {
-    border-color: var(--color-danger);
-    color: var(--color-danger);
-  }
-
-  .dot {
-    width: 0.75rem;
-    height: 0.75rem;
-    border: 2px solid currentColor;
-    border-radius: var(--radius-full);
-  }
-
-  .toggle.on .dot {
-    background: currentColor;
+  .note input::placeholder {
+    color: var(--color-text-faint);
   }
 
   footer {

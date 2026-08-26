@@ -79,6 +79,7 @@ export const strings = {
     clearTrolley: 'Clear',
     shoppingDone: 'Shopping done!',
     shoppingDoneHint: 'Empties the trolley and starts a fresh list.',
+    celebrate: 'That’s the lot. Go home.',
     trolleyNote: 'Tap anything here to put it back on the list.',
     // Picker
     searchPlaceholder: 'I need…',
@@ -102,11 +103,13 @@ export const strings = {
     hideConfirm: 'Remove',
     hideCancel: 'Keep it',
     // Item detail
-    quantity: 'Quantity',
-    unit: 'Unit',
+    quantity: 'How many',
+    fewer: 'One fewer',
+    more: 'One more',
     note: 'Note',
     notePlaceholder: 'e.g. the big one, or a brand',
     urgent: 'Urgent',
+    ifConvenient: 'If convenient',
     remove: 'Remove from list',
     done: 'Done',
     // Item badges
@@ -127,8 +130,11 @@ export const strings = {
   prefs: {
     iconsTitle: 'Icons',
     iconsLine: 'Lines',
-    iconsColour: 'Colour',
-    iconsHint: 'Colour uses your phone’s emoji where an item has one, and a line icon everywhere else.',
+    iconsEmoji: 'Emoji',
+    iconsInked: 'Inked',
+    iconsHint:
+      'Emoji uses your phone’s own. Inked is a drawn set that looks the same on every phone. Both fall back to a line icon where an item has no picture.',
+    iconsCredit: 'Inked icons by OpenMoji — CC BY-SA 4.0',
     viewTitle: 'List view',
     viewGrid4: 'Grid of 4',
     viewGrid3: 'Grid of 3',
@@ -156,6 +162,6 @@ export const strings = {
     notConnectedTitle: 'Not connected yet',
     notConnectedBody:
       'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
-    version: 'Niu · round 5',
+    version: 'Niu · round 6',
   },
 } as const

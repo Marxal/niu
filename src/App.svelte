@@ -23,6 +23,7 @@
   import { auth, watchAuth } from './lib/auth.svelte'
   import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
   import { clearShopping, loadShopping, watchShopping } from './lib/shopping.svelte'
+  import { watchKeyboard } from './lib/keyboard'
   import { watchTheme } from './lib/theme.svelte'
   import { loadPrefs } from './lib/prefs.svelte'
 
@@ -54,6 +55,10 @@
   // Applies the stored light/dark choice, and keeps following the phone's own
   // setting while the choice is "system".
   $effect(() => watchTheme())
+
+  // Publishes how much of the screen the on-screen keyboard is covering, so a
+  // bottom sheet can sit above it instead of underneath.
+  $effect(() => watchKeyboard())
 
   // Display preferences are device-local and don't need watching — read once.
   $effect(() => {

@@ -14,8 +14,14 @@
  * modes, and a display preference is never worth breaking the app for.
  */
 
-/** Line drawings, or the phone's own emoji where an item has one. */
-export type IconStyle = 'line' | 'colour'
+/**
+ * How a tile's picture is drawn:
+ *   line   the house line drawings, one colour, the default
+ *   emoji  the phone's own emoji where an item has one
+ *   inked  OpenMoji's drawings — the same pictures on every phone
+ * All three fall back to the line drawing, then to the item's initial.
+ */
+export type IconStyle = 'line' | 'emoji' | 'inked'
 
 /** How many tiles across, or a single-column list. */
 export type ViewMode = 'grid-4' | 'grid-3' | 'list'
@@ -30,7 +36,17 @@ interface StoredPrefs {
 const DEFAULTS: StoredPrefs = { iconStyle: 'line', viewMode: 'grid-4' }
 
 function isIconStyle(v: unknown): v is IconStyle {
-  return v === 'line' || v === 'colour'
+  return v === 'line' || v === 'emoji' || v === 'inked'
+}
+
+/**
+ * Round 5 called the emoji style 'colour'. Renaming it in the type would have
+ * quietly reset every phone that had chosen it back to Lines, so the old value
+ * is translated on read instead. The storage key itself never changes.
+ */
+function migrateIconStyle(v: unknown): IconStyle | null {
+  if (v === 'colour') return 'emoji'
+  return isIconStyle(v) ? v : null
 }
 
 function isViewMode(v: unknown): v is ViewMode {
@@ -45,7 +61,7 @@ function read(): StoredPrefs {
     if (typeof parsed !== 'object' || parsed === null) return DEFAULTS
     const obj = parsed as Record<string, unknown>
     return {
-      iconStyle: isIconStyle(obj.iconStyle) ? obj.iconStyle : DEFAULTS.iconStyle,
+      iconStyle: migrateIconStyle(obj.iconStyle) ?? DEFAULTS.iconStyle,
       viewMode: isViewMode(obj.viewMode) ? obj.viewMode : DEFAULTS.viewMode,
     }
   } catch {
