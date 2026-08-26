@@ -148,3 +148,41 @@ safe direction to be wrong in. Those arrive with the invite flow.
 
 The shopping list: its table, its RLS policy, and realtime so both phones stay
 in sync.
+
+---
+
+## Round 2.1 — Fix: Google sign-in redirecting to the wrong place
+
+**Branch:** `claude/vite-svelte-pwa-skeleton-g39cik`
+
+### What went wrong
+
+Signing in redirected to `http://localhost:3000/?code=…`, which the phone can't
+connect to — Supabase's default fallback address, not Niu's.
+
+The cause was in `authRedirectTo()`: it resolved the app's relative base path
+(`'./'`) against `window.location.origin`. An origin has no path on it
+(`https://marxal.github.io`, nothing after the domain), so `new URL('./',
+origin)` collapsed straight to the domain root and silently dropped the `/niu/`
+folder the app is actually served from. Supabase received a redirect address
+that didn't match anything on its allow-list, and fell back to its own default.
+
+### The fix
+
+Resolve against `window.location.href` (the full current address) instead of
+just the origin. Pulled the URL math into its own module, `src/lib/url.ts`, with
+a unit test that pins the exact regression down — this bug only shows up once
+the app is served from a sub-folder, which nothing in local development does,
+so it's the kind of thing that's easy to reintroduce without a test catching it.
+
+### One thing to check in Supabase
+
+If sign-in still lands on `localhost:3000` after this deploys, the fix isn't
+enough on its own — it also needs, under **Authentication → URL Configuration**
+in the Supabase dashboard:
+- **Site URL** set to `https://marxal.github.io/niu/`
+- **Redirect URLs** including that same address
+
+Supabase falls back to the Site URL whenever the address the app sends doesn't
+match the allow-list, and a fresh project's Site URL defaults to
+`localhost:3000` — which is exactly what was seen.
