@@ -1,6 +1,6 @@
 # Niu — guide for Claude Code
 
-Read this before touching anything.
+Read this before touching anything. Before starting any round, read NIU.md in full. It's the complete product spec — every feature decision, the data model, the design direction, the roadmap. This file (CLAUDE.md) is only the technical contract: stack, hard rules, how we work together. If a question comes up about what the app should do, the answer is almost always already in NIU.md. Check there before asking.
 
 ## What Niu is
 
