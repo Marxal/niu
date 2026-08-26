@@ -90,6 +90,9 @@ export const strings = {
     close: 'Close',
     suggested: 'Suggested',
     recentlyUsed: 'Often bought',
+    // The "you usually need…" strip (NIU.md §5). Never auto-adds.
+    dueTitle: 'You usually need…',
+    dueHint: 'Going by how often you buy these. Tap to add.',
     searchResults: 'Matches',
     allCategories: 'Everything else',
     // Long-press menu on a catalogue tile
@@ -117,17 +120,39 @@ export const strings = {
     // View toggle
     viewGrid: 'Grid',
     viewList: 'List',
-    sortShopOrder: 'Shop order',
-    sortRecent: 'Recently added',
-    sortCategory: 'By category',
-    sortLabel: 'Sort',
+    sortLabel: 'List order',
     // Errors
     loadFailed: "Couldn't load the list just now. Pull down to try again.",
     addFailed: "Couldn't add that just now. Try again in a moment.",
     updateFailed: "Couldn't save that just now. Try again in a moment.",
   },
 
+  shops: {
+    title: 'Shops',
+    hint: 'Each shop learns its own order as you tick things off. Pick the one you’re in.',
+    whichShop: 'Which shop',
+    main: 'Main',
+    makeMain: 'Make it the main one',
+    addPlaceholder: 'Another shop’s name',
+    add: 'Add',
+    remove: 'Remove',
+    removeTitle: 'Remove this shop?',
+    removeBody: 'The order it learned goes with it. Nothing on the list changes.',
+    removeCancel: 'Keep it',
+    lastOne: 'There’s always one shop. Add another before removing this one.',
+    loadFailed: "Couldn't load your shops just now.",
+    addFailed: "Couldn't add that shop just now. It may already exist.",
+    updateFailed: "Couldn't save that just now. Try again in a moment.",
+  },
+
   prefs: {
+    sortTitle: 'List order',
+    sortShopOrder: 'Shop order',
+    sortRecent: 'Recently added',
+    sortCategory: 'By category',
+    sortMostBought: 'Most bought',
+    sortHint:
+      'Shop order learns itself: every time you finish a shop, Niu remembers roughly where in it each thing was picked up.',
     iconsTitle: 'Icons',
     iconsLine: 'Lines',
     iconsEmoji: 'Emoji',
@@ -162,6 +187,6 @@ export const strings = {
     notConnectedTitle: 'Not connected yet',
     notConnectedBody:
       'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
-    version: 'Niu · round 6',
+    version: 'Niu · round 7',
   },
 } as const

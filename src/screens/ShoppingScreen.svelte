@@ -6,14 +6,16 @@
   back: you can see what's on the list while you tap the next thing onto it.
 
   Reading down the screen:
-    1. what you still need
-    2. what's in the trolley
-    3. the tiles worth tapping first — this household's own habits, falling back
+    1. which shop you're in, once there is more than one
+    2. what you still need, in the order this shop is walked
+    3. what's in the trolley
+    4. "you usually need…", when something looks due
+    5. the tiles worth tapping first — this household's own habits, falling back
        to a hand-picked "typical stuff" order before it has learned any
-    4. every category, collapsed
-    5. the search field, pinned above the nav where a thumb reaches
+    6. every category, collapsed
+    7. the search field, pinned above the nav where a thumb reaches
 
-  Search takes over 3 and 4 while there's a query: matches replace the
+  Search takes over 4, 5 and 6 while there's a query: matches replace the
   suggestions and the categories fold away, since scrolling past ten headers to
   reach a result you already named would be silly.
 -->
@@ -35,11 +37,18 @@
     categoriesInOrder,
     categoryPicks,
     matchesSearch,
+    sortByTimesBought,
     sortItems,
     splitByChecked,
     suggestedPicks,
   } from '../lib/list-view'
   import ShoppingDone from '../components/ShoppingDone.svelte'
+  import ShopPicker from '../components/ShopPicker.svelte'
+  import SuggestionStrip from '../components/SuggestionStrip.svelte'
+  import { learning, loadLearning } from '../lib/learning.svelte'
+  import { chooseShop, shops } from '../lib/shops.svelte'
+  import { sortByLearnedOrder } from '../lib/shop-order'
+  import { dueNow } from '../lib/suggest'
   import IconPickerSheet from '../components/IconPickerSheet.svelte'
   import TrolleyIcon from '../components/TrolleyIcon.svelte'
   import { FLIP_MS, tileIn, tileOut } from '../lib/motion'
@@ -103,7 +112,29 @@
   )
 
   let split = $derived(splitByChecked(display))
-  let toBuy = $derived(byPriority(sortItems(split.toBuy, 'shop-order')))
+
+  /*
+   * The order of the still-to-buy list, in two steps that must stay in this
+   * order: sort it however the preference asks, then let the two priority tags
+   * move things. Urgent has to beat the aisle order — that is the entire point
+   * of marking something urgent — so it is applied last and wins.
+   */
+  let ordered = $derived.by<DisplayItem[]>(() => {
+    switch (prefs.sortMode) {
+      case 'recent':
+        return sortItems(split.toBuy, 'recent')
+      case 'category':
+        return sortItems(split.toBuy, 'catalogue')
+      case 'most-bought':
+        return sortByTimesBought(split.toBuy, learning.stats)
+      case 'shop-order':
+        // Falls back to the catalogue order on its own until this shop has
+        // learned something — see shop-order.ts.
+        return sortByLearnedOrder(split.toBuy, learning.aisle)
+    }
+  })
+
+  let toBuy = $derived(byPriority(ordered))
   let inTrolley = $derived(split.inTrolley)
   let openItem = $derived(display.find((item) => item.id === openItemId) ?? null)
 
@@ -161,6 +192,14 @@
   )
 
   let suggestions = $derived(searching ? [] : suggestedPicks(pickerItems, shopping.onList))
+
+  // "You usually need…" — only what looks due, and only when there is something
+  // to say. Empty for a household with no history, which is most of them at
+  // first. `Date.now()` is read here rather than inside the rule so the rule
+  // stays testable at a fixed moment.
+  let due = $derived(
+    searching ? [] : dueNow(pickerItems, learning.stats, shopping.onList, Date.now()),
+  )
   let categories = $derived(searching ? [] : categoriesInOrder(pickerItems))
 
   // Offer to create a word only when nothing in the catalogue is an exact match
@@ -225,9 +264,18 @@
     if (item) void clearItemIcon(item.id)
   }
 
-  /** Emptying the trolley is the end of a shop, so it says so. */
-  function finishShopping() {
-    void clearChecked()
+  /**
+   * Emptying the trolley is the end of a shop, so this is where the app learns.
+   *
+   * The database does both halves in one transaction — work out where in this
+   * shop each thing was picked up, then delete the ticked rows — because a
+   * trolley emptied without the learning throws away the only record of the
+   * order it was filled in, and there is no second chance at it.
+   */
+  async function finishShopping() {
+    const recorded = await clearChecked(shops.currentId)
+    // Pick up what was just learned, so the next list is already sorted by it.
+    if (recorded) void loadLearning(shops.currentId)
   }
 </script>
 
@@ -243,7 +291,10 @@
       <p class="error" role="alert">{shopping.error}</p>
     {/if}
 
-    <!-- 1. Still to buy -->
+    <!-- 1. Which shop. Hides itself while there is only one. -->
+    <ShopPicker shops={shops.all} currentId={shops.currentId} onChoose={chooseShop} />
+
+    <!-- 2. Still to buy -->
     {#if display.length === 0}
       <div class="empty">
         <EmptyBasket />
@@ -278,7 +329,7 @@
       </section>
     {/if}
 
-    <!-- 2. In the trolley — deliberately boxed and faded, because it is a
+    <!-- 3. In the trolley — deliberately boxed and faded, because it is a
          holding pen for this shop only, not part of the list proper. -->
     {#if inTrolley.length > 0}
       <section class="trolley" transition:slide={{ duration: 200 }}>
@@ -323,7 +374,10 @@
       </section>
     {/if}
 
-    <!-- 3. Search matches, or the tiles worth tapping first -->
+    <!-- 4. What looks due. Silent until the app has something to go on. -->
+    <SuggestionStrip items={due} {layout} onAdd={handleAdd} />
+
+    <!-- 5. Search matches, or the tiles worth tapping first -->
     {#if searching}
       <section class="block picker">
         <h2 class="heading">{strings.shopping.searchResults}</h2>
@@ -369,7 +423,7 @@
         </section>
       {/if}
 
-      <!-- 4. Every category, collapsed -->
+      <!-- 6. Every category, collapsed -->
       <section class="categories">
         {#each categories as name (name)}
           <CategorySection
@@ -389,7 +443,7 @@
     {/if}
   </div>
 
-  <!-- 5. Search, pinned above the nav -->
+  <!-- 7. Search, pinned above the nav -->
   <form class="search" onsubmit={submitNew}>
     <input
       type="search"

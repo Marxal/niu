@@ -478,3 +478,136 @@ Firefox and a sheet still hides behind the keyboard, that's why.
 ### Next up
 
 Feature round 4: order and learning.
+
+---
+
+## Round 7 — Order and learning
+
+**Branch:** `claude/shopping-sync-form-fixes-e164qi`
+
+This is feature round 4 in `NIU.md` §10: the round where the app starts getting
+better with use rather than staying exactly as good as the day it shipped.
+
+### What changed
+
+- **The list sorts itself into the order you walk the shop.** Every time you
+  finish a shop, Niu records roughly where in it each thing was picked up, and
+  sorts the next list by that.
+- **Each shop learns its own order.** Add Willys alongside ICA in Settings; a chip
+  row appears at the top of the list to say which one you're in. The order you
+  walk one has nothing to do with the other.
+- **"You usually need…"** — a quiet strip of things that look due, based on how
+  often you actually buy them. It never adds anything: every tile is a tap, like
+  the picker below it.
+- **Per-item statistics:** how many times each thing has been bought, when it last
+  was, the time before that, and a rolling average of the gap in days. Statistics,
+  not a history — there is nowhere in the schema to put a purchase record, which
+  is what §5 asked for.
+- **A list-order choice** in Settings: shop order (the learned one, and the
+  default), recently added, by category, or most bought.
+
+### How the learning works
+
+Two separate mechanisms, because they answer different questions and neither
+should be derived from the other — buying milk every week says nothing about
+which aisle it is in.
+
+**Where things are.** At the end of a shop, each ticked item gets a position:
+`rank / (total + 1)`, a fraction of the way through the shop rather than a place
+in a queue. Raw positions can't be averaged across shops of different sizes —
+third out of five and third out of forty are not the same place in a supermarket.
+That fraction is averaged into whatever the shop already knew, one shop at a time.
+
+Turning those numbers into an order for a list that also contains things nobody
+has ever bought is the interesting half, and it lives in `src/lib/shop-order.ts`
+with 11 tests:
+
+1. **What we know about this item** — its own learned position, trusted more the
+   more shops it is based on, completely after three. One shop is an anecdote:
+   you might have doubled back for the milk.
+2. **What we know about its neighbours** — a first-time item inherits the average
+   position of the things in its category that *have* been learned, at half
+   weight. If the tinned food is at the back of this shop, a tin nobody has
+   bought before is probably at the back too.
+3. **The hand-picked order**, which everything falls back to and which is exactly
+   what a brand-new household still sees.
+
+Every position is blended with the seed order rather than replacing it, so the
+list drifts rather than lurching.
+
+**How often things are needed.** An item is worth mentioning when about as long
+has passed as usually passes: `elapsed / average gap ≥ 0.8`, with at least two
+purchases behind it. The gap is an exponentially weighted average — 70% of what
+we thought, 30% of what just happened — rather than a plain mean, because habits
+drift and a plain mean over a year of shops would take months to notice.
+`src/lib/suggest.ts`, 12 tests.
+
+### Two decisions worth knowing about
+
+**The shops are shared; which one you're standing in is not.** The list of shops
+belongs to the household and syncs. The current shop is device-local, because you
+two can be in different shops at once and pushing that choice across would
+reorder someone else's list mid-aisle.
+
+**The app can read the numbers but cannot assert them.** Neither statistics table
+has an insert or update policy. The only writer is `record_shop()`, a security
+definer function that does the learning and empties the trolley in one
+transaction — because the tick order exists only until those rows are deleted,
+and a delete that succeeded while the learning failed would lose it for good.
+
+### How it was checked
+
+Every migration run in order against a real PostgreSQL 16 on a fresh database,
+then re-run to confirm they're idempotent. Two shops walked in the same order
+produced exactly the positions the arithmetic predicts (0.2 / 0.4 / 0.6 / 0.8),
+and two walked in opposite orders averaged to a flat 0.5, which is the honest
+answer. The gap average was checked against hand arithmetic: a 10-day gap from
+nothing gives 10.00, then a 2-day gap gives 7.60.
+
+As the second household, every crossing attempt was refused: reading, renaming or
+deleting the first household's shops, reading their statistics, and calling
+`record_shop()` against their shop. Trying to rewrite the two statistics tables
+directly changed **0 rows** from the app's own role. A second "main" shop was
+refused by the index.
+
+The new screens were rendered in a real Chromium at 412×915 in both themes: the
+shop chips, the suggestion strip, the four-way list-order control, the shops card
+and its inline remove confirmation. Zero console errors. 80 unit tests pass.
+
+### How to test it
+
+**Straight away, before it has learned anything:**
+
+1. **Settings → Shops.** There should be one called "Main shop". Add a second one
+   — name it after a shop you actually use.
+2. Go back to Shopping. **A row of shop chips has appeared at the top.** Tap
+   between them; nothing should change yet, because neither has learned anything.
+3. **Settings → List order.** Try the four options and watch the list reorder.
+   Leave it on **Shop order**.
+
+**Then the real test, which needs a real shop:**
+
+4. Do a normal shop: tick things off **in the order you actually pick them up**,
+   then press **Shopping done!**
+5. Next time you shop, put the same things on the list and look at the order.
+   After **three** shops in the same shop it should be walking your route.
+6. Do the same in the second shop and check the two orders stay separate.
+
+**And in a few weeks:** once something has been bought twice and enough time has
+passed, **"You usually need…"** appears above the picker. It should be things you
+genuinely buy on a rhythm.
+
+### Deliberately not done
+
+- **Renaming a shop.** Remove and add is the workaround, and it costs that shop's
+  learned order, so this is worth adding if it ever comes up.
+- **Stock inference** (§5) — deliberately late, and it needs months of the data
+  this round has only just started collecting.
+- The **"Often bought"** picker row still counts how many times something has been
+  *added to the list*, which is not quite the same as how many times it has been
+  *bought*. Both numbers now exist; whether the row should switch to the new one
+  is a question for after some real use.
+
+### Next up
+
+Feature round 5: dishes — the bridge to the meal planner.

@@ -25,6 +25,7 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { household } from './household.svelte'
+import { recordShop } from './learning.svelte'
 import { strings } from './strings'
 import { supabase } from './supabase'
 
@@ -420,22 +421,38 @@ export async function removeFromList(itemId: string): Promise<void> {
   }
 }
 
-/** Empties the trolley — removes everything already ticked off. */
-export async function clearChecked(): Promise<void> {
-  if (!supabase || !household.id) return
+/**
+ * Ends a shop: everything in the trolley is bought, so learn from it and empty
+ * it. Returns how many items that was, or 0 if nothing happened.
+ *
+ * The deleting is not done here. `record_shop()` in the database works out where
+ * in this shop each thing was picked up, updates the household's per-item stats
+ * and deletes the ticked rows, all in one transaction — because the tick order
+ * exists only until those rows are gone, and a delete that succeeded while the
+ * learning failed would lose it for good.
+ *
+ * The rows are removed from local state first anyway, so the trolley empties
+ * under the thumb rather than after a round trip, and put back if the call
+ * fails.
+ */
+export async function clearChecked(shopId: string | null): Promise<number> {
+  if (!supabase || !household.id) return 0
 
-  const checkedIds = shopping.items.filter((i) => i.checkedAt !== null).map((i) => i.id)
-  if (checkedIds.length === 0) return
+  const checked = shopping.items.filter((item) => item.checkedAt !== null)
+  if (checked.length === 0) return 0
 
   const previous = shopping.items
   shopping.items = shopping.items.filter((item) => item.checkedAt === null)
 
-  const { error } = await supabase.from('list_items').delete().in('id', checkedIds)
+  const recorded = await recordShop(shopId)
 
-  if (error) {
+  if (recorded === null) {
     shopping.items = previous
     shopping.error = strings.shopping.updateFailed
+    return 0
   }
+
+  return recorded
 }
 
 /**

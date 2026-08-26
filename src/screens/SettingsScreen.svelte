@@ -13,11 +13,14 @@
   import { household } from '../lib/household.svelte'
   import { install, promptInstall } from '../lib/install.svelte'
   import { setTheme, theme, type ThemeChoice } from '../lib/theme.svelte'
+  import ShopsCard from '../components/ShopsCard.svelte'
   import {
     prefs,
     setIconStyle,
+    setSortMode,
     setViewMode,
     type IconStyle,
+    type SortMode,
     type ViewMode,
   } from '../lib/prefs.svelte'
   import { strings } from '../lib/strings'
@@ -34,6 +37,13 @@
     { id: 'inked', label: strings.prefs.iconsInked },
   ]
 
+  const sortModes: { id: SortMode; label: string }[] = [
+    { id: 'shop-order', label: strings.prefs.sortShopOrder },
+    { id: 'recent', label: strings.prefs.sortRecent },
+    { id: 'category', label: strings.prefs.sortCategory },
+    { id: 'most-bought', label: strings.prefs.sortMostBought },
+  ]
+
   const viewModes: { id: ViewMode; label: string }[] = [
     { id: 'grid-4', label: strings.prefs.viewGrid4 },
     { id: 'grid-3', label: strings.prefs.viewGrid3 },
@@ -42,6 +52,10 @@
 </script>
 
 <section class="settings">
+  {#if auth.status === 'signed-in'}
+    <ShopsCard userId={auth.userId} />
+  {/if}
+
   <div class="card">
     <div class="row stack">
       <div class="text">
@@ -56,6 +70,25 @@
             onclick={() => setTheme(choice.id)}
           >
             {choice.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+
+    <div class="row stack">
+      <div class="text">
+        <h2>{strings.prefs.sortTitle}</h2>
+        <p>{strings.prefs.sortHint}</p>
+      </div>
+      <div class="segmented pairs" role="group" aria-label={strings.prefs.sortTitle}>
+        {#each sortModes as mode (mode.id)}
+          <button
+            class="segment"
+            class:on={prefs.sortMode === mode.id}
+            aria-pressed={prefs.sortMode === mode.id}
+            onclick={() => setSortMode(mode.id)}
+          >
+            {mode.label}
           </button>
         {/each}
       </div>
@@ -241,6 +274,11 @@
   .credit a {
     color: var(--color-text-faint);
     text-decoration: none;
+  }
+
+  /* Four options don't fit on one line at 412px, so they go two by two. */
+  .segmented.pairs {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .segment.on {

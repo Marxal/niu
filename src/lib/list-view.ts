@@ -28,7 +28,14 @@ export interface DisplayItem {
   addedBy: string
 }
 
-export type SortMode = 'shop-order' | 'recent' | 'category'
+/**
+ * The orderings that need no history to work.
+ *
+ * The learned shop order is not one of them: it needs numbers from the database
+ * and lives in shop-order.ts. What the *user* can choose between is a wider set
+ * again — see `SortMode` in prefs.svelte.ts, which is the stored preference.
+ */
+export type BasicSort = 'catalogue' | 'recent'
 
 /** A catalogue tile as the picker needs it. */
 export interface PickerItem {
@@ -86,8 +93,8 @@ export function splitByChecked(items: readonly DisplayItem[]): {
   }
 }
 
-/** Orders the still-to-buy items according to the chosen mode. */
-export function sortItems(items: readonly DisplayItem[], mode: SortMode): DisplayItem[] {
+/** Orders the still-to-buy items by one of the rules that needs no history. */
+export function sortItems(items: readonly DisplayItem[], mode: BasicSort): DisplayItem[] {
   const sorted = [...items]
 
   switch (mode) {
@@ -95,16 +102,33 @@ export function sortItems(items: readonly DisplayItem[], mode: SortMode): Displa
       // Newest first — what you just added is what you're still thinking about.
       sorted.sort((a, b) => b.addedAt.localeCompare(a.addedAt))
       break
-    case 'category':
-    case 'shop-order':
-      // Both currently follow the catalogue's own order, which *is* the
-      // hand-picked walk-the-shop order. They diverge once the learned order
-      // exists: 'shop-order' will use it, 'category' will stay as-is.
+    case 'catalogue':
+      // The hand-picked walk-the-shop order the app starts from, and what "by
+      // category" means in practice: the categories are in shop order already.
       sorted.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
       break
   }
 
   return sorted
+}
+
+/**
+ * Most-bought first — "most frequent" in NIU.md §4.1.
+ *
+ * Takes the counts as a plain record rather than importing anything, so this
+ * file stays free of any knowledge of where the numbers come from. Anything
+ * never bought sorts last, in catalogue order, rather than being jumbled
+ * together at zero.
+ */
+export function sortByTimesBought(
+  items: readonly DisplayItem[],
+  counts: Readonly<Record<string, { timesBought: number }>>,
+): DisplayItem[] {
+  const times = (item: DisplayItem) => counts[item.catalogueItemId]?.timesBought ?? 0
+
+  return [...items].sort(
+    (a, b) => times(b) - times(a) || a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+  )
 }
 
 /**
