@@ -186,3 +186,64 @@ in the Supabase dashboard:
 Supabase falls back to the Site URL whenever the address the app sends doesn't
 match the allow-list, and a fresh project's Site URL defaults to
 `localhost:3000` — which is exactly what was seen.
+
+---
+
+## Round 3 — The shopping list
+
+**Branch:** `claude/vite-svelte-pwa-skeleton-g39cik`
+
+### What changed
+
+The first real feature. One list, shared by the household, live on both phones.
+
+- **A catalogue of 361 grocery tiles**, grouped into 10 supermarket categories.
+  You tap a tile and it moves to the list — you almost never type.
+- **Tapping something already on the list does nothing**, per NIU.md §4.1. That
+  rule is enforced by a unique index in the database, not just by the UI, so two
+  phones tapping at the same moment still can't produce two rows.
+- **Typing a new word adds it immediately**, with a generated first-letter tile
+  as its icon, and puts it on the list in the same action.
+- **Ticking off** greys the tile and drops it into "In the trolley" below, with
+  a Clear button to empty it.
+- **Quantity, unit, note and urgency** are an optional edit afterwards — never a
+  step in adding. Press and hold a tile to reach them.
+- **Urgent items float to the top** of whatever sort order is in play.
+- **A NEW tag** on items the other person added, so you can see what changed
+  without a notification.
+- **Live sync** over Supabase realtime: add something on one phone and it
+  appears on the other.
+- Sort switches between shop order, most recently added, and by category.
+
+### On the shop order
+
+NIU.md §4.1 wants the default order *learned* from the order things get ticked
+off, per shop. That can't do anything until there's tick history to learn from,
+so this round ships the hand-picked category order it starts from, and records
+`checked_by` and `checked_at` on every tick from day one — that's the raw
+material the learned order will need. `sortItems()` already takes the mode as an
+argument, so the learned order slots in beside the others rather than replacing
+anything.
+
+### How the security was checked
+
+The Row Level Security policies were run against a real PostgreSQL 16, not just
+read over. Two households were created and, as the second one, every crossing
+attempt was tried: reading the other's list, inserting into it, ticking their
+items off, deleting them, adding a word to the shared catalogue everyone sees,
+and forging `added_by` to look like someone else. All were refused, and the
+first household's list was verified intact afterwards. The "can't add twice"
+rule and the quantity constraint were tested the same way, and all three
+migration files were run twice to confirm they're safe to re-run.
+
+### Deliberately not done
+
+Multiple shops each learning their own order, the "you usually need…" suggestion
+strip, and dishes appearing in the catalogue — the last of those depends on the
+meal planner (§4.2), which doesn't exist yet. All three need either real usage
+data or a feature that isn't built.
+
+### Next up
+
+Either the meal planner, or inviting your wife so the sharing is real rather
+than theoretical.

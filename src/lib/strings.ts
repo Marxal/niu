@@ -69,6 +69,46 @@ export const strings = {
     defaultName: 'Our home',
   },
 
+  shopping: {
+    // Empty states
+    emptyTitle: 'Nothing on the list',
+    emptyBlurb: 'Tap the button below to open the catalogue and start adding.',
+    // The two sections of the list
+    toBuy: 'To buy',
+    inTrolley: 'In the trolley',
+    clearTrolley: 'Clear',
+    // Catalogue sheet
+    browse: 'Add items',
+    catalogueTitle: 'Add to the list',
+    searchPlaceholder: 'Search or type something new',
+    addNewWord: 'Add',
+    alreadyOnList: 'Already on the list',
+    ourWordsCategory: 'Our own words',
+    noResults: 'Nothing matches. Type it out and tap Add to create it.',
+    close: 'Close',
+    // Item detail
+    quantity: 'Quantity',
+    unit: 'Unit',
+    note: 'Note',
+    notePlaceholder: 'e.g. the big one, or a brand',
+    urgent: 'Urgent',
+    remove: 'Remove from list',
+    done: 'Done',
+    // Item badges
+    newTag: 'NEW',
+    // View toggle
+    viewGrid: 'Grid',
+    viewList: 'List',
+    sortShopOrder: 'Shop order',
+    sortRecent: 'Recently added',
+    sortCategory: 'By category',
+    sortLabel: 'Sort',
+    // Errors
+    loadFailed: "Couldn't load the list just now. Pull down to try again.",
+    addFailed: "Couldn't add that just now. Try again in a moment.",
+    updateFailed: "Couldn't save that just now. Try again in a moment.",
+  },
+
   settings: {
     installTitle: 'Install Niu',
     installedBody: "You've already got it installed. Open it from your phone's home screen.",
