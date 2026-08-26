@@ -22,6 +22,7 @@
   import { strings } from './lib/strings'
   import { auth, watchAuth } from './lib/auth.svelte'
   import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
+  import { clearDishes, loadDishes, watchDishes } from './lib/dishes.svelte'
   import { clearShopping, loadShopping, watchShopping } from './lib/shopping.svelte'
   import { clearShops, loadShops, shops, watchShops } from './lib/shops.svelte'
   import { clearLearning, loadLearning } from './lib/learning.svelte'
@@ -81,6 +82,7 @@
       clearShopping()
       clearShops()
       clearLearning()
+      clearDishes()
     }
   })
 
@@ -100,6 +102,14 @@
 
     void loadShops()
     return watchShops()
+  })
+
+  // Dishes too: a dish written on one phone is a tile on the other.
+  $effect(() => {
+    if (!household.id) return
+
+    void loadDishes()
+    return watchDishes()
   })
 
   // What the app has learned. Re-runs when the chosen shop changes, because the

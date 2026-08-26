@@ -676,3 +676,129 @@ actually shows on your home screen, not just this file.
 ### Next up
 
 Feature round 5: dishes — the bridge to the meal planner.
+
+---
+
+## Round 8 — Dishes
+
+**Branch:** `claude/round-5-dishes-8fh855`
+
+This is feature round 5 in `NIU.md` §10, and the first round that touches the
+Meals tab. It builds the dish itself and the shopping half of what a dish does;
+the week it gets planned into is the next round.
+
+### What changed
+
+- **The Meals tab is now the dish library.** Write down what you cook: a name, a
+  picture, which part of a meal it is, how much cooking it takes, and — if you
+  want — the things it's made of.
+- **Dishes appear in the shopping catalogue as their own category**, first in
+  the list, drawn as exactly the same green tiles as everything else. Tapping
+  one puts all of its ingredients on the list at once (§4.1).
+- **Searching the shopping list finds dishes too**, in their own block above the
+  grocery matches — because tapping a dish does something different from tapping
+  a tomato, and the two shouldn't be mixed into one grid.
+- **A short message says what happened** after tapping a dish: how many things
+  went on, or that it was all there already, or that the dish has no ingredients
+  yet. Without it, tapping a dish whose ingredients you already have looks
+  exactly like tapping nothing.
+- **The ingredient picker inside a dish** is the shopping picker in miniature:
+  green rows to add, red rows already in, the same search, and "often bought"
+  when you haven't typed anything.
+
+### A dish with no ingredients is a real dish
+
+§4.2 says so, and it is the one rule everything here had to stay true to: "If
+the item list is empty, the dish is just a name you can plan a meal with."
+"Eating out" and "leftovers" are dishes. So nothing requires an ingredient list,
+the library shows such a dish as *just a name* rather than as an error, and
+tapping one on the shopping tab says so plainly instead of silently doing
+nothing.
+
+### Two decisions worth knowing about
+
+**Four cooking flags became one question with three answers.** §4.2 lists *needs
+cooking, fast cook, slow cook, no cook* — but "needs cooking" is exactly "fast
+or slow", so as four checkboxes three of the sixteen combinations are
+contradictions. It is stored as one value: No cook / Quick / Slow. If a
+genuinely independent flag ever turns up (oven-only, freezer) it gets its own
+column rather than being squeezed into this one.
+
+**The dish editor has a Save button, and the item sheet still doesn't.** That
+looks inconsistent, and it is deliberate. A list item's fields are independent
+and instantly valid, so saving as you type is strictly better. A dish is
+neither: its name has to be unique, so saving as you type would try to create
+"L", then "La", then "Las"; and its ingredients are rows in a second table that
+would be written and deleted while someone was still deciding — each one landing
+on the other phone. So the sheet holds a draft, Save writes it, and Cancel
+means cancel.
+
+### How the security was checked
+
+Every migration run in order against a real PostgreSQL 16 on a fresh database,
+then re-run to confirm 0008 is idempotent.
+
+The arithmetic first: a dish of three ingredients, one of which was already on
+the list, added **2**; tapping it again added **0**; the list held 3 rows, not 4.
+A dish with no ingredients returned 0 without erroring. `' lasagne '` was refused
+against `'Lasagne'` by the name index, and both check constraints rejected a
+made-up slot and a made-up cooking value.
+
+Then as the second household, every crossing attempt was refused: their dishes
+and ingredient lists read as **0 rows**, renaming and deleting one changed **0
+rows**, and calling `add_dish_to_list()` against it returned 0 and put nothing on
+either list. Stapling an ingredient onto their dish was refused by the policy, as
+was writing a dish into their household, as was forging `created_by`. Deleting a
+dish took its ingredient rows with it.
+
+The three new screens were rendered in a real Chromium at 412×915 in both
+themes: the library, the editor on an existing dish and on a new one, the Dishes
+category open in the picker, the dish results while searching, and the message
+after a tap. No console errors, and no screen scrolls sideways.
+
+`add_dish_to_list()` is the first function here that is **not** security
+definer. It doesn't need to be — every table it touches already has a policy
+that says what the caller may do, and RLS hides another household's dish from
+the lookup on its own. A function that doesn't need to escalate shouldn't.
+
+### How to test it
+
+1. **Meals tab → New dish.** Give it a name — something you actually cook.
+   Tap the square to the left of the name to pick a picture; the emoji and
+   OpenMoji tabs are both there, same as the shopping tiles.
+2. Set **part of the meal** and **cooking**, then add a few ingredients: search
+   the catalogue, tap a green row to add it, tap a red one to take it out again.
+   **Add it.**
+3. Add a second dish with **no ingredients** — call it "Eating out". It should
+   save happily and show as *just a name*.
+4. **Shopping tab.** Scroll to the categories: **Dishes** is the first one. Open
+   it and tap your dish. Everything it needs should appear on the list, with a
+   line saying how many.
+5. Tap the same dish again. It should say **it is all on the list already** and
+   change nothing.
+6. Tap "Eating out". It should tell you there are no ingredients yet.
+7. Type part of a dish's name in **I need…** — it should come up under
+   **Dishes**, above the grocery matches.
+8. **Both phones:** write a dish on one and watch it appear in the other's
+   library and in its Dishes category without a reload.
+
+### Deliberately not done
+
+- **No "add to the shopping list" button inside the editor.** The specified path
+  is the Dishes category on the shopping tab, and mixing "act on this dish" into
+  a sheet whose job is "edit this dish" muddles both. Easy to add if reaching
+  for it from the library turns out to be the natural move.
+- **No search in the library.** Twenty dishes are faster to look down than to
+  type into. Worth adding the day that stops being true.
+- **`times_planned` / `last_planned_at`** from §7 are not columns yet. Planning a
+  dish and shopping for it are different events, nothing this round would write
+  them, and a column nothing writes is a column that quietly lies. They arrive
+  with the planner.
+- **No quantities on an ingredient.** A dish says *tomatoes*, not *400g of
+  tomatoes* — quantity is an edit on the list afterwards, exactly as it is for
+  anything else you tap (§4.1).
+
+### Next up
+
+Feature round 6: the meal planner — days, slots, and a week that fills the
+shopping list.
