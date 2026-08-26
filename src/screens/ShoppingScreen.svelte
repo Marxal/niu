@@ -50,7 +50,7 @@
   import SuggestionStrip from '../components/SuggestionStrip.svelte'
   import DishPickerSheet from '../components/DishPickerSheet.svelte'
   import DishSheet from '../components/DishSheet.svelte'
-  import { dishPicks, filterDishes } from '../lib/dishes'
+  import { dishBadges, dishPicks, filterDishes } from '../lib/dishes'
   import { addDishToList, addItemToDish, dishes } from '../lib/dishes.svelte'
   import { learning, loadLearning } from '../lib/learning.svelte'
   import { chooseShop, shops } from '../lib/shops.svelte'
@@ -98,6 +98,13 @@
   // The store's map, not one built from `shopping.catalogue`: that raw array is
   // the only copy without hand-picked icons applied to it.
   let catalogueById = $derived(shopping.byId)
+
+  /*
+   * Which dishes asked for each row on the list, ready to draw. Empty for every
+   * row on a list nobody built from a dish, which is most of them — the map is
+   * only ever as big as the number of tagged rows.
+   */
+  let badges = $derived(dishBadges(shopping.itemDishes, dishes.all, dishes.tags))
 
   /* ---- The list ---------------------------------------------------------- */
 
@@ -382,6 +389,7 @@
                 isNew={isNew(item)}
                 quantity={item.quantity}
                 note={item.note}
+                badges={badges.get(item.id) ?? []}
                 onclick={() => handleToggle(item.id)}
                 onlongpress={() => (openItemId = item.id)}
               />
@@ -411,6 +419,7 @@
                 state="checked"
                 quantity={item.quantity}
                 note={item.note}
+                badges={badges.get(item.id) ?? []}
                 onclick={() => handleToggle(item.id)}
                 onlongpress={() => (openItemId = item.id)}
               />

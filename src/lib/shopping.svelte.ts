@@ -87,6 +87,11 @@ class ShoppingState {
    * first piece of the learned ordering NIU.md §4.1 asks for.
    */
   useCounts = $state<Record<string, number>>({})
+  /**
+   * Which dish (or dishes) put each list row there, keyed by *list item* id.
+   * Written only by add_dish_to_list(); see 0009_dish_tags.sql.
+   */
+  itemDishes = $state<Record<string, string[]>>({})
   loading = $state(false)
   error = $state<string | null>(null)
 
@@ -216,7 +221,7 @@ export async function loadShopping(): Promise<void> {
 
   // RLS already limits the catalogue to the shared seed plus this household's
   // own words, so there is no filter to write here — the database does it.
-  const [catalogueResult, listResult, hiddenResult, usageResult, iconsResult] =
+  const [catalogueResult, listResult, hiddenResult, usageResult, iconsResult, dishResult] =
     await Promise.all([
     supabase
       .from('catalogue_items')
@@ -226,6 +231,10 @@ export async function loadShopping(): Promise<void> {
     supabase.from('catalogue_hidden').select('catalogue_item_id'),
     supabase.from('catalogue_usage').select('catalogue_item_id, use_count'),
     supabase.from('catalogue_icons').select('catalogue_item_id, icon'),
+    supabase
+      .from('list_item_dishes')
+      .select('list_item_id, dish_id')
+      .eq('household_id', household.id),
   ])
 
   shopping.loading = false
@@ -256,6 +265,11 @@ export async function loadShopping(): Promise<void> {
     shopping.useCounts = counts
   }
 
+  // And again: without these the list simply doesn't say which dish wanted what.
+  if (!dishResult.error && dishResult.data) {
+    shopping.itemDishes = collectItemDishes(dishResult.data as ItemDishRow[])
+  }
+
   // Same again: without overrides every item just shows its own icon.
   if (!iconsResult.error && iconsResult.data) {
     const chosen: Record<string, string> = {}
@@ -264,6 +278,21 @@ export async function loadShopping(): Promise<void> {
     }
     shopping.iconOverrides = chosen
   }
+}
+
+interface ItemDishRow {
+  list_item_id: string
+  dish_id: string
+}
+
+function collectItemDishes(rows: ItemDishRow[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  for (const row of rows) {
+    const list = out[row.list_item_id]
+    if (list) list.push(row.dish_id)
+    else out[row.list_item_id] = [row.dish_id]
+  }
+  return out
 }
 
 /**
@@ -279,14 +308,24 @@ export async function loadShopping(): Promise<void> {
 export async function reloadList(): Promise<void> {
   if (!supabase || !household.id) return
 
-  const { data, error } = await supabase
-    .from('list_items')
-    .select(LIST_COLUMNS)
-    .eq('household_id', household.id)
+  // The dish tags come along, because the thing that most often makes this
+  // function run is a dish being tapped — and rows arriving without the tag
+  // that explains them would read as "nobody asked for this".
+  const [listResult, dishResult] = await Promise.all([
+    supabase.from('list_items').select(LIST_COLUMNS).eq('household_id', household.id),
+    supabase
+      .from('list_item_dishes')
+      .select('list_item_id, dish_id')
+      .eq('household_id', household.id),
+  ])
 
-  if (error || !data) return
+  if (listResult.error || !listResult.data) return
 
-  shopping.items = (data as ListRow[]).map(toListItem)
+  shopping.items = (listResult.data as ListRow[]).map(toListItem)
+
+  if (!dishResult.error && dishResult.data) {
+    shopping.itemDishes = collectItemDishes(dishResult.data as ItemDishRow[])
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -656,6 +695,7 @@ export async function clearItemIcon(catalogueItemId: string): Promise<void> {
 export function clearShopping(): void {
   shopping.catalogue = []
   shopping.items = []
+  shopping.itemDishes = {}
   shopping.hidden = new Set()
   shopping.useCounts = {}
   shopping.iconOverrides = {}

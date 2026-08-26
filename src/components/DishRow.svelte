@@ -17,8 +17,20 @@
   import CookIcon from './CookIcon.svelte'
   import GroceryIcon from './GroceryIcon.svelte'
   import { type Dish, COOK_LABELS, describeDish } from '../lib/dishes'
+  import { type DishTag, tagStyle, tagsOf } from '../lib/dish-tags'
 
-  let { dish, onclick }: { dish: Dish; onclick: () => void } = $props()
+  let {
+    dish,
+    tags = [],
+    onclick,
+  }: {
+    dish: Dish
+    /** The household's tags, to resolve this dish's ids against. */
+    tags?: DishTag[]
+    onclick: () => void
+  } = $props()
+
+  let mine = $derived(tagsOf(dish.tagIds, tags))
 </script>
 
 <button class="row" {onclick}>
@@ -26,7 +38,12 @@
     <GroceryIcon icon={dish.icon} name={dish.name} size={26} />
   </span>
   <span class="text">
-    <span class="name">{dish.name}</span>
+    <span class="title">
+      <span class="name">{dish.name}</span>
+      {#each mine as tag (tag.id)}
+        <span class="dot" style={tagStyle(tag.colour)} title={tag.name}></span>
+      {/each}
+    </span>
     <span class="meta">
       <!-- The glyph only appears once someone has actually said how much cooking
            it is. "No cook" is the default nobody chose, and a leaf on every row
@@ -89,7 +106,23 @@
     min-width: 0;
   }
 
+  .title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .dot {
+    flex: none;
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--tag-ink);
+  }
+
   .name {
+    min-width: 0;
     color: var(--color-text);
     font-size: var(--text-base);
     font-weight: var(--weight-medium);

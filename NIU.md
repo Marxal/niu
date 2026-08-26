@@ -141,8 +141,14 @@ A **dish** is:
 
 - a name,
 - an icon or emoji,
-- a slot type (protein / carbs / vegetables / other),
-- flags: needs cooking, fast cook, slow cook, no cook,
+- **any number of "part of a meal" tags** — the household's own list, each with a
+  colour, seeded with Protein / Carbs / Vegetables and editable from there.
+  (Round 9 changed this. It began as one slot out of protein / carbs /
+  vegetables / other, and both halves were wrong: a lasagne is protein *and*
+  carbs, and "other" was a shrug rather than an answer.)
+- how much cooking it takes: **no cook / quick / slow**. (§4.2 first listed four
+  flags — needs cooking, fast, slow, no cook — but "needs cooking" is exactly
+  "fast or slow", so it is one question with three answers.)
 - **and optionally, a list of shopping items.**
 
 If the item list is empty, the dish is just a name you can plan a meal with. If it has
@@ -151,7 +157,8 @@ items, it becomes a bundle in the shopping list too, and it works in **both dire
 - **Plan → shop.** Add "Lasagne" to Thursday, and the app asks: *add the four missing
   ingredients to the list?*
 - **Shop → plan.** "Lasagne" also sits in the shopping catalogue as a tappable tile that
-  adds its ingredients in one go.
+  adds its ingredients in one go. Anything a dish put on the list wears a small tag
+  saying which dish wanted it, and an ingredient two dishes share wears both.
 - **Stock → plan.** Later, once the app has purchase data, it can favour dishes whose
   ingredients it thinks are already in the house.
 
