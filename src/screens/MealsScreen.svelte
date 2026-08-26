@@ -8,12 +8,16 @@
   shopping catalogue.
 
   There is no search box. A household has twenty-odd dishes, not three hundred,
-  and a list of twenty is faster to look down than to type into. If the library
+  and a grid of twenty is faster to look at than to type into. If the library
   ever gets long enough to need one, that is the moment to add it.
+
+  A grid of three since round 9, not a column of rows: a library is something
+  you recognise your way around rather than read, and each tile carries its
+  colour and the glyphs of what it is made of. See DishCard.svelte.
 -->
 <script lang="ts">
   import { flip } from 'svelte/animate'
-  import DishRow from '../components/DishRow.svelte'
+  import DishCard from '../components/DishCard.svelte'
   import DishSheet from '../components/DishSheet.svelte'
   import Placeholder from '../components/Placeholder.svelte'
   import { auth } from '../lib/auth.svelte'
@@ -69,10 +73,10 @@
         <p>{strings.dishes.emptyBlurb}</p>
       </div>
     {:else}
-      <div class="rows">
+      <div class="grid">
         {#each library as dish (dish.id)}
           <div animate:flip={{ duration: FLIP_MS }} in:tileIn out:tileOut>
-            <DishRow {dish} onclick={() => (editing = dish)} />
+            <DishCard {dish} tags={dishes.tags} onclick={() => (editing = dish)} />
           </div>
         {/each}
       </div>
@@ -127,10 +131,14 @@
     transform: scale(0.98);
   }
 
-  .rows {
-    display: flex;
-    flex-direction: column;
+  /* Three across, and the rows size to the tallest tile in them so a two-line
+     name can't leave its neighbours short — same rule as the shopping grid. */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-2);
+    grid-auto-rows: 1fr;
+    align-items: stretch;
   }
 
   .empty {

@@ -27,9 +27,16 @@ import {
   type DishDraft,
   diffIngredients,
   isDishCook,
-  isDishSlot,
   isSaveable,
 } from './dishes'
+import {
+  type DishTag,
+  type TagColour,
+  diffTags,
+  isTagColour,
+  nextPosition,
+  sortTags,
+} from './dish-tags'
 import { household } from './household.svelte'
 import { reloadList } from './shopping.svelte'
 import { strings } from './strings'
@@ -39,7 +46,6 @@ interface DishRow {
   id: string
   name: string
   icon: string | null
-  slot: string
   cook: string
   times_added: number
   last_added_at: string | null
@@ -50,34 +56,63 @@ interface DishItemRow {
   catalogue_item_id: string
 }
 
-const DISH_COLUMNS = 'id, name, icon, slot, cook, times_added, last_added_at'
+interface TagRow {
+  id: string
+  name: string
+  colour: string
+  position: number
+}
+
+interface TagLinkRow {
+  dish_id: string
+  tag_id: string
+}
+
+/*
+ * `slot` is deliberately absent. The column still exists and still holds what
+ * round 8 wrote there, but 0009 carried it into tags and nothing reads it any
+ * more — same treatment as list_items.unit in round 6.
+ */
+const DISH_COLUMNS = 'id, name, icon, cook, times_added, last_added_at'
 
 /**
- * A row plus its ingredients. The two enum columns are checked rather than
+ * A row plus what hangs off it. The enum columns are checked rather than
  * trusted: they are constrained in the database, but a value written by a newer
  * version of the app than this one would otherwise flow straight into a type
  * that says it can't exist.
  */
-function toDish(row: DishRow, itemIds: string[]): Dish {
+function toDish(row: DishRow, itemIds: string[], tagIds: string[]): Dish {
   return {
     id: row.id,
     name: row.name,
     icon: row.icon,
-    slot: isDishSlot(row.slot) ? row.slot : 'other',
     cook: isDishCook(row.cook) ? row.cook : 'none',
+    tagIds,
     itemIds,
     timesAdded: row.times_added,
     lastAddedAt: row.last_added_at,
   }
 }
 
+function toTag(row: TagRow): DishTag {
+  return {
+    id: row.id,
+    name: row.name,
+    colour: isTagColour(row.colour) ? row.colour : 'stone',
+    position: row.position,
+  }
+}
+
 class DishesState {
   all = $state<Dish[]>([])
+  /** The household's "part of a meal" labels, in their own order. */
+  tags = $state<DishTag[]>([])
   loading = $state(false)
   error = $state<string | null>(null)
 
   /** Fast lookup for the shopping screen, which resolves a tap to a dish. */
   byId = $derived(new Map(this.all.map((dish) => [dish.id, dish])))
+  tagById = $derived(new Map(this.tags.map((tag) => [tag.id, tag])))
 }
 
 export const dishes = new DishesState()
@@ -86,15 +121,40 @@ export const dishes = new DishesState()
 /* Loading                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** Reads the library and what each dish is made of. */
+/** Collects a join table into a map of parent id → child ids. */
+function group<T>(rows: T[], parent: (row: T) => string, child: (row: T) => string) {
+  const out = new Map<string, string[]>()
+  for (const row of rows) {
+    const key = parent(row)
+    const list = out.get(key)
+    if (list) list.push(child(row))
+    else out.set(key, [child(row)])
+  }
+  return out
+}
+
+/** Reads the library, what each dish is made of, and the household's tags. */
 export async function loadDishes(): Promise<void> {
   if (!supabase || !household.id) return
 
   dishes.loading = true
 
-  const [dishResult, itemResult] = await Promise.all([
+  // Creating on read, the same trick as ensure_default_shop(): there is no
+  // separate moment at which a household would "set up meal parts", and an
+  // empty chip row would look like something failed rather than like a choice.
+  await supabase.rpc('ensure_dish_tags')
+
+  const [dishResult, itemResult, tagResult, linkResult] = await Promise.all([
     supabase.from('dishes').select(DISH_COLUMNS).eq('household_id', household.id),
-    supabase.from('dish_items').select('dish_id, catalogue_item_id').eq('household_id', household.id),
+    supabase
+      .from('dish_items')
+      .select('dish_id, catalogue_item_id')
+      .eq('household_id', household.id),
+    supabase
+      .from('dish_tags')
+      .select('id, name, colour, position')
+      .eq('household_id', household.id),
+    supabase.from('dish_tag_links').select('dish_id, tag_id').eq('household_id', household.id),
   ])
 
   dishes.loading = false
@@ -104,20 +164,31 @@ export async function loadDishes(): Promise<void> {
     return
   }
 
-  // A failed ingredient read is not a failed load: the names are still worth
-  // showing, and every dish simply looks like one with nothing in it yet.
-  const ingredients = new Map<string, string[]>()
-  if (!itemResult.error && itemResult.data) {
-    for (const row of itemResult.data as DishItemRow[]) {
-      const list = ingredients.get(row.dish_id)
-      if (list) list.push(row.catalogue_item_id)
-      else ingredients.set(row.dish_id, [row.catalogue_item_id])
-    }
+  // A failed ingredient or tag read is not a failed load: the names are still
+  // worth showing, and a dish simply looks like one with nothing in it yet.
+  const ingredients = itemResult.error
+    ? new Map<string, string[]>()
+    : group(
+        (itemResult.data ?? []) as DishItemRow[],
+        (r) => r.dish_id,
+        (r) => r.catalogue_item_id,
+      )
+
+  const tagLinks = linkResult.error
+    ? new Map<string, string[]>()
+    : group(
+        (linkResult.data ?? []) as TagLinkRow[],
+        (r) => r.dish_id,
+        (r) => r.tag_id,
+      )
+
+  if (!tagResult.error && tagResult.data) {
+    dishes.tags = sortTags((tagResult.data as TagRow[]).map(toTag))
   }
 
   dishes.error = null
   dishes.all = (dishResult.data as DishRow[]).map((row) =>
-    toDish(row, ingredients.get(row.id) ?? []),
+    toDish(row, ingredients.get(row.id) ?? [], tagLinks.get(row.id) ?? []),
   )
 }
 
@@ -126,26 +197,29 @@ let channel: RealtimeChannel | null = null
 /**
  * Keeps the library in step with the other phone.
  *
- * Both tables re-read the lot on any change, the same as shops.svelte.ts does:
- * dishes change a handful of times a month, the whole library is a few dozen
- * rows, and patching an ingredient list per event is three code paths where one
- * will do.
+ * All four tables re-read the lot on any change, the same as shops.svelte.ts
+ * does: dishes change a handful of times a month, the whole library is a few
+ * dozen rows, and patching an ingredient list per event is four code paths
+ * where one will do.
  */
+const WATCHED = ['dishes', 'dish_items', 'dish_tags', 'dish_tag_links'] as const
+
 export function watchDishes(): () => void {
   if (!supabase || !household.id) return () => {}
 
   const client = supabase
   const filter = `household_id=eq.${household.id}`
 
-  channel = client
-    .channel(`dishes:${household.id}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'dishes', filter }, () => {
-      void loadDishes()
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'dish_items', filter }, () => {
-      void loadDishes()
-    })
-    .subscribe()
+  let subscription = client.channel(`dishes:${household.id}`)
+  for (const table of WATCHED) {
+    subscription = subscription.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table, filter },
+      () => void loadDishes(),
+    )
+  }
+
+  channel = subscription.subscribe()
 
   return () => {
     if (channel) {
@@ -177,7 +251,6 @@ export async function saveDish(
   const fields = {
     name: draft.name.trim(),
     icon: draft.icon,
-    slot: draft.slot,
     cook: draft.cook,
   }
 
@@ -211,29 +284,66 @@ export async function saveDish(
   // its declared type inside one, and this is a string by the time we get here.
   const dishId = written
 
-  const { toAdd, toRemove } = diffIngredients(existing?.itemIds ?? [], draft.itemIds)
+  // Fixed before the closures below: `supabase` and `household.id` are both
+  // nullable module state, and TypeScript rightly stops trusting a narrowing
+  // that a callback could outlive.
+  const client = supabase
+  const hid = household.id
 
-  if (toAdd.length > 0) {
-    const { error } = await supabase.from('dish_items').insert(
-      toAdd.map((catalogueItemId) => ({
-        dish_id: dishId,
-        catalogue_item_id: catalogueItemId,
-        household_id: household.id,
-      })),
+  const items = diffIngredients(existing?.itemIds ?? [], draft.itemIds)
+  const tags = diffTags(existing?.tagIds ?? [], draft.tagIds)
+
+  /*
+   * Four possible writes, all of them skipped when nothing in that set moved —
+   * which is the common case, since most edits are a rename. Any one failing
+   * gives up and re-reads rather than carrying on: the dish is then half-saved
+   * on screen exactly as it is half-saved in the database, which is the honest
+   * thing to show.
+   */
+  const writes: (() => PromiseLike<{ error: unknown }>)[] = []
+
+  if (items.toAdd.length > 0) {
+    writes.push(() =>
+      client.from('dish_items').insert(
+        items.toAdd.map((catalogueItemId) => ({
+          dish_id: dishId,
+          catalogue_item_id: catalogueItemId,
+          household_id: hid,
+        })),
+      ),
     )
-    if (error) {
-      dishes.error = strings.dishes.saveFailed
-      await loadDishes()
-      return false
-    }
   }
 
-  if (toRemove.length > 0) {
-    const { error } = await supabase
-      .from('dish_items')
-      .delete()
-      .eq('dish_id', dishId)
-      .in('catalogue_item_id', toRemove)
+  if (items.toRemove.length > 0) {
+    writes.push(() =>
+      client
+        .from('dish_items')
+        .delete()
+        .eq('dish_id', dishId)
+        .in('catalogue_item_id', items.toRemove),
+    )
+  }
+
+  if (tags.toAdd.length > 0) {
+    writes.push(() =>
+      client.from('dish_tag_links').insert(
+        tags.toAdd.map((tagId) => ({
+          dish_id: dishId,
+          tag_id: tagId,
+          household_id: hid,
+        })),
+      ),
+    )
+  }
+
+  if (tags.toRemove.length > 0) {
+    writes.push(() =>
+      client.from('dish_tag_links').delete().eq('dish_id', dishId).in('tag_id', tags.toRemove),
+    )
+  }
+
+  for (const write of writes) {
+    const { error } = await write()
     if (error) {
       dishes.error = strings.dishes.saveFailed
       await loadDishes()
@@ -244,6 +354,94 @@ export async function saveDish(
   dishes.error = null
   await loadDishes()
   return true
+}
+
+/* -------------------------------------------------------------------------- */
+/* The tags themselves                                                         */
+/* -------------------------------------------------------------------------- */
+
+/** Writes a new "part of a meal". Returns its id so the editor can select it. */
+export async function createTag(
+  rawName: string,
+  colour: TagColour,
+  userId: string,
+): Promise<string | null> {
+  if (!supabase || !household.id) return null
+
+  const name = rawName.trim()
+  if (name === '') return null
+
+  const { data, error } = await supabase
+    .from('dish_tags')
+    .insert({
+      household_id: household.id,
+      name,
+      colour,
+      position: nextPosition(dishes.tags),
+      created_by: userId,
+    })
+    .select('id, name, colour, position')
+    .maybeSingle()
+
+  if (error || !data) {
+    dishes.error =
+      error?.code === '23505' ? strings.dishes.tagDuplicate : strings.dishes.saveFailed
+    return null
+  }
+
+  dishes.error = null
+  dishes.tags = sortTags([...dishes.tags, toTag(data as TagRow)])
+  return (data as TagRow).id
+}
+
+/** Renames or recolours one. */
+export async function updateTag(
+  tagId: string,
+  changes: { name?: string; colour?: TagColour },
+): Promise<boolean> {
+  if (!supabase) return false
+
+  const row: Record<string, unknown> = {}
+  if (changes.name !== undefined) {
+    const name = changes.name.trim()
+    if (name === '') return false
+    row.name = name
+  }
+  if (changes.colour !== undefined) row.colour = changes.colour
+  if (Object.keys(row).length === 0) return true
+
+  const { error } = await supabase.from('dish_tags').update(row).eq('id', tagId)
+
+  if (error) {
+    dishes.error =
+      error.code === '23505' ? strings.dishes.tagDuplicate : strings.dishes.saveFailed
+    return false
+  }
+
+  dishes.error = null
+  await loadDishes()
+  return true
+}
+
+/**
+ * Throws a tag away. Every dish carrying it loses it, by cascade — which is
+ * why the editor asks first: a tag is a label on many dishes, not one.
+ */
+export async function removeTag(tagId: string): Promise<void> {
+  if (!supabase) return
+
+  const previous = dishes.tags
+  dishes.tags = dishes.tags.filter((tag) => tag.id !== tagId)
+
+  const { error } = await supabase.from('dish_tags').delete().eq('id', tagId)
+
+  if (error) {
+    dishes.tags = previous
+    dishes.error = strings.dishes.saveFailed
+    return
+  }
+
+  await loadDishes()
 }
 
 /**
@@ -325,6 +523,7 @@ export async function addDishToList(dishId: string): Promise<number | null> {
 /** Clears everything on sign-out so nothing carries into the next account. */
 export function clearDishes(): void {
   dishes.all = []
+  dishes.tags = []
   dishes.error = null
   dishes.loading = false
 }

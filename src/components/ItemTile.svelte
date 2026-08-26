@@ -23,7 +23,9 @@
   Sized so the whole tile is the tap target, never just the label.
 -->
 <script lang="ts">
+  import DishBadges from './DishBadges.svelte'
   import GroceryIcon from './GroceryIcon.svelte'
+  import type { DishBadge } from '../lib/dishes'
   import { strings } from '../lib/strings'
 
   let {
@@ -36,6 +38,7 @@
     ifConvenient = false,
     quantity = null,
     note = null,
+    badges = [],
     layout = 'tile',
     onclick,
     onlongpress,
@@ -56,6 +59,8 @@
     quantity?: number | null
     /** The free note, clipped to one line here. */
     note?: string | null
+    /** The dishes that asked for this, if any. See DishBadges.svelte. */
+    badges?: DishBadge[]
     onclick?: () => void
     /**
      * Press and hold. Details on the list; the tile menu in the picker.
@@ -124,6 +129,10 @@
       {#if showQuantity}<span class="qty">×{quantity}</span>{/if}
       {#if note}<span class="note" title={note}>{note}</span>{/if}
     </span>
+  {/if}
+
+  {#if badges.length > 0}
+    <DishBadges {badges} {layout} />
   {/if}
 
   {#if isNew}
@@ -238,6 +247,16 @@
   .tile.row .badge {
     position: static;
     flex: none;
+  }
+
+  /* In a row the badges sit inline, after the name and before the quantity;
+     in a tile they are the last line of a stack and centre themselves. */
+  .tile.row :global(.badges) {
+    flex: 0 1 auto;
+  }
+
+  .tile :global(.badges) {
+    justify-content: center;
   }
 
   .name {

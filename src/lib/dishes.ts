@@ -9,11 +9,9 @@
  * empty ingredient list — nothing may assume a dish knows what it is made of.
  */
 
+import { type DishTag, DEFAULT_TAG_COLOUR, type TagColour, tagsOf } from './dish-tags'
 import { matchesSearch, type PickerItem } from './list-view'
 import { strings } from './strings'
-
-/** Which part of a meal this is. §4.2's "slot type". */
-export type DishSlot = 'protein' | 'carbs' | 'vegetables' | 'other'
 
 /**
  * How much cooking it takes. §4.2 lists four flags — needs cooking, fast cook,
@@ -22,7 +20,6 @@ export type DishSlot = 'protein' | 'carbs' | 'vegetables' | 'other'
  */
 export type DishCook = 'none' | 'fast' | 'slow'
 
-export const DISH_SLOTS: readonly DishSlot[] = ['protein', 'carbs', 'vegetables', 'other']
 export const DISH_COOKS: readonly DishCook[] = ['none', 'fast', 'slow']
 
 export interface Dish {
@@ -30,8 +27,13 @@ export interface Dish {
   name: string
   /** Same format as a catalogue item's icon — see icon-ref.ts. */
   icon: string | null
-  slot: DishSlot
   cook: DishCook
+  /**
+   * Which parts of a meal this is, as dish_tags ids. Any number of them,
+   * including none — see dish-tags.ts for why this replaced round 8's single
+   * `slot`.
+   */
+  tagIds: string[]
   /** Catalogue item ids, in no meaningful order. */
   itemIds: string[]
   /** How many times its tile has been tapped onto the shopping list. */
@@ -43,13 +45,9 @@ export interface Dish {
 export interface DishDraft {
   name: string
   icon: string | null
-  slot: DishSlot
   cook: DishCook
+  tagIds: string[]
   itemIds: string[]
-}
-
-export function isDishSlot(value: unknown): value is DishSlot {
-  return DISH_SLOTS.includes(value as DishSlot)
 }
 
 export function isDishCook(value: unknown): value is DishCook {
@@ -129,13 +127,6 @@ export function diffIngredients(
   }
 }
 
-export const SLOT_LABELS: Record<DishSlot, string> = {
-  protein: strings.dishes.slotProtein,
-  carbs: strings.dishes.slotCarbs,
-  vegetables: strings.dishes.slotVegetables,
-  other: strings.dishes.slotOther,
-}
-
 export const COOK_LABELS: Record<DishCook, string> = {
   none: strings.dishes.cookNone,
   fast: strings.dishes.cookFast,
@@ -143,17 +134,20 @@ export const COOK_LABELS: Record<DishCook, string> = {
 }
 
 /**
- * The line under a dish's name in the library: what part of a meal it is, how
- * much cooking it takes, and how many things it needs.
+ * The line under a dish's name: how much cooking it takes, and how many things
+ * it needs.
  *
- * The two defaults are left out rather than printed. 'Other' and 'No cook' are
- * what a dish has when nobody has said anything about it, and a line that reads
- * "Other · No cook · 4 things" for every dish in the library is three words of
- * noise around the one fact that varies. Say what was actually decided.
+ * "No cook" is left out rather than printed. It is what a dish has when nobody
+ * has said anything about it, and a line reading "No cook · 4 things" for every
+ * dish in the library is noise around the one fact that varies. Say what was
+ * actually decided.
+ *
+ * The meal-part tags are deliberately *not* in here. They are coloured chips
+ * now, drawn rather than spelled, and repeating them as words beside their own
+ * chip would say the same thing twice.
  */
 export function describeDish(dish: Dish): string {
   const parts: string[] = []
-  if (dish.slot !== 'other') parts.push(SLOT_LABELS[dish.slot])
   if (dish.cook !== 'none') parts.push(COOK_LABELS[dish.cook])
   parts.push(
     dish.itemIds.length === 0
@@ -161,6 +155,63 @@ export function describeDish(dish: Dish): string {
       : strings.dishes.itemCount(dish.itemIds.length),
   )
   return parts.join(' · ')
+}
+
+/**
+ * A dish, as a small mark on a shopping list row: "this is here because of the
+ * lasagne."
+ *
+ * The colour is the dish's *first* meal-part tag, which is a deliberate choice
+ * and worth saying why. A dish can carry several, but a badge is a few
+ * millimetres wide — it can carry one. The first one in the household's own tag
+ * order is the most useful single answer, and it is stable: it doesn't change
+ * because someone reordered the links.
+ */
+export interface DishBadge {
+  id: string
+  name: string
+  icon: string | null
+  colour: TagColour
+}
+
+/**
+ * Turns "which dishes put things on the list" into badges the tiles can draw.
+ *
+ * Keyed by *list item* id rather than catalogue item id, because that is what
+ * the join table holds and what a row on the list actually is. A dish that has
+ * been deleted since is skipped rather than drawn nameless — the tag rows
+ * cascade away, but a realtime delete can arrive in either order.
+ */
+export function dishBadges(
+  itemDishes: Readonly<Record<string, readonly string[]>>,
+  library: readonly Dish[],
+  tags: readonly DishTag[],
+): Map<string, DishBadge[]> {
+  const byId = new Map(library.map((dish) => [dish.id, dish]))
+  const out = new Map<string, DishBadge[]>()
+
+  for (const [listItemId, dishIds] of Object.entries(itemDishes)) {
+    const badges = dishIds.flatMap((id) => {
+      const dish = byId.get(id)
+      if (!dish) return []
+      const first = tagsOf(dish.tagIds, tags)[0]
+      return [
+        {
+          id: dish.id,
+          name: dish.name,
+          icon: dish.icon,
+          colour: first?.colour ?? DEFAULT_TAG_COLOUR,
+        },
+      ]
+    })
+
+    // Two dishes wanting the same thing should always read in the same order,
+    // whichever tap happened first.
+    badges.sort((a, b) => a.name.localeCompare(b.name))
+    if (badges.length > 0) out.set(listItemId, badges)
+  }
+
+  return out
 }
 
 /** True when the draft is worth saving. A dish with no name is not a dish. */

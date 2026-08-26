@@ -924,3 +924,132 @@ shown a letter. No console errors, nothing scrolls sideways. 113 unit tests.
 - **New emoji.** The added items use emoji only where an OpenMoji drawing is
   already shipped; the rest use their line icon. Fetching more is a script run,
   not a code change, and can happen any time.
+
+---
+
+## Round 9 — Parts of a meal, and who asked for what
+
+**Branch:** `claude/round-5-dishes-8fh855`
+
+The other four of Marçal's notes, done together because they are one idea rather
+than four: a dish can belong to several parts of a meal, those parts have
+colours the household chooses, the library shows them, and the shopping list
+says which dish put each thing on it.
+
+### What changed
+
+- **A dish can be several parts of a meal at once.** A lasagne is protein *and*
+  carbs. Round 8 made you pick one of four, and the fourth was "other", which
+  was a shrug rather than an answer.
+- **The parts are yours.** Three arrive to start with — Protein, Carbs,
+  Vegetables — and from the first load they are your rows: rename them, recolour
+  them, delete them, write your own. Where "Other" used to be there is now
+  **Add**.
+- **Eight colours, and they are the whole palette.** Picked from swatches, not a
+  wheel.
+- **The list says which dish wanted each thing.** Tap Lasagne and its tiles wear
+  a small mark with the lasagne's own picture, in the colour of its first part.
+  Tap Bruschetta too and the tomatoes wear both — including when the tomatoes
+  were already on the list before either dish was tapped.
+- **The library is a grid of three.** Each tile carries its colour, a dot per
+  part, how much cooking it is, and the glyphs of what it is made of.
+
+### Why the colour is a name and not a colour
+
+`dish_tags.colour` holds `'clay'`, never `#a44f36`. The app turns that into
+`var(--color-tag-clay)`, so the one rule this project's design has — no colour
+written down outside the token file — stays true even for a colour the *user*
+picked.
+
+That is not bookkeeping. It is what makes the eight safe: each has a light value
+and a dark one, and every one of the sixteen clears 4.5:1 against the fill it
+sits on. Checked with arithmetic, not by eye — five of them didn't, first time
+round, and were darkened until they did. A free colour wheel can produce
+yellow-on-white, and on a list two people read in a supermarket that is a real
+problem rather than a matter of taste.
+
+### The bug the test found
+
+`add_dish_to_list()` writes `list_item_dishes`, which deliberately has **no**
+insert policy — the tag has to match the dish's real ingredient list, so nobody
+should be able to staple one on by hand. But round 8 made that function
+`security invoker` on the principle that it needed no privilege the caller
+hadn't got. With RLS applying to its own writes, the one thing allowed to write
+that table couldn't write it either: every tap returned "1 added" and silently
+tagged nothing.
+
+It is `security definer` now, and the household check that came free from RLS is
+made by hand instead — the same shape as `record_shop()` in round 7. Verified:
+as the second household, tapping the first household's dish still returns 0 and
+touches neither list.
+
+### How it was checked
+
+Every migration run in order against a real PostgreSQL 16 on a fresh database,
+then re-run to confirm 0009 is idempotent — including the backfill, which
+carries each existing dish's old `slot` into the matching tag and skips
+'other'.
+
+The tagging arithmetic, in full: tomatoes put on the list by hand, then Lasagne
+tapped — **1** row added (the pasta) and **both** its ingredients tagged,
+including the tomatoes that were already there. Then Bruschetta — the tomatoes
+carry **2** tags. Tapping Lasagne again adds nothing and changes no tag.
+Finishing the shop deletes the rows and takes all four tags with them. Deleting
+a part leaves every dish standing and removes only that link.
+
+A hex value and an invented colour name were both refused by the check
+constraint; a duplicate part name by the index. As the second household:
+their tags, links and list tags all read as **0 rows**; recolouring and deleting
+changed **0 rows**; stapling a tag onto their dish, claiming a tag for their
+household, and asserting a list tag by hand were each refused by a policy.
+
+Rendered in a real Chromium at 412×915 in both themes: the library grid, the
+editor's chip row, the colour picker, and the list wearing dish marks in both
+the tile and the row view. No console errors, nothing scrolls sideways. 133
+unit tests, 22 of them new.
+
+### How to test it
+
+> **Run `supabase/migrations/0009_dish_tags.sql`** in the Supabase SQL editor
+> first. Any dish you already made keeps its part of a meal — the migration
+> carries it across.
+
+1. **Meals.** The library is a grid of three now. Each tile is in the colour of
+   its first part, with a dot per part and the glyphs of its ingredients along
+   the bottom.
+2. **Open a dish.** The "Part of the meal" row is chips: tap to add and remove,
+   as many as you like. Tap **Add** to write a new one — give it a name and a
+   colour.
+3. **Long-press a chip** to rename or recolour it, or delete it. Deleting takes
+   it off every dish that had it; the dishes stay.
+4. **Shopping →** put something on the list by hand that one of your dishes also
+   needs — say tomatoes.
+5. Open **Dishes** and tap that dish. Every one of its ingredients now wears a
+   small mark with the dish's picture, **including the tomatoes you had
+   already**.
+6. Tap a second dish that shares that ingredient. The tomatoes should wear
+   **both** marks.
+7. Switch **Settings → List view → List**. In row view the first mark shows the
+   dish's name in words.
+8. Finish a shop. The marks go with the rows — they last exactly as long as the
+   reason for them does.
+
+### Deliberately not done
+
+- **Reordering the parts by hand.** They keep the order they were written in.
+  A drag handle on a chip row is fiddly on a phone and this is a list of four.
+- **Filtering the library by part.** The colours make it scannable; a filter is
+  worth adding the day the library is long enough to need one.
+- **Untagging one thing from one dish.** The rows can be deleted — the policy
+  allows it — but nothing in the app does it yet. The tag disappears when the
+  thing is bought, which covers the ordinary case.
+- **`dishes.slot` is still a column.** Backfilled and then never read again.
+  Dropping a column is the one change re-running a migration cannot undo, and
+  the same call was made for `list_items.unit` in round 6.
+
+### Next up
+
+Feature round 6: the meal planner — days, slots, and a week that fills the
+shopping list. `NIU.md` §4.2 now carries the two things this round settled that
+it will need: a slot can hold a plain shopping item as well as a dish, and a
+dish's parts are a set rather than one value.

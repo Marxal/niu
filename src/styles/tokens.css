@@ -45,6 +45,35 @@
   --color-tab-meals: #5f7d52;
   --color-tab-calendar: #3f6f8f;
 
+  /* ---- Tag colours ------------------------------------------------------
+     The eight a household can paint a meal-part tag with. dish_tags.colour
+     holds the *name* and never a value (see 0009_dish_tags.sql), so a colour
+     is still only ever written down here. Each is a pair: the ink, used for the
+     label and the border, and a tinted fill behind it. All eight sit well below
+     full saturation for the same reason the tile states do — a library of dish
+     tiles has to read as one set, not a bag of highlighters.
+
+     Every one of the sixteen clears 4.5:1 against the fill it sits on, in both
+     themes — checked, not eyeballed. That is the accessibility floor NIU.md §8
+     sets, and it is the reason the household picks from eight rather than from
+     a wheel: a wheel cannot promise it. */
+  --color-tag-clay: #a44f36;
+  --color-tag-clay-soft: #f6e5df;
+  --color-tag-rose: #a14d61;
+  --color-tag-rose-soft: #f8e4e9;
+  --color-tag-amber: #886519;
+  --color-tag-amber-soft: #f5ecd8;
+  --color-tag-moss: #547345;
+  --color-tag-moss-soft: #e7efe3;
+  --color-tag-sage: #577063;
+  --color-tag-sage-soft: #e8eeea;
+  --color-tag-sky: #456e87;
+  --color-tag-sky-soft: #e2ecf1;
+  --color-tag-plum: #75568e;
+  --color-tag-plum-soft: #eee7f4;
+  --color-tag-stone: #6d645d;
+  --color-tag-stone-soft: #edeae6;
+
   /* ---- Surfaces --------------------------------------------------------- */
   --color-bg: #fbf7f2;              /* the page */
   --color-surface: #ffffff;         /* cards, the bottom nav */
@@ -174,6 +203,23 @@
     --color-tab-meals: #96b487;
     --color-tab-calendar: #7fadcc;
 
+    --color-tag-clay: #e8916f;
+    --color-tag-clay-soft: #3a2119;
+    --color-tag-rose: #e88a9d;
+    --color-tag-rose-soft: #3a1f26;
+    --color-tag-amber: #d8b05a;
+    --color-tag-amber-soft: #332a17;
+    --color-tag-moss: #92bd80;
+    --color-tag-moss-soft: #1f2b1a;
+    --color-tag-sage: #9ab8a8;
+    --color-tag-sage-soft: #1d2926;
+    --color-tag-sky: #86b3cd;
+    --color-tag-sky-soft: #1b2831;
+    --color-tag-plum: #b899cf;
+    --color-tag-plum-soft: #2a2033;
+    --color-tag-stone: #b0a69d;
+    --color-tag-stone-soft: #29251f;
+
     --color-bg: #14110f;
     --color-surface: #1d1917;
     --color-surface-sunken: #100e0d;
@@ -216,6 +262,23 @@
   --color-tab-shopping: #e8825e;
   --color-tab-meals: #96b487;
   --color-tab-calendar: #7fadcc;
+
+  --color-tag-clay: #e8916f;
+  --color-tag-clay-soft: #3a2119;
+  --color-tag-rose: #e88a9d;
+  --color-tag-rose-soft: #3a1f26;
+  --color-tag-amber: #d8b05a;
+  --color-tag-amber-soft: #332a17;
+  --color-tag-moss: #92bd80;
+  --color-tag-moss-soft: #1f2b1a;
+  --color-tag-sage: #9ab8a8;
+  --color-tag-sage-soft: #1d2926;
+  --color-tag-sky: #86b3cd;
+  --color-tag-sky-soft: #1b2831;
+  --color-tag-plum: #b899cf;
+  --color-tag-plum-soft: #2a2033;
+  --color-tag-stone: #b0a69d;
+  --color-tag-stone-soft: #29251f;
 
   --color-bg: #14110f;
   --color-surface: #1d1917;

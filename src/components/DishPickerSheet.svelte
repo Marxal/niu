@@ -63,7 +63,7 @@
     {:else}
       <div class="rows">
         {#each library as dish (dish.id)}
-          <DishRow {dish} onclick={() => onPick(dish.id)} />
+          <DishRow {dish} tags={dishes.tags} onclick={() => onPick(dish.id)} />
         {/each}
       </div>
     {/if}

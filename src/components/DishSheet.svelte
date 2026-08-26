@@ -27,14 +27,10 @@
   import GroceryIcon from './GroceryIcon.svelte'
   import IconPickerSheet from './IconPickerSheet.svelte'
   import IngredientPicker from './IngredientPicker.svelte'
-  import {
-    type Dish,
-    type DishCook,
-    type DishSlot,
-    DISH_COOKS,
-    DISH_SLOTS,
-    isSaveable,
-  } from '../lib/dishes'
+  import TagChip from './TagChip.svelte'
+  import TagSheet from './TagSheet.svelte'
+  import { type Dish, type DishCook, DISH_COOKS, isSaveable } from '../lib/dishes'
+  import type { DishTag } from '../lib/dish-tags'
   import { dishes, removeDish, saveDish } from '../lib/dishes.svelte'
   import { strings } from '../lib/strings'
 
@@ -57,13 +53,6 @@
     onClose: () => void
   } = $props()
 
-  const slotLabels: Record<DishSlot, string> = {
-    protein: strings.dishes.slotProtein,
-    carbs: strings.dishes.slotCarbs,
-    vegetables: strings.dishes.slotVegetables,
-    other: strings.dishes.slotOther,
-  }
-
   const cookLabels: Record<DishCook, string> = {
     none: strings.dishes.cookNone,
     fast: strings.dishes.cookFast,
@@ -78,17 +67,24 @@
   /* svelte-ignore state_referenced_locally */
   let icon = $state<string | null>(dish?.icon ?? null)
   /* svelte-ignore state_referenced_locally */
-  let slot = $state<DishSlot>(dish?.slot ?? 'other')
-  /* svelte-ignore state_referenced_locally */
   let cook = $state<DishCook>(dish?.cook ?? 'none')
+  /* svelte-ignore state_referenced_locally */
+  let tagIds = $state<string[]>([...(dish?.tagIds ?? [])])
   /* svelte-ignore state_referenced_locally */
   let itemIds = $state<string[]>([...(dish?.itemIds ?? seedItemIds)])
 
   let pickingIcon = $state(false)
   let confirmingDelete = $state(false)
   let saving = $state(false)
+  /**
+   * The tag editor: 'new' from the Add button, a tag from a long press on its
+   * chip. Both open the same sheet — it is the same three questions either way.
+   */
+  let editingTag = $state<DishTag | 'new' | null>(null)
 
-  let draft = $derived({ name, icon, slot, cook, itemIds })
+  let chosenTags = $derived(new Set(tagIds))
+
+  let draft = $derived({ name, icon, cook, tagIds, itemIds })
   let canSave = $derived(isSaveable(draft) && !saving)
 
   async function save() {
@@ -105,6 +101,20 @@
     confirmingDelete = false
     if (dish) void removeDish(dish.id)
     onClose()
+  }
+
+  function toggleTag(tagId: string) {
+    tagIds = chosenTags.has(tagId)
+      ? tagIds.filter((id) => id !== tagId)
+      : [...tagIds, tagId]
+  }
+
+  /**
+   * A part just written or renamed. Selecting it is the point of having written
+   * it — nobody adds "Pudding" in the middle of editing a dish for later.
+   */
+  function tagSaved(tagId: string) {
+    if (!chosenTags.has(tagId)) tagIds = [...tagIds, tagId]
   }
 </script>
 
@@ -157,20 +167,39 @@
       />
     </div>
 
+    <!-- Tags, not one choice out of four. A lasagne is protein *and* carbs, and
+         the fourth value used to be "other", which was a shrug. Long-press a
+         chip to rename or recolour it; Add writes a new one. -->
     <div class="control">
-      <span class="label">{strings.dishes.slotTitle}</span>
-      <div class="segmented" role="group" aria-label={strings.dishes.slotTitle}>
-        {#each DISH_SLOTS as option (option)}
-          <button
-            class="segment"
-            class:on={slot === option}
-            aria-pressed={slot === option}
-            onclick={() => (slot = option)}
-          >
-            {slotLabels[option]}
-          </button>
+      <span class="label">{strings.dishes.tagsTitle}</span>
+      <div class="chips" role="group" aria-label={strings.dishes.tagsTitle}>
+        {#each dishes.tags as tag (tag.id)}
+          <TagChip
+            {tag}
+            on={chosenTags.has(tag.id)}
+            onclick={() => toggleTag(tag.id)}
+            onlongpress={() => (editingTag = tag)}
+          />
         {/each}
+        <button class="add-tag" onclick={() => (editingTag = 'new')}>
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          {strings.dishes.tagsAdd}
+        </button>
       </div>
+      {#if dishes.tags.length === 0}
+        <p class="none">{strings.dishes.tagNone}</p>
+      {/if}
     </div>
 
     <div class="control">
@@ -222,6 +251,17 @@
     </button>
   </div>
 </div>
+
+{#if editingTag}
+  {#key editingTag === 'new' ? 'new' : editingTag.id}
+    <TagSheet
+      tag={editingTag === 'new' ? null : editingTag}
+      {userId}
+      onSaved={tagSaved}
+      onClose={() => (editingTag = null)}
+    />
+  {/key}
+{/if}
 
 {#if pickingIcon}
   <IconPickerSheet
@@ -344,6 +384,30 @@
   .label {
     color: var(--color-text-muted);
     font-size: var(--text-sm);
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .add-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 2.25rem;
+    padding: 0 var(--space-3);
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-full);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .none {
+    color: var(--color-text-faint);
+    font-size: var(--text-xs);
   }
 
   /* Same segmented control as Settings. Four across fits at 412px because the

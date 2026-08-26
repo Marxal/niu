@@ -228,10 +228,10 @@ list row per ingredient, ignores the ones already on the list, counts the dish a
 used, and returns how many rows it actually added — one round trip rather than
 one per ingredient, and the count is the truth rather than the app's guess.
 
-**It is deliberately not `security definer`**, unlike `record_shop()`. It needs
-no privilege the caller hasn't already got: RLS on `dishes` hides another
-household's dish from it, and every insert goes through the list's own insert
-policy. A function that doesn't need to escalate shouldn't.
+It shipped as a plain (invoker) function, on the principle that it needed no
+privilege the caller hadn't already got. **Round 9 replaces it** with a
+`security definer` version — see that section below for why — so if you are
+setting a project up from scratch, the one that ends up installed is 0009's.
 
 Afterwards, check **Database → Replication**: both `dishes` and `dish_items`
 should have joined the `supabase_realtime` publication, so a dish written on one
@@ -258,3 +258,46 @@ household typed itself is untouched — those rows carry a `household_id` and th
 file only ever writes the shared, `household_id is null` ones.
 
 Nothing else changed in the database this round.
+
+---
+
+## Round 9: parts of a meal, and who asked for what
+
+One file. In the **SQL Editor**:
+
+1. `supabase/migrations/0009_dish_tags.sql`
+
+It adds three tables. `dish_tags` is the household's own list of "part of a
+meal" labels, each with a colour; `dish_tag_links` says which of them a dish
+carries — many, not one; `list_item_dishes` records which dish put a thing on
+the shopping list, and can hold two rows for one thing when two dishes share it.
+
+**The colour is a name.** `colour` is checked against eight words, and the app
+turns each into a pair of CSS variables. That keeps every colour in this project
+inside one token file even when the user picked it, and it is what lets the
+eight be checked for contrast in both themes.
+
+**It also carries round 8's data across.** Every existing household gets the
+three starting tags, and every dish with a `slot` of protein, carbs or
+vegetables gets the matching one linked. `slot` is left on the table, holding
+what it held, and never read again. Anything that was 'other' gets no tag, which
+is right — 'other' never meant anything.
+
+**`add_dish_to_list()` is replaced, and becomes `security definer`.**
+`list_item_dishes` has no insert policy on purpose: a tag has to match the
+dish's real ingredient list, not be something anyone can staple on. With the
+function running as the caller, RLS applied to its own writes and the one thing
+allowed to write that table could not. Escalating means the household check that
+came free from RLS is made by hand instead — the `is_household_member` line in
+the function — exactly as `record_shop()` does it.
+
+Afterwards, check **Database → Replication**: `dish_tags`, `dish_tag_links` and
+`list_item_dishes` should all have joined the `supabase_realtime` publication.
+The last one matters most: list rows already arrive on the other phone that way,
+and a row arriving without the tag that explains it reads as "nobody asked for
+this".
+
+### Nothing is lost if you don't run it
+
+The Meals tab shows an empty chip row and the library goes uncoloured; the
+shopping list simply never says which dish wanted what. Nothing errors.

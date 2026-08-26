@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   type Dish,
   COOK_LABELS,
-  SLOT_LABELS,
   describeDish,
+  dishBadges,
   diffIngredients,
   dishPicks,
   filterDishes,
@@ -17,8 +17,8 @@ function dish(overrides: Partial<Dish> = {}): Dish {
     id: 'd1',
     name: 'Lasagne',
     icon: null,
-    slot: 'other',
     cook: 'slow',
+    tagIds: [],
     itemIds: [],
     timesAdded: 0,
     lastAddedAt: null,
@@ -139,21 +139,26 @@ describe('diffIngredients', () => {
 
 describe('describeDish', () => {
   it('says what was decided, and how many things it needs', () => {
-    const line = describeDish(dish({ slot: 'protein', cook: 'slow', itemIds: ['a', 'b'] }))
-    expect(line).toBe(`${SLOT_LABELS.protein} · ${COOK_LABELS.slow} · 2 things`)
+    const line = describeDish(dish({ cook: 'slow', itemIds: ['a', 'b'] }))
+    expect(line).toBe(`${COOK_LABELS.slow} · 2 things`)
   })
 
-  it('leaves out the two defaults, which nobody chose', () => {
-    expect(describeDish(dish({ slot: 'other', cook: 'none', itemIds: ['a'] }))).toBe('1 thing')
+  it('leaves out the default nobody chose', () => {
+    expect(describeDish(dish({ cook: 'none', itemIds: ['a'] }))).toBe('1 thing')
   })
 
   it('still says something about a dish that is only a name', () => {
-    expect(describeDish(dish({ slot: 'other', cook: 'none' }))).not.toBe('')
+    expect(describeDish(dish({ cook: 'none' }))).not.toBe('')
+  })
+
+  it('never spells out the tags — they are drawn as chips beside it', () => {
+    const tagged = describeDish(dish({ tagIds: ['t1', 't2'], cook: 'none', itemIds: ['a'] }))
+    expect(tagged).toBe(describeDish(dish({ tagIds: [], cook: 'none', itemIds: ['a'] })))
   })
 })
 
 describe('isSaveable', () => {
-  const draft = { icon: null, slot: 'other' as const, cook: 'none' as const, itemIds: [] }
+  const draft = { icon: null, cook: 'none' as const, tagIds: [], itemIds: [] }
 
   it('needs a name', () => {
     expect(isSaveable({ ...draft, name: 'Lasagne' })).toBe(true)
@@ -163,5 +168,41 @@ describe('isSaveable', () => {
 
   it('does not need ingredients — a dish can just be a name (§4.2)', () => {
     expect(isSaveable({ ...draft, name: 'Eating out' })).toBe(true)
+  })
+})
+
+describe('dishBadges', () => {
+  const tags = [
+    { id: 'protein', name: 'Protein', colour: 'clay' as const, position: 0 },
+    { id: 'carbs', name: 'Carbs', colour: 'amber' as const, position: 1 },
+  ]
+  const library = [
+    dish({ id: 'lasagne', name: 'Lasagne', tagIds: ['carbs', 'protein'] }),
+    dish({ id: 'salad', name: 'Big salad', tagIds: [] }),
+  ]
+
+  it('takes the colour from the dish’s first tag, in tag order', () => {
+    const badges = dishBadges({ row1: ['lasagne'] }, library, tags)
+    // The links say carbs first; the household's order says protein first.
+    expect(badges.get('row1')?.[0]?.colour).toBe('clay')
+  })
+
+  it('falls back to the default colour for a dish with no tags', () => {
+    const badges = dishBadges({ row1: ['salad'] }, library, tags)
+    expect(badges.get('row1')?.[0]?.colour).toBe('stone')
+  })
+
+  it('carries both dishes when two of them want the same thing', () => {
+    const badges = dishBadges({ row1: ['lasagne', 'salad'] }, library, tags)
+    expect(badges.get('row1')?.map((b) => b.name)).toEqual(['Big salad', 'Lasagne'])
+  })
+
+  it('skips a dish that has been deleted rather than drawing it nameless', () => {
+    const badges = dishBadges({ row1: ['gone'] }, library, tags)
+    expect(badges.has('row1')).toBe(false)
+  })
+
+  it('has nothing to say about a row nobody’s dish asked for', () => {
+    expect(dishBadges({}, library, tags).size).toBe(0)
   })
 })
