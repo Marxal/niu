@@ -43,8 +43,8 @@ export const strings = {
       blurb: "This is where the shared list will live, ordered the way you two walk the shop.",
     },
     meals: {
-      heading: 'This week’s meals',
-      blurb: 'This is where the weekly planner will live, with ingredients that flow into the shopping list.',
+      heading: 'Dishes',
+      blurb: 'The things you cook, ready to drop onto the shopping list — and, next round, onto a week.',
     },
     calendar: {
       heading: 'The household calendar',
@@ -127,6 +127,59 @@ export const strings = {
     updateFailed: "Couldn't save that just now. Try again in a moment.",
   },
 
+  dishes: {
+    // The library, on the Meals tab
+    title: 'Dishes',
+    hint: 'A dish is a name and, if you want, the things it is made of. Tap one in the shopping list to add all of them at once.',
+    emptyTitle: 'No dishes yet',
+    emptyBlurb: 'Add the things you actually cook. Even just a name is useful — the ingredients can come later.',
+    new: 'New dish',
+    edit: 'Edit dish',
+    plannerNote: 'The weekly planner comes next. These are the dishes it will be built from.',
+    // The category the dishes appear as, in the shopping catalogue
+    categoryName: 'Dishes',
+    // The editor
+    nameLabel: 'Name',
+    namePlaceholder: 'Lasagne, tacos, that rice thing…',
+    iconLabel: 'Picture',
+    slotTitle: 'Part of the meal',
+    slotProtein: 'Protein',
+    slotCarbs: 'Carbs',
+    slotVegetables: 'Veg',
+    slotOther: 'Other',
+    cookTitle: 'Cooking',
+    cookNone: 'No cook',
+    cookFast: 'Quick',
+    cookSlow: 'Slow',
+    ingredientsTitle: 'What it needs',
+    ingredientsHint: 'Optional. A dish with no ingredients is still a dish you can plan.',
+    ingredientsEmpty: 'Nothing yet.',
+    ingredientSearch: 'Search the catalogue…',
+    ingredientSuggestions: 'Often bought',
+    ingredientNone: 'Nothing matches that.',
+    removeIngredient: 'Take this out',
+    save: 'Save',
+    create: 'Add it',
+    cancel: 'Cancel',
+    delete: 'Delete dish',
+    deleteTitle: 'Delete this dish?',
+    deleteBody: 'It goes from the library and from the shopping catalogue. Nothing on the list changes.',
+    deleteConfirm: 'Delete',
+    deleteCancel: 'Keep it',
+    // How many things a dish is made of, on its tile and in the library
+    itemCount: (n: number) => (n === 1 ? '1 thing' : `${n} things`),
+    noItems: 'just a name',
+    // What happens after tapping a dish in the shopping list
+    flashAdded: (n: number) => (n === 1 ? 'One thing added.' : `${n} things added.`),
+    flashAllThere: 'It is all on the list already.',
+    flashNoItems: 'No ingredients yet — add some under Meals.',
+    // Errors
+    loadFailed: "Couldn't load your dishes just now. Pull down to try again.",
+    saveFailed: "Couldn't save that just now. Try again in a moment.",
+    addFailed: "Couldn't add those just now. Try again in a moment.",
+    duplicateName: 'There is already a dish with that name.',
+  },
+
   shops: {
     title: 'Shops',
     hint: 'Each shop learns its own order as you tick things off. Pick the one you’re in.',
@@ -187,6 +240,6 @@ export const strings = {
     notConnectedTitle: 'Not connected yet',
     notConnectedBody:
       'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
-    version: 'Niu · round 7',
+    version: 'Niu · round 8',
   },
 } as const

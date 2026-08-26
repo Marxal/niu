@@ -12,18 +12,21 @@
     4. "you usually need…", when something looks due
     5. the tiles worth tapping first — this household's own habits, falling back
        to a hand-picked "typical stuff" order before it has learned any
-    6. every category, collapsed
+    6. every category, collapsed — Dishes first, then the catalogue's own
     7. the search field, pinned above the nav where a thumb reaches
 
   Search takes over 4, 5 and 6 while there's a query: matches replace the
   suggestions and the categories fold away, since scrolling past ten headers to
-  reach a result you already named would be silly.
+  reach a result you already named would be silly. Dishes are searched too, in
+  their own block, because tapping one does something different from tapping a
+  grocery — it adds several things at once rather than one.
 -->
 <script lang="ts">
   import { flip } from 'svelte/animate'
   import { slide } from 'svelte/transition'
   import CategorySection from '../components/CategorySection.svelte'
   import EmptyBasket from '../components/EmptyBasket.svelte'
+  import Flash from '../components/Flash.svelte'
   import ItemDetailSheet from '../components/ItemDetailSheet.svelte'
   import ItemTile from '../components/ItemTile.svelte'
   import Placeholder from '../components/Placeholder.svelte'
@@ -45,6 +48,8 @@
   import ShoppingDone from '../components/ShoppingDone.svelte'
   import ShopPicker from '../components/ShopPicker.svelte'
   import SuggestionStrip from '../components/SuggestionStrip.svelte'
+  import { dishPicks, filterDishes } from '../lib/dishes'
+  import { addDishToList, dishes } from '../lib/dishes.svelte'
   import { learning, loadLearning } from '../lib/learning.svelte'
   import { chooseShop, shops } from '../lib/shops.svelte'
   import { sortByLearnedOrder } from '../lib/shop-order'
@@ -75,6 +80,8 @@
   let pendingHide = $state<PickerItem | null>(null)
   let pendingIcon = $state<PickerItem | null>(null)
   let celebrating = $state(false)
+  // What just happened after tapping a dish. See Flash.svelte for why it exists.
+  let flash = $state<{ text: string; tone: 'good' | 'bad' } | null>(null)
 
   let layout = $derived(prefs.viewMode === 'list' ? ('row' as const) : ('tile' as const))
 
@@ -166,18 +173,19 @@
 
   /* ---- The picker -------------------------------------------------------- */
 
-  let pickerItems = $derived.by<PickerItem[]>(() =>
-    shopping.visibleCatalogue.map((item) => ({
-      id: item.id,
-      name: item.name,
-      category: item.category,
-      icon: item.icon,
-      emoji: item.emoji,
-      sortOrder: item.sortOrder,
-      suggestedRank: item.suggestedRank,
-      useCount: shopping.useCounts[item.id] ?? 0,
-    })),
-  )
+  let pickerItems = $derived(shopping.picker)
+
+  /*
+   * The dishes, as tiles. "Dishes appear in the catalogue as their own
+   * category. Tapping a dish adds all its items to the list at once" (§4.1) —
+   * so they are drawn by the same CategorySection as everything else, and the
+   * only thing that differs is what a tap does.
+   *
+   * Unlike a grocery tile, a dish tile is never taken out of the grid for being
+   * "already on the list": a dish is not on the list, its ingredients are, and
+   * half of them being there is a perfectly good reason to tap it again.
+   */
+  let dishTiles = $derived(dishPicks(dishes.all, strings.dishes.categoryName))
 
   let trimmed = $derived(query.trim())
   let searching = $derived(trimmed !== '')
@@ -189,6 +197,10 @@
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .slice(0, 24)
       : [],
+  )
+
+  let dishMatches = $derived(
+    searching ? dishPicks(filterDishes(dishes.all, trimmed), strings.dishes.categoryName) : [],
   )
 
   let suggestions = $derived(searching ? [] : suggestedPicks(pickerItems, shopping.onList))
@@ -220,6 +232,30 @@
 
   function handleAdd(catalogueItemId: string) {
     if (auth.userId) void addToList(catalogueItemId, auth.userId)
+  }
+
+  /**
+   * Tapping a dish. The database works out which of its ingredients are already
+   * on the list and returns how many rows it actually added, so the message
+   * afterwards is the truth rather than this screen's guess.
+   *
+   * A dish with no ingredients never makes the trip: there is nothing to add,
+   * and the honest answer is a nudge towards writing some down.
+   */
+  async function handleAddDish(dishId: string) {
+    const dish = dishes.byId.get(dishId)
+    if (!dish) return
+
+    if (dish.itemIds.length === 0) {
+      flash = { text: strings.dishes.flashNoItems, tone: 'good' }
+      return
+    }
+
+    const added = await addDishToList(dishId)
+
+    if (added === null) flash = { text: strings.dishes.addFailed, tone: 'bad' }
+    else if (added === 0) flash = { text: strings.dishes.flashAllThere, tone: 'good' }
+    else flash = { text: strings.dishes.flashAdded(added), tone: 'good' }
   }
 
   function submitNew(event: Event) {
@@ -379,6 +415,25 @@
 
     <!-- 5. Search matches, or the tiles worth tapping first -->
     {#if searching}
+      {#if dishMatches.length > 0}
+        <section class="block picker">
+          <h2 class="heading">{strings.dishes.title}</h2>
+          <div class="grid">
+            {#each dishMatches as dish (dish.id)}
+              <div animate:flip={{ duration: FLIP_MS }} in:tileIn out:tileOut>
+                <ItemTile
+                  name={dish.name}
+                  icon={dish.icon}
+                  {layout}
+                  state="pick"
+                  onclick={() => void handleAddDish(dish.id)}
+                />
+              </div>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
       <section class="block picker">
         <h2 class="heading">{strings.shopping.searchResults}</h2>
         {#if matches.length === 0}
@@ -423,8 +478,22 @@
         </section>
       {/if}
 
-      <!-- 6. Every category, collapsed -->
+      <!-- 6. Every category, collapsed. Dishes lead: they are this household's
+           own, they add several things at once, and they are the only tiles here
+           nobody else's catalogue could contain. -->
       <section class="categories">
+        {#if dishTiles.length > 0}
+          <CategorySection
+            name={strings.dishes.categoryName}
+            icon="pot"
+            items={dishTiles}
+            open={openCategories.has(strings.dishes.categoryName)}
+            onToggle={() => toggleCategory(strings.dishes.categoryName)}
+            onAdd={(id) => void handleAddDish(id)}
+            {layout}
+          />
+        {/if}
+
         {#each categories as name (name)}
           <CategorySection
             {name}
@@ -462,6 +531,15 @@
 
   {#if celebrating}
     <ShoppingDone onDone={() => (celebrating = false)} />
+  {/if}
+
+  {#if flash}
+    <!-- Keyed on the message object so a second tap restarts the countdown
+         rather than inheriting the first one's remaining time. -->
+    {@const shown = flash}
+    {#key shown}
+      <Flash message={shown.text} tone={shown.tone} onDone={() => (flash = null)} />
+    {/key}
   {/if}
 
   {#if openItem}

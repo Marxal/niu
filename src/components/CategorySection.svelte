@@ -37,7 +37,9 @@
     layout?: 'tile' | 'row'
     onToggle: () => void
     onAdd: (id: string) => void
-    onHide: (item: PickerItem) => void
+    /** Long press. Absent for the Dishes category, where there is nothing to
+        hide — a dish you don't want is deleted in the library, not hidden. */
+    onHide?: (item: PickerItem) => void
   } = $props()
 </script>
 
@@ -78,7 +80,7 @@
               {layout}
               state="pick"
               onclick={() => onAdd(item.id)}
-              onlongpress={() => onHide(item)}
+              onlongpress={onHide ? () => onHide(item) : undefined}
             />
           </div>
         {/each}

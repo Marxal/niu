@@ -57,8 +57,12 @@
     /** The free note, clipped to one line here. */
     note?: string | null
     onclick?: () => void
-    /** Press and hold. Details on the list; the tile menu in the picker. */
-    onlongpress?: () => void
+    /**
+     * Press and hold. Details on the list; the tile menu in the picker.
+     * Explicitly `| undefined` so a caller can pass nothing through a variable —
+     * the Dishes category has no long press — under exactOptionalPropertyTypes.
+     */
+    onlongpress?: (() => void) | undefined
   } = $props()
 
   // Tap does the frequent thing; press-and-hold does the rare one.

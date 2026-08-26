@@ -147,7 +147,7 @@ One new file, then **re-run the seed again**. In the **SQL Editor**:
 As with round 4, 3 must come after 5 — the seed writes a column that 5 adds.
 
 > **Setting a project up from scratch, later?** Run the files in this order:
-> `0001`, `0002`, `0004`, `0005`, `0006`, `0007`, and `0003` **last**. The seed
+> `0001`, `0002`, `0004`, `0005`, `0006`, `0007`, `0008`, and `0003` **last**. The seed
 > file has grown columns that the later migrations add, so on an empty database
 > it fails until they have run. Every file is safe to run twice, so if you do it
 > in the order the sections above are written, simply re-running `0003` at the
@@ -207,3 +207,38 @@ at the end of a shop, and both phones re-read the list at that moment anyway.
 The app degrades on its own: no shops means the list falls back to the
 hand-picked catalogue order, and no statistics means the "you usually need…"
 strip never appears. Nothing breaks and nothing shows an error.
+
+---
+
+## Round 8: dishes
+
+One file, no re-seed. In the **SQL Editor**:
+
+1. `supabase/migrations/0008_dishes.sql`
+
+It adds two tables and one function. `dishes` is the library — a name, a
+picture, which part of a meal it is, how much cooking it takes — and
+`dish_items` says which catalogue items each one is made of. Both belong to a
+household outright: unlike the catalogue there is no shared seed here, so
+`household_id` is never null and either of you can write, edit and delete any of
+them.
+
+`add_dish_to_list(dish uuid)` is what a tap on a dish tile calls. It inserts one
+list row per ingredient, ignores the ones already on the list, counts the dish as
+used, and returns how many rows it actually added — one round trip rather than
+one per ingredient, and the count is the truth rather than the app's guess.
+
+**It is deliberately not `security definer`**, unlike `record_shop()`. It needs
+no privilege the caller hasn't already got: RLS on `dishes` hides another
+household's dish from it, and every insert goes through the list's own insert
+policy. A function that doesn't need to escalate shouldn't.
+
+Afterwards, check **Database → Replication**: both `dishes` and `dish_items`
+should have joined the `supabase_realtime` publication, so a dish written on one
+phone appears on the other — ingredients included, since a tile that claims to
+add four things has to be right about the four.
+
+### Nothing is lost if you don't run it
+
+The Meals tab shows an empty library and says so, the Dishes category never
+appears in the shopping catalogue, and nothing anywhere shows an error.

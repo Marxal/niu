@@ -24,6 +24,7 @@
  */
 
 import type { RealtimeChannel } from '@supabase/supabase-js'
+import type { PickerItem } from './list-view'
 import { household } from './household.svelte'
 import { recordShop } from './learning.svelte'
 import { strings } from './strings'
@@ -104,6 +105,26 @@ class ShoppingState {
         const chosen = this.iconOverrides[item.id]
         return chosen ? { ...item, icon: chosen } : item
       }),
+  )
+
+  /**
+   * The same thing again in the shape the tile grids want, with this
+   * household's use count folded in. Derived here rather than in a screen
+   * because two of them now need it — the shopping picker and the ingredient
+   * picker inside a dish — and a second copy of this mapping is a second place
+   * to forget a field.
+   */
+  picker = $derived<PickerItem[]>(
+    this.visibleCatalogue.map((item) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      icon: item.icon,
+      emoji: item.emoji,
+      sortOrder: item.sortOrder,
+      suggestedRank: item.suggestedRank,
+      useCount: this.useCounts[item.id] ?? 0,
+    })),
   )
 }
 
@@ -232,6 +253,29 @@ export async function loadShopping(): Promise<void> {
     }
     shopping.iconOverrides = chosen
   }
+}
+
+/**
+ * Re-reads just what is on the list, leaving the catalogue alone.
+ *
+ * For the changes that happen server-side and land as several rows at once —
+ * tapping a dish, which inserts one row per ingredient. The realtime events for
+ * those are on their way and would arrive on their own, but the phone that did
+ * the tapping is the one waiting to see four tiles appear, and re-reading three
+ * hundred catalogue rows to find out about four list rows is a poor trade on a
+ * phone. Fails silently: the events are still coming.
+ */
+export async function reloadList(): Promise<void> {
+  if (!supabase || !household.id) return
+
+  const { data, error } = await supabase
+    .from('list_items')
+    .select(LIST_COLUMNS)
+    .eq('household_id', household.id)
+
+  if (error || !data) return
+
+  shopping.items = (data as ListRow[]).map(toListItem)
 }
 
 /* -------------------------------------------------------------------------- */
