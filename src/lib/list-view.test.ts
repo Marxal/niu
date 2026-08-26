@@ -5,10 +5,11 @@ import {
   categoriesInOrder,
   categoryPicks,
   suggestedPicks,
-  floatUrgent,
+  byPriority,
   groupByCategory,
   initialFor,
   matchesSearch,
+  sortByTimesBought,
   sortItems,
   splitByChecked,
 } from './list-view'
@@ -22,9 +23,9 @@ function item(overrides: Partial<DisplayItem> & { name: string }): DisplayItem {
     emoji: null,
     sortOrder: 0,
     quantity: null,
-    unit: null,
     note: null,
     urgent: false,
+    ifConvenient: false,
     checkedAt: null,
     addedAt: '2026-01-01T00:00:00.000Z',
     addedBy: 'user-1',
@@ -99,8 +100,8 @@ describe('sortItems', () => {
     item({ name: 'bread', sortOrder: 20, addedAt: '2026-01-02T00:00:00.000Z' }),
   ]
 
-  it('shop-order follows the catalogue order, not the alphabet', () => {
-    expect(sortItems(items, 'shop-order').map((i) => i.name)).toEqual([
+  it('catalogue order is the catalogue order, not the alphabet', () => {
+    expect(sortItems(items, 'catalogue').map((i) => i.name)).toEqual([
       'apples',
       'bread',
       'yoghurt',
@@ -122,18 +123,36 @@ describe('sortItems', () => {
       item({ name: 'pears', sortOrder: 5 }),
       item({ name: 'melon', sortOrder: 5 }),
     ]
-    expect(sortItems(tied, 'shop-order').map((i) => i.name)).toEqual(['melon', 'pears'])
+    expect(sortItems(tied, 'catalogue').map((i) => i.name)).toEqual(['melon', 'pears'])
   })
 })
 
-describe('floatUrgent', () => {
+describe('byPriority', () => {
   it('lifts urgent items above the rest', () => {
     const items = [
       item({ name: 'milk' }),
       item({ name: 'nappies', urgent: true }),
       item({ name: 'bread' }),
     ]
-    expect(floatUrgent(items).map((i) => i.name)).toEqual(['nappies', 'milk', 'bread'])
+    expect(byPriority(items).map((i) => i.name)).toEqual(['nappies', 'milk', 'bread'])
+  })
+
+  it('sinks "if convenient" below the rest', () => {
+    const items = [
+      item({ name: 'olives', ifConvenient: true }),
+      item({ name: 'milk' }),
+      item({ name: 'bread' }),
+    ]
+    expect(byPriority(items).map((i) => i.name)).toEqual(['milk', 'bread', 'olives'])
+  })
+
+  it('puts the ordinary items between the two flags', () => {
+    const items = [
+      item({ name: 'olives', ifConvenient: true }),
+      item({ name: 'milk' }),
+      item({ name: 'nappies', urgent: true }),
+    ]
+    expect(byPriority(items).map((i) => i.name)).toEqual(['nappies', 'milk', 'olives'])
   })
 
   it('keeps the existing order within each group', () => {
@@ -143,7 +162,43 @@ describe('floatUrgent', () => {
       item({ name: 'c', urgent: true }),
       item({ name: 'd' }),
     ]
-    expect(floatUrgent(items).map((i) => i.name)).toEqual(['a', 'c', 'b', 'd'])
+    expect(byPriority(items).map((i) => i.name)).toEqual(['a', 'c', 'b', 'd'])
+  })
+})
+
+describe('sortByTimesBought', () => {
+  const items = [
+    item({ name: 'saffron', sortOrder: 10 }),
+    item({ name: 'milk', sortOrder: 20 }),
+    item({ name: 'bread', sortOrder: 30 }),
+  ]
+
+  it('puts what you buy most at the top', () => {
+    const counts = {
+      'cat-milk': { timesBought: 40 },
+      'cat-bread': { timesBought: 12 },
+      'cat-saffron': { timesBought: 1 },
+    }
+    expect(sortByTimesBought(items, counts).map((i) => i.name)).toEqual([
+      'milk',
+      'bread',
+      'saffron',
+    ])
+  })
+
+  it('leaves anything never bought at the end, in catalogue order', () => {
+    const counts = { 'cat-bread': { timesBought: 3 } }
+    expect(sortByTimesBought(items, counts).map((i) => i.name)).toEqual([
+      'bread',
+      'saffron',
+      'milk',
+    ])
+  })
+
+  it('does not mutate the array it was given', () => {
+    const original = [...items]
+    sortByTimesBought(items, {})
+    expect(items).toEqual(original)
   })
 })
 

@@ -145,3 +145,65 @@ One new file, then **re-run the seed again**. In the **SQL Editor**:
    updates existing rows; nothing is duplicated.
 
 As with round 4, 3 must come after 5 — the seed writes a column that 5 adds.
+
+> **Setting a project up from scratch, later?** Run the files in this order:
+> `0001`, `0002`, `0004`, `0005`, `0006`, `0007`, and `0003` **last**. The seed
+> file has grown columns that the later migrations add, so on an empty database
+> it fails until they have run. Every file is safe to run twice, so if you do it
+> in the order the sections above are written, simply re-running `0003` at the
+> end fixes it.
+
+---
+
+## Round 6: make deletes sync, and the second priority flag
+
+One file, no re-seed. In the **SQL Editor**:
+
+1. `supabase/migrations/0006_sync_and_priority.sql`
+
+Two things happen in it, and the first is the one that matters:
+
+**`replica identity full` on `list_items`.** Without it, emptying the trolley on
+one phone never reached the other. Realtime subscribes with a
+`household_id=eq.…` filter; on a delete Postgres only writes the deleted row's
+*replica identity* to its log, which by default is the primary key alone. The
+event arrived with no `household_id` on it, the filter didn't match, and it was
+dropped. `full` writes the whole deleted row, so the filter can see it.
+
+**An `if_convenient` column**, with a constraint stopping an item being both
+urgent and not-urgent at once.
+
+Nothing to check in the dashboard afterwards — but if clearing still doesn't
+reach the other phone, confirm in the **SQL Editor** that
+`select relreplident from pg_class where relname = 'list_items'` returns `f`.
+
+---
+
+## Round 7: shops, and what the app learns
+
+One file, no re-seed. In the **SQL Editor**:
+
+1. `supabase/migrations/0007_shops_and_learning.sql`
+
+It adds three tables — `shops`, `item_stats` and `item_shop_order` — and two
+functions. `ensure_default_shop()` gives the household a shop called "Main shop"
+the first time the app asks, the same way `ensure_household()` works.
+`record_shop()` is the one that does the learning: at the end of a shop it works
+out roughly where in that shop each thing was picked up, updates how often and
+how recently each thing gets bought, and deletes the ticked rows — all in one
+transaction.
+
+**Neither statistics table has an insert or update policy, and that is
+deliberate.** `record_shop()` is `security definer`, so it is the only thing that
+can write them. The app can read the numbers but cannot assert them.
+
+Afterwards, check **Database → Replication**: `shops` should have joined the
+`supabase_realtime` publication, so adding a shop on one phone shows up on the
+other. The two statistics tables are deliberately *not* on it — they change only
+at the end of a shop, and both phones re-read the list at that moment anyway.
+
+### Nothing is lost if you don't run it
+
+The app degrades on its own: no shops means the list falls back to the
+hand-picked catalogue order, and no statistics means the "you usually need…"
+strip never appears. Nothing breaks and nothing shows an error.

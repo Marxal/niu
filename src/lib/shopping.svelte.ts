@@ -25,6 +25,7 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { household } from './household.svelte'
+import { recordShop } from './learning.svelte'
 import { strings } from './strings'
 import { supabase } from './supabase'
 
@@ -32,9 +33,13 @@ export interface CatalogueItem {
   id: string
   name: string
   category: string
-  /** Slug from src/lib/icons.ts, or null for the outlined-letter tile. */
+  /**
+   * What to draw. A bare slug from src/lib/icons.ts is the item's own line
+   * drawing; a 'kind:value' string is a picture this household picked by hand
+   * (see icon-ref.ts). Null means the outlined-letter tile.
+   */
   icon: string | null
-  /** The item's emoji, shown only under the Colour icon style. */
+  /** The item's emoji, used by the Emoji and Inked icon styles. */
   emoji: string | null
   sortOrder: number
   /** Rank in the hand-picked "typical stuff" order. Null for most items. */
@@ -47,12 +52,25 @@ export interface ListItem {
   id: string
   catalogueItemId: string
   quantity: number | null
-  unit: string | null
   note: string | null
   urgent: boolean
+  /** Get it if you pass it. The opposite end of the same question as urgent. */
+  ifConvenient: boolean
   checkedAt: string | null
   addedAt: string
   addedBy: string
+}
+
+/**
+ * What the detail sheet can change, in the app's own names. Mapped to column
+ * names in `updateItem` — the two diverged when `if_convenient` arrived, and a
+ * spread straight into the query would have silently written nothing.
+ */
+export interface ItemChanges {
+  quantity?: number | null
+  note?: string | null
+  urgent?: boolean
+  ifConvenient?: boolean
 }
 
 class ShoppingState {
@@ -110,13 +128,24 @@ interface ListRow {
   id: string
   catalogue_item_id: string
   quantity: number | null
-  unit: string | null
   note: string | null
   urgent: boolean
+  if_convenient: boolean
   checked_at: string | null
   added_at: string
   added_by: string
 }
+
+/*
+ * The columns the list is read with, in one place because four separate queries
+ * used to spell them out and adding a column meant remembering all four.
+ *
+ * `unit` is deliberately absent. It is still a column — dropping it would throw
+ * away whatever anyone typed — but round 6 took the field out of the sheet, so
+ * nothing reads or writes it any more.
+ */
+const LIST_COLUMNS =
+  'id, catalogue_item_id, quantity, note, urgent, if_convenient, checked_at, added_at, added_by'
 
 function toCatalogueItem(row: CatalogueRow): CatalogueItem {
   return {
@@ -136,9 +165,10 @@ function toListItem(row: ListRow): ListItem {
     id: row.id,
     catalogueItemId: row.catalogue_item_id,
     quantity: row.quantity,
-    unit: row.unit,
     note: row.note,
     urgent: row.urgent,
+    // Rows written before the column existed come back without it.
+    ifConvenient: row.if_convenient ?? false,
     checkedAt: row.checked_at,
     addedAt: row.added_at,
     addedBy: row.added_by,
@@ -160,10 +190,7 @@ export async function loadShopping(): Promise<void> {
       .from('catalogue_items')
       .select('id, name, category, icon, emoji, sort_order, suggested_rank, household_id')
       .order('sort_order'),
-    supabase
-      .from('list_items')
-      .select('id, catalogue_item_id, quantity, unit, note, urgent, checked_at, added_at, added_by')
-      .eq('household_id', household.id),
+    supabase.from('list_items').select(LIST_COLUMNS).eq('household_id', household.id),
     supabase.from('catalogue_hidden').select('catalogue_item_id'),
     supabase.from('catalogue_usage').select('catalogue_item_id, use_count'),
     supabase.from('catalogue_icons').select('catalogue_item_id, icon'),
@@ -213,11 +240,31 @@ export async function loadShopping(): Promise<void> {
 
 let channel: RealtimeChannel | null = null
 
-/** Subscribes to list changes for this household. Returns an unsubscribe fn. */
+/**
+ * Subscribes to list changes for this household. Returns an unsubscribe fn.
+ *
+ * Two things guard against a phone quietly going stale, because a websocket is
+ * not a promise that you saw everything:
+ *
+ *  - Android suspends the socket when the screen goes off or the app is in the
+ *    background. Anything that happened meanwhile never arrives, so the list is
+ *    re-read whenever the app comes back to the foreground.
+ *  - A dropped connection resubscribes, and the events during the gap are gone
+ *    for good, so a re-read follows every reconnection too.
+ *
+ * Both call the same `loadShopping()` the app boots with. Cheap, and it means a
+ * missed event is self-healing rather than something you have to notice.
+ */
 export function watchShopping(): () => void {
   if (!supabase || !household.id) return () => {}
 
   const client = supabase
+  let subscribedBefore = false
+
+  const refresh = () => {
+    if (document.visibilityState === 'visible') void loadShopping()
+  }
+
   channel = client
     .channel(`list_items:${household.id}`)
     .on(
@@ -244,9 +291,17 @@ export function watchShopping(): () => void {
         }
       },
     )
-    .subscribe()
+    .subscribe((status) => {
+      // The first SUBSCRIBED is the one the initial load already covered.
+      if (status !== 'SUBSCRIBED') return
+      if (subscribedBefore) refresh()
+      subscribedBefore = true
+    })
+
+  document.addEventListener('visibilitychange', refresh)
 
   return () => {
+    document.removeEventListener('visibilitychange', refresh)
     if (channel) {
       void client.removeChannel(channel)
       channel = null
@@ -275,7 +330,7 @@ export async function addToList(catalogueItemId: string, userId: string): Promis
       catalogue_item_id: catalogueItemId,
       added_by: userId,
     })
-    .select('id, catalogue_item_id, quantity, unit, note, urgent, checked_at, added_at, added_by')
+    .select(LIST_COLUMNS)
     .maybeSingle()
 
   if (error || !data) {
@@ -325,19 +380,25 @@ export async function toggleChecked(itemId: string, userId: string): Promise<voi
   }
 }
 
-/** Saves the optional details — quantity, unit, note, urgency. */
-export async function updateItem(
-  itemId: string,
-  changes: { quantity?: number | null; unit?: string | null; note?: string | null; urgent?: boolean },
-): Promise<void> {
+/** Saves the optional details — how many, the note, and the two priority tags. */
+export async function updateItem(itemId: string, changes: ItemChanges): Promise<void> {
   if (!supabase) return
+
+  // Only the keys actually passed are sent, so setting urgency can't blank a
+  // note that someone else typed a second earlier on the other phone.
+  const row: Record<string, unknown> = {}
+  if ('quantity' in changes) row.quantity = changes.quantity
+  if ('note' in changes) row.note = changes.note
+  if ('urgent' in changes) row.urgent = changes.urgent
+  if ('ifConvenient' in changes) row.if_convenient = changes.ifConvenient
+  if (Object.keys(row).length === 0) return
 
   const previous = shopping.items
   shopping.items = shopping.items.map((item) =>
     item.id === itemId ? { ...item, ...changes } : item,
   )
 
-  const { error } = await supabase.from('list_items').update(changes).eq('id', itemId)
+  const { error } = await supabase.from('list_items').update(row).eq('id', itemId)
 
   if (error) {
     shopping.items = previous
@@ -360,22 +421,38 @@ export async function removeFromList(itemId: string): Promise<void> {
   }
 }
 
-/** Empties the trolley — removes everything already ticked off. */
-export async function clearChecked(): Promise<void> {
-  if (!supabase || !household.id) return
+/**
+ * Ends a shop: everything in the trolley is bought, so learn from it and empty
+ * it. Returns how many items that was, or 0 if nothing happened.
+ *
+ * The deleting is not done here. `record_shop()` in the database works out where
+ * in this shop each thing was picked up, updates the household's per-item stats
+ * and deletes the ticked rows, all in one transaction — because the tick order
+ * exists only until those rows are gone, and a delete that succeeded while the
+ * learning failed would lose it for good.
+ *
+ * The rows are removed from local state first anyway, so the trolley empties
+ * under the thumb rather than after a round trip, and put back if the call
+ * fails.
+ */
+export async function clearChecked(shopId: string | null): Promise<number> {
+  if (!supabase || !household.id) return 0
 
-  const checkedIds = shopping.items.filter((i) => i.checkedAt !== null).map((i) => i.id)
-  if (checkedIds.length === 0) return
+  const checked = shopping.items.filter((item) => item.checkedAt !== null)
+  if (checked.length === 0) return 0
 
   const previous = shopping.items
   shopping.items = shopping.items.filter((item) => item.checkedAt === null)
 
-  const { error } = await supabase.from('list_items').delete().in('id', checkedIds)
+  const recorded = await recordShop(shopId)
 
-  if (error) {
+  if (recorded === null) {
     shopping.items = previous
     shopping.error = strings.shopping.updateFailed
+    return 0
   }
+
+  return recorded
 }
 
 /**

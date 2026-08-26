@@ -23,6 +23,9 @@
   import { auth, watchAuth } from './lib/auth.svelte'
   import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
   import { clearShopping, loadShopping, watchShopping } from './lib/shopping.svelte'
+  import { clearShops, loadShops, shops, watchShops } from './lib/shops.svelte'
+  import { clearLearning, loadLearning } from './lib/learning.svelte'
+  import { watchKeyboard } from './lib/keyboard'
   import { watchTheme } from './lib/theme.svelte'
   import { loadPrefs } from './lib/prefs.svelte'
 
@@ -55,6 +58,10 @@
   // setting while the choice is "system".
   $effect(() => watchTheme())
 
+  // Publishes how much of the screen the on-screen keyboard is covering, so a
+  // bottom sheet can sit above it instead of underneath.
+  $effect(() => watchKeyboard())
+
   // Display preferences are device-local and don't need watching — read once.
   $effect(() => {
     loadPrefs()
@@ -72,6 +79,8 @@
     } else {
       clearHousehold()
       clearShopping()
+      clearShops()
+      clearLearning()
     }
   })
 
@@ -83,6 +92,24 @@
 
     void loadShopping()
     return watchShopping()
+  })
+
+  // The shops themselves are household data and sync like the list does.
+  $effect(() => {
+    if (!household.id) return
+
+    void loadShops()
+    return watchShops()
+  })
+
+  // What the app has learned. Re-runs when the chosen shop changes, because the
+  // aisle order is per shop — the stats alongside it are not, and reloading
+  // both is one round trip either way.
+  $effect(() => {
+    const shopId = shops.currentId
+    if (!household.id) return
+
+    void loadLearning(shopId)
   })
 </script>
 

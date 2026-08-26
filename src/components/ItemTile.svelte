@@ -10,9 +10,15 @@
 
   Everything inside takes the tile's `color`; nothing sets a colour of its own.
   That is what keeps forty tiles reading as one set rather than a sticker album,
-  and it is why swapping the icon style to emoji only changes the glyph.
+  and it is why swapping the icon style only changes the glyph.
 
   `layout` switches between the tile shape and a single row, for the List view.
+
+  On the second line: a quantity badge and the note share one line and that line
+  never wraps. A note can be 200 characters, and because the grid sizes its rows
+  to the tallest tile in them, one long note used to stretch every tile in the
+  row it sat in. It is clipped with an ellipsis here and shown in full in the
+  detail sheet, which is the only place there is room for it.
 
   Sized so the whole tile is the tap target, never just the label.
 -->
@@ -27,25 +33,31 @@
     state = 'list',
     isNew = false,
     urgent = false,
-    detail = null,
+    ifConvenient = false,
+    quantity = null,
+    note = null,
     layout = 'tile',
     onclick,
     onlongpress,
   }: {
     name: string
-    /** Icon slug, or null for the outlined initial. */
+    /** Stored icon value: a line slug, or a hand-picked 'kind:value'. */
     icon?: string | null
-    /** The item's emoji, used only under the Colour icon style. */
+    /** The item's emoji, used by the Emoji and Inked icon styles. */
     emoji?: string | null
     /** Tile grid, or a single full-width row. */
     layout?: 'tile' | 'row'
     state?: 'list' | 'checked' | 'pick'
     isNew?: boolean
     urgent?: boolean
-    /** Small line under the name — quantity, or a note. */
-    detail?: string | null
+    /** Get it if you pass it — the opposite of urgent. */
+    ifConvenient?: boolean
+    /** How many. Null means one, and shows nothing. */
+    quantity?: number | null
+    /** The free note, clipped to one line here. */
+    note?: string | null
     onclick?: () => void
-    /** Press and hold. Details on the list; remove-for-good in the picker. */
+    /** Press and hold. Details on the list; the tile menu in the picker. */
     onlongpress?: () => void
   } = $props()
 
@@ -81,6 +93,8 @@
     }
     onclick?.()
   }
+
+  let showQuantity = $derived(quantity !== null && quantity > 1)
 </script>
 
 <button
@@ -101,8 +115,11 @@
 
   <span class="name">{name}</span>
 
-  {#if detail}
-    <span class="detail">{detail}</span>
+  {#if showQuantity || note}
+    <span class="detail">
+      {#if showQuantity}<span class="qty">×{quantity}</span>{/if}
+      {#if note}<span class="note" title={note}>{note}</span>{/if}
+    </span>
   {/if}
 
   {#if isNew}
@@ -110,6 +127,14 @@
   {/if}
   {#if urgent}
     <span class="badge urgent" aria-label={strings.shopping.urgent}>!</span>
+  {:else if ifConvenient}
+    <span class="badge later" role="img" aria-label={strings.shopping.ifConvenient}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 4.6a7.4 7.4 0 1 0 0 14.8 7.4 7.4 0 0 0 0-14.8Z" />
+        <path d="M12 8.4V12l2.6 1.6" />
+      </svg>
+    </span>
   {/if}
 </button>
 
@@ -199,7 +224,10 @@
   }
 
   .tile.row .detail {
-    flex: none;
+    /* Takes what's left after the name, and no more. */
+    flex: 0 1 auto;
+    justify-content: flex-end;
+    max-width: 45%;
     font-size: var(--text-sm);
   }
 
@@ -220,11 +248,37 @@
     overflow-wrap: anywhere;
   }
 
+  /* One line, always. See the note at the top of this file. */
   .detail {
-    opacity: 0.75;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    max-width: 100%;
+    min-width: 0;
     font-size: 0.6875rem;
     font-weight: var(--weight-medium);
     line-height: var(--leading-tight);
+  }
+
+  /* Outlined rather than filled: `background: currentColor` would resolve
+     against this element's own colour, and a filled pill needs the text knocked
+     out, which is a second colour. An outline stays in the tile's one colour. */
+  .qty {
+    flex: none;
+    padding: 0 var(--space-1);
+    border: 1px solid currentColor;
+    border-radius: var(--radius-full);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .note {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    opacity: 0.75;
   }
 
   .badge {
@@ -243,14 +297,30 @@
     color: var(--color-accent-ink);
   }
 
-  .badge.urgent {
+  .badge.urgent,
+  .badge.later {
     left: calc(var(--space-1) * -1);
     right: auto;
     display: grid;
     place-items: center;
     min-width: 1.1rem;
     height: 1.1rem;
+    padding: 0;
+  }
+
+  .badge.urgent {
     background: var(--color-danger);
     color: var(--color-accent-ink);
+  }
+
+  /* Quieter than urgent on purpose: it is the flag that means "no hurry". */
+  .badge.later {
+    background: var(--color-surface);
+    border: 1px solid currentColor;
+  }
+
+  .badge.later svg {
+    width: 0.8rem;
+    height: 0.8rem;
   }
 </style>

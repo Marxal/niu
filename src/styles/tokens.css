@@ -105,11 +105,24 @@
   --shadow-2: 0 4px 12px rgb(42 35 32 / 0.10);
   --shadow-nav: 0 -1px 0 var(--color-border), 0 -6px 20px rgb(42 35 32 / 0.06);
 
+  /* ---- Icon pictures ----------------------------------------------------
+     The two colour icon styles are pictures we don't draw: the phone's own
+     emoji, and OpenMoji's files. Both arrive far more saturated than the rest of
+     the palette, so both get pulled back — the emoji harder, because a phone's
+     emoji font is the louder of the two. Filters, not edits: nothing on disk
+     changes, which matters for the OpenMoji licence (docs/OPENMOJI.md). */
+  --icon-emoji-filter: saturate(0.62) contrast(0.96);
+  --icon-inked-filter: saturate(0.7) contrast(0.98);
+
   /* ---- Layout ----------------------------------------------------------- */
   --tap-min: 3rem;        /* 48px. The floor for anything a thumb touches. */
   --nav-height: 4rem;     /* 64px, before safe-area padding is added */
   --header-height: 3.5rem;
   --content-max: 34rem;   /* keeps it sane if it's ever opened on a tablet */
+
+  /* How much of the screen the phone's keyboard is covering, published by
+     src/lib/keyboard.ts. Zero unless a field has focus. */
+  --keyboard-inset: 0px;
 
   /* ---- Motion ----------------------------------------------------------- */
   --dur-fast: 120ms;
