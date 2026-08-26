@@ -23,6 +23,7 @@
   whichever reads best at tile size for something like "that rice thing".
 -->
 <script lang="ts">
+  import CookIcon from './CookIcon.svelte'
   import GroceryIcon from './GroceryIcon.svelte'
   import IconPickerSheet from './IconPickerSheet.svelte'
   import IngredientPicker from './IngredientPicker.svelte'
@@ -40,11 +41,19 @@
   let {
     dish,
     userId,
+    seedItemIds = [],
     onClose,
   }: {
     /** The dish being edited, or null to write a new one. */
     dish: Dish | null
     userId: string | null
+    /**
+     * Ingredients a *new* dish starts with. Set when the sheet is opened from
+     * "Add to a dish → New dish" on the shopping tab: the tile you long-pressed
+     * is the reason the dish is being written, so it should already be in it.
+     * Ignored when editing, which has its own list.
+     */
+    seedItemIds?: string[]
     onClose: () => void
   } = $props()
 
@@ -73,7 +82,7 @@
   /* svelte-ignore state_referenced_locally */
   let cook = $state<DishCook>(dish?.cook ?? 'none')
   /* svelte-ignore state_referenced_locally */
-  let itemIds = $state<string[]>([...(dish?.itemIds ?? [])])
+  let itemIds = $state<string[]>([...(dish?.itemIds ?? seedItemIds)])
 
   let pickingIcon = $state(false)
   let confirmingDelete = $state(false)
@@ -169,18 +178,19 @@
       <div class="segmented" role="group" aria-label={strings.dishes.cookTitle}>
         {#each DISH_COOKS as option (option)}
           <button
-            class="segment"
+            class="segment cook"
             class:on={cook === option}
             aria-pressed={cook === option}
             onclick={() => (cook = option)}
           >
+            <CookIcon cook={option} size={18} />
             {cookLabels[option]}
           </button>
         {/each}
       </div>
     </div>
 
-    <IngredientPicker chosen={itemIds} onChange={(ids) => (itemIds = ids)} />
+    <IngredientPicker chosen={itemIds} {userId} onChange={(ids) => (itemIds = ids)} />
   </div>
 
   {#if dishes.error}
@@ -355,6 +365,17 @@
     color: var(--color-text-muted);
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
+  }
+
+  /* Icon over label rather than beside it: three labels plus three glyphs on one
+     row do not fit at 412px without shrinking the text below the readable floor. */
+  .cook {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 3.5rem;
+    font-size: var(--text-xs);
   }
 
   .segment.on {

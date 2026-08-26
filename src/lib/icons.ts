@@ -152,6 +152,26 @@ export const ICONS = {
   bag: ['M6.4 8.6h11.2l-1 10.2a1.6 1.6 0 0 1-1.6 1.4H9a1.6 1.6 0 0 1-1.6-1.4Z', 'M9.4 8.6V6.8a2.6 2.6 0 0 1 5.2 0v1.8'],
 } as const satisfies Record<string, readonly string[]>
 
+/*
+ * The three cooking answers, drawn.
+ *
+ * Kept out of ICONS on purpose. That set is "pictures for groceries" and it is
+ * what the icon picker iterates — an hourglass has no business being offered as
+ * the picture for an item on a shopping list. These are read as a triad rather
+ * than individually, so they are deliberately unalike in silhouette: a leaf you
+ * do nothing to, a bolt, a glass that takes its time.
+ */
+export const COOK_ICONS = {
+  none: ['M5.4 18.6c0-7.3 5.9-13.2 13.2-13.2 0 7.3-5.9 13.2-13.2 13.2Z', 'M5.4 18.6 15 9'],
+  fast: ['M13.6 3.4 6.2 13.6h4.8l-.6 7 7.4-10.2h-4.8Z'],
+  slow: [
+    'M7.4 4.6h9.2',
+    'M7.4 19.4h9.2',
+    'M8.6 4.6c0 3.4 3.4 4.6 3.4 7.4s-3.4 4-3.4 7.4',
+    'M15.4 4.6c0 3.4-3.4 4.6-3.4 7.4s3.4 4 3.4 7.4',
+  ],
+} as const satisfies Record<string, readonly string[]>
+
 /** True if a slug has a drawing. Used to decide letter-fallback at seed time. */
 export function hasIcon(name: string): name is IconName {
   return name in ICONS

@@ -14,8 +14,9 @@
   everything else you can add.
 -->
 <script lang="ts">
+  import CookIcon from './CookIcon.svelte'
   import GroceryIcon from './GroceryIcon.svelte'
-  import { type Dish, describeDish } from '../lib/dishes'
+  import { type Dish, COOK_LABELS, describeDish } from '../lib/dishes'
 
   let { dish, onclick }: { dish: Dish; onclick: () => void } = $props()
 </script>
@@ -26,7 +27,15 @@
   </span>
   <span class="text">
     <span class="name">{dish.name}</span>
-    <span class="meta">{describeDish(dish)}</span>
+    <span class="meta">
+      <!-- The glyph only appears once someone has actually said how much cooking
+           it is. "No cook" is the default nobody chose, and a leaf on every row
+           in the library would say nothing. -->
+      {#if dish.cook !== 'none'}
+        <span class="cook" title={COOK_LABELS[dish.cook]}><CookIcon cook={dish.cook} size={15} /></span>
+      {/if}
+      {describeDish(dish)}
+    </span>
   </span>
   <svg
     class="chevron"
@@ -88,8 +97,18 @@
   }
 
   .meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
     color: var(--color-text-muted);
     font-size: var(--text-xs);
+  }
+
+  .cook {
+    display: grid;
+    place-items: center;
+    flex: none;
+    color: var(--color-tab-meals);
   }
 
   .chevron {

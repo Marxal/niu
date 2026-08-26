@@ -802,3 +802,125 @@ the lookup on its own. A function that doesn't need to escalate shouldn't.
 
 Feature round 6: the meal planner — days, slots, and a week that fills the
 shopping list.
+
+---
+
+## Round 8.1 — Dishes, after using them
+
+**Branch:** `claude/round-5-dishes-8fh855`
+
+Marçal's notes after round 8 landed. Ten of them; this round does the six that
+stand alone, and the four that are really one design decision — meal parts as
+coloured tags, dish tags on list items, and the dish grid — go together in the
+next round rather than being done three different ways here.
+
+### The bug first
+
+**A hand-picked icon reverted to the letter as soon as the item reached the
+list.** It was right in the picker, wrong on the list, wrong in the trolley,
+right again back in the picker.
+
+The overrides were being applied in one place — the copy of the catalogue the
+picker reads — and the list was resolving its rows against the raw array, the
+only copy without them. So it was not that the icon was lost; it was that the
+list had never been looking at it.
+
+Fixed by moving the override on to a `withIcons` copy of the *whole* catalogue,
+with a map keyed by id beside it, and having both the picker and the list read
+from there. Hiding stays a separate filter on top, because a hidden item can
+still be on the list and the list still has to be able to draw it.
+
+### What else changed
+
+- **The icon picker has a search.** Typing filters it, and while there is a
+  query the three tabs give way to all three styles at once — Lines, Emoji and
+  Inked, one section each. Browsing is a per-style activity; searching is not.
+- **What makes a picture findable is the catalogue itself.** Every seeded item
+  names an icon, so the seed is already a dictionary of words pointing at
+  pictures: "cheddar" finds the cheese drawing, "bakery" finds the bread ones.
+  `src/lib/icon-search.ts`, 12 tests.
+- **The ingredient picker can browse.** The whole catalogue is under the search
+  box now, in the same collapsible categories the shopping tab has. Before, you
+  had to know the word.
+- **And it can invent a word.** Type something the catalogue doesn't have and
+  **Add** appears. It writes a real catalogue item — same "Our own words"
+  category as typing on the shopping tab — and puts it in the dish. The word
+  survives cancelling the dish, because it belongs to the household, not to the
+  dish.
+- **Cooking has icons**: a leaf, a bolt, an hourglass. They show in the editor
+  and in the library, where the glyph appears only once someone has actually
+  said — "no cook" is the default nobody chose.
+- **"Add to a dish" on a long press.** The tile menu on the shopping tab has a
+  third option: pick a dish and the item goes into it, or write a new dish that
+  starts with it already in. This is the moment you actually notice a dish is
+  missing something — standing in the shop, not sitting in the editor.
+- **The catalogue went from 361 items to 569.** Weighted towards the cupboard
+  rather than the trolley (pasta shapes, tinned beans, the sauces you own rather
+  than buy weekly) and towards these two kitchens in particular: crispbread,
+  filmjölk, falukorv, lingonberries and glögg next to calçots, fuet, butifarra,
+  mató, romesco and pimentón.
+
+### One thing recorded rather than built
+
+`NIU.md` §4.2 now says a meal-planner slot can hold **a plain shopping item, not
+only a dish** — broccoli on a Tuesday is a complete thought and shouldn't need a
+dish written for it first. That is a sentence in the spec rather than code
+because it decides the planner's schema, and the planner is the next round.
+Retrofitting it afterwards would be a table change.
+
+### How it was checked
+
+Every migration run in order against a real PostgreSQL 16 on a fresh database,
+and the regenerated seed run **twice**: 569 rows both times, 567 with an icon,
+212 with an emoji. Nothing duplicated, because the seed updates on conflict.
+
+The seed's own tests still hold — no duplicate name, every name inside the
+length the column accepts, every category real, sort order ascending — which is
+what stops 208 hand-written rows from failing on the unique index halfway
+through a paste into the SQL editor.
+
+Rendered in a real Chromium at 412×915: the icon search across all three styles
+and its empty state, the editor with the cooking glyphs, the ingredient picker
+with a category open and with **Add** offered for an unknown word, the "which
+dish?" sheet, and the list showing a hand-picked icon that would previously have
+shown a letter. No console errors, nothing scrolls sideways. 113 unit tests.
+
+### How to test it
+
+**The bug, first — it needs an item whose icon you have changed:**
+
+1. **Shopping →** long-press a tile → **Change icon** → pick something obvious.
+2. Tap that tile so it goes on the list. **The icon should be the one you
+   picked**, on the list and in the trolley, not a letter.
+
+**Then:**
+
+3. Long-press any tile → **Change icon** → type **cheese** into the new search
+   box. You should get the line drawing, the emoji and the OpenMoji one, all
+   three at once. Try a product name that isn't an icon — **cheddar**, **naan**
+   — and you should still get something sensible.
+4. Long-press a tile → **Add to a dish**. Pick one, and it goes in; or **New
+   dish**, and the editor opens with that item already in the list.
+5. **Meals → any dish.** The cooking row has three glyphs now. Scroll to **What
+   it needs**: under the search box the whole catalogue is browsable by
+   category.
+6. In that same search box type something Niu has never heard of — **gochujang**
+   — and tap **Add**. It joins the dish *and* the shopping catalogue under "Our
+   own words".
+7. **Shopping →** open a couple of categories. There should be noticeably more
+   in them: nine pasta shapes, tinned beans, crispbread, fuet, glögg.
+
+> **Run `supabase/migrations/0003_catalogue_seed.sql` again** in the Supabase SQL
+> editor before testing step 7 — that is where the 208 new items live. It
+> updates on conflict, so nothing you already have is duplicated or reset.
+
+### Deliberately not done
+
+- **Items 1, 3 and 10** — dish tags on list items, meal parts as multiple
+  coloured tags, and the dish grid. One design decision, next round.
+- **Sorting the icon search results by how well they match.** They come out in
+  set order, which for a handful of hits is fine and for a long tail is
+  arbitrary. Worth revisiting if searching starts returning too much.
+- **New emoji.** The added items use emoji only where an OpenMoji drawing is
+  already shipped; the rest use their line icon. Fetching more is a script run,
+  not a code change, and can happen any time.

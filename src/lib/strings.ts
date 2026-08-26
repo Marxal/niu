@@ -100,6 +100,9 @@ export const strings = {
     changeIcon: 'Change icon',
     pickIconTitle: 'Pick an icon',
     resetIcon: 'Use the default icon',
+    iconSearch: 'Search pictures…',
+    iconNoResults: 'No picture matches that. Try the thing it is made of.',
+    addToDish: 'Add to a dish',
     // Removing a tile from the picker for good
     hideTitle: 'Remove for good?',
     hideBody: 'It disappears from your catalogue. It stays on the list if it is already there.',
@@ -173,6 +176,11 @@ export const strings = {
     flashAdded: (n: number) => (n === 1 ? 'One thing added.' : `${n} things added.`),
     flashAllThere: 'It is all on the list already.',
     flashNoItems: 'No ingredients yet — add some under Meals.',
+    // Putting a shopping tile into a dish, from the long-press menu
+    pickTitle: 'Which dish?',
+    pickHint: 'It gets added to whichever you pick. Nothing on the list changes.',
+    pickEmpty: 'No dishes yet. Write one and this goes straight into it.',
+    addedTo: (dish: string) => `Added to ${dish}.`,
     // Errors
     loadFailed: "Couldn't load your dishes just now. Pull down to try again.",
     saveFailed: "Couldn't save that just now. Try again in a moment.",
@@ -240,6 +248,6 @@ export const strings = {
     notConnectedTitle: 'Not connected yet',
     notConnectedBody:
       'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
-    version: 'Niu · round 8',
+    version: 'Niu · round 8.1',
   },
 } as const

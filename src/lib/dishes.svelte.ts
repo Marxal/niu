@@ -246,6 +246,40 @@ export async function saveDish(
   return true
 }
 
+/**
+ * Puts one catalogue item into a dish, from outside the dish editor.
+ *
+ * This is the other direction of the same idea: long-pressing a tile on the
+ * shopping tab and saying "that belongs in Lasagne" is often how you find out a
+ * dish is missing an ingredient — standing in the shop, not sitting in an
+ * editor. Adding one that is already there is a no-op rather than an error,
+ * because from the outside it is the same wish either way.
+ */
+export async function addItemToDish(
+  dishId: string,
+  catalogueItemId: string,
+): Promise<boolean> {
+  if (!supabase || !household.id) return false
+
+  const dish = dishes.byId.get(dishId)
+  if (dish?.itemIds.includes(catalogueItemId)) return true
+
+  const { error } = await supabase.from('dish_items').insert({
+    dish_id: dishId,
+    catalogue_item_id: catalogueItemId,
+    household_id: household.id,
+  })
+
+  if (error) {
+    dishes.error = strings.dishes.saveFailed
+    return false
+  }
+
+  dishes.error = null
+  await loadDishes()
+  return true
+}
+
 /** Throws a dish away. Its ingredient rows go with it, by cascade. */
 export async function removeDish(dishId: string): Promise<void> {
   if (!supabase) return
