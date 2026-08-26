@@ -34,6 +34,8 @@ export interface CatalogueItem {
   category: string
   /** Slug from src/lib/icons.ts, or null for the outlined-letter tile. */
   icon: string | null
+  /** The item's emoji, shown only under the Colour icon style. */
+  emoji: string | null
   sortOrder: number
   /** Rank in the hand-picked "typical stuff" order. Null for most items. */
   suggestedRank: number | null
@@ -58,6 +60,8 @@ class ShoppingState {
   items = $state<ListItem[]>([])
   /** Catalogue ids this household has removed from their picker for good. */
   hidden = $state<Set<string>>(new Set())
+  /** Icons this household picked by hand, overriding the item's own. */
+  iconOverrides = $state<Record<string, string>>({})
   /**
    * How many times each catalogue item has been put on the list, ever.
    * This is what makes the picker's first row get better with use — it is the
@@ -70,8 +74,19 @@ class ShoppingState {
   /** Catalogue ids currently on the list — what the grid uses to grey a tile. */
   onList = $derived(new Set(this.items.map((item) => item.catalogueItemId)))
 
-  /** The catalogue minus anything hidden — what the picker actually shows. */
-  visibleCatalogue = $derived(this.catalogue.filter((item) => !this.hidden.has(item.id)))
+  /**
+   * The catalogue as the UI should draw it: hidden tiles dropped, and any
+   * hand-picked icon already applied, so no component has to know overrides
+   * exist.
+   */
+  visibleCatalogue = $derived(
+    this.catalogue
+      .filter((item) => !this.hidden.has(item.id))
+      .map((item) => {
+        const chosen = this.iconOverrides[item.id]
+        return chosen ? { ...item, icon: chosen } : item
+      }),
+  )
 }
 
 export const shopping = new ShoppingState()
@@ -85,6 +100,7 @@ interface CatalogueRow {
   name: string
   category: string
   icon: string | null
+  emoji: string | null
   sort_order: number
   suggested_rank: number | null
   household_id: string | null
@@ -108,6 +124,7 @@ function toCatalogueItem(row: CatalogueRow): CatalogueItem {
     name: row.name,
     category: row.category,
     icon: row.icon,
+    emoji: row.emoji,
     sortOrder: row.sort_order,
     suggestedRank: row.suggested_rank,
     householdId: row.household_id,
@@ -137,10 +154,11 @@ export async function loadShopping(): Promise<void> {
 
   // RLS already limits the catalogue to the shared seed plus this household's
   // own words, so there is no filter to write here — the database does it.
-  const [catalogueResult, listResult, hiddenResult, usageResult] = await Promise.all([
+  const [catalogueResult, listResult, hiddenResult, usageResult, iconsResult] =
+    await Promise.all([
     supabase
       .from('catalogue_items')
-      .select('id, name, category, icon, sort_order, suggested_rank, household_id')
+      .select('id, name, category, icon, emoji, sort_order, suggested_rank, household_id')
       .order('sort_order'),
     supabase
       .from('list_items')
@@ -148,6 +166,7 @@ export async function loadShopping(): Promise<void> {
       .eq('household_id', household.id),
     supabase.from('catalogue_hidden').select('catalogue_item_id'),
     supabase.from('catalogue_usage').select('catalogue_item_id, use_count'),
+    supabase.from('catalogue_icons').select('catalogue_item_id, icon'),
   ])
 
   shopping.loading = false
@@ -176,6 +195,15 @@ export async function loadShopping(): Promise<void> {
       counts[row.catalogue_item_id] = row.use_count
     }
     shopping.useCounts = counts
+  }
+
+  // Same again: without overrides every item just shows its own icon.
+  if (!iconsResult.error && iconsResult.data) {
+    const chosen: Record<string, string> = {}
+    for (const row of iconsResult.data as { catalogue_item_id: string; icon: string }[]) {
+      chosen[row.catalogue_item_id] = row.icon
+    }
+    shopping.iconOverrides = chosen
   }
 }
 
@@ -382,7 +410,7 @@ export async function addNewWord(rawName: string, userId: string): Promise<void>
       created_by: userId,
       sort_order: 99_000, // after every seeded category
     })
-    .select('id, name, category, icon, sort_order, suggested_rank, household_id')
+    .select('id, name, category, icon, emoji, sort_order, suggested_rank, household_id')
     .maybeSingle()
 
   if (error || !data) {
@@ -421,12 +449,67 @@ export async function hideCatalogueItem(catalogueItemId: string, userId: string)
   }
 }
 
+/**
+ * Records the icon this household wants for an item.
+ *
+ * An override row rather than an edit to the item, for the same reason hiding
+ * is: most of the catalogue is the shared seed, and one household changing
+ * 'anchovies' must not change it for everyone.
+ */
+export async function setItemIcon(
+  catalogueItemId: string,
+  icon: string,
+  userId: string,
+): Promise<void> {
+  if (!supabase || !household.id) return
+
+  const previous = shopping.iconOverrides
+  shopping.iconOverrides = { ...previous, [catalogueItemId]: icon }
+
+  const { error } = await supabase.from('catalogue_icons').upsert(
+    {
+      household_id: household.id,
+      catalogue_item_id: catalogueItemId,
+      icon,
+      set_by: userId,
+    },
+    { onConflict: 'household_id,catalogue_item_id' },
+  )
+
+  if (error) {
+    shopping.iconOverrides = previous
+    shopping.error = strings.shopping.updateFailed
+  }
+}
+
+/** Drops the override, so the item goes back to its own icon. */
+export async function clearItemIcon(catalogueItemId: string): Promise<void> {
+  if (!supabase || !household.id) return
+
+  const previous = shopping.iconOverrides
+  const next = { ...previous }
+  delete next[catalogueItemId]
+  shopping.iconOverrides = next
+
+  const { error } = await supabase
+    .from('catalogue_icons')
+    .delete()
+    .eq('household_id', household.id)
+    .eq('catalogue_item_id', catalogueItemId)
+
+  if (error) {
+    shopping.iconOverrides = previous
+    shopping.error = strings.shopping.updateFailed
+  }
+}
+
 /** Clears everything on sign-out so nothing carries into the next account. */
 export function clearShopping(): void {
   shopping.catalogue = []
   shopping.items = []
   shopping.hidden = new Set()
   shopping.useCounts = {}
+  shopping.iconOverrides = {}
   shopping.error = null
   shopping.loading = false
 }

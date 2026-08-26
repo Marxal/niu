@@ -131,3 +131,17 @@ Running 3 before 4 will fail, because the seed writes the column that 4 adds.
 stream, so a word one of you invents shows up on the other phone. Same check as
 before: **Database → Replication**, confirm all four tables are in the
 `supabase_realtime` publication.
+
+---
+
+## Round 5: emoji and custom icons
+
+One new file, then **re-run the seed again**. In the **SQL Editor**:
+
+1. `supabase/migrations/0005_emoji_and_custom_icons.sql` — adds the emoji column
+   and the per-household icon-override table.
+2. `supabase/migrations/0003_catalogue_seed.sql` — **run it again.** This fills
+   in the emoji column so the "Colour" icon style has something to show. It
+   updates existing rows; nothing is duplicated.
+
+As with round 4, 3 must come after 5 — the seed writes a column that 5 adds.

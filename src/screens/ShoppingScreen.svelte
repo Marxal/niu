@@ -19,6 +19,7 @@
 -->
 <script lang="ts">
   import { flip } from 'svelte/animate'
+  import { slide } from 'svelte/transition'
   import CategorySection from '../components/CategorySection.svelte'
   import EmptyBasket from '../components/EmptyBasket.svelte'
   import ItemDetailSheet from '../components/ItemDetailSheet.svelte'
@@ -38,12 +39,17 @@
     splitByChecked,
     suggestedPicks,
   } from '../lib/list-view'
+  import IconPickerSheet from '../components/IconPickerSheet.svelte'
+  import TrolleyIcon from '../components/TrolleyIcon.svelte'
   import { FLIP_MS, tileIn, tileOut } from '../lib/motion'
+  import { prefs } from '../lib/prefs.svelte'
   import {
     addNewWord,
     addToList,
     clearChecked,
+    clearItemIcon,
     hideCatalogueItem,
+    setItemIcon,
     removeFromList,
     shopping,
     toggleChecked,
@@ -54,7 +60,12 @@
   let openItemId = $state<string | null>(null)
   let query = $state('')
   let openCategories = $state<Set<string>>(new Set())
+  // The long-press menu, and the two things it can lead to.
+  let tileMenu = $state<PickerItem | null>(null)
   let pendingHide = $state<PickerItem | null>(null)
+  let pendingIcon = $state<PickerItem | null>(null)
+
+  let layout = $derived(prefs.viewMode === 'list' ? ('row' as const) : ('tile' as const))
 
   // Items the other person added in the last half-day carry the NEW tag (§4.1).
   // Your own additions aren't news to you.
@@ -75,6 +86,7 @@
           name: source.name,
           category: source.category,
           icon: source.icon,
+          emoji: source.emoji,
           sortOrder: source.sortOrder,
           quantity: item.quantity,
           unit: item.unit,
@@ -101,6 +113,7 @@
       name: item.name,
       category: item.category,
       icon: item.icon,
+      emoji: item.emoji,
       sortOrder: item.sortOrder,
       suggestedRank: item.suggestedRank,
       useCount: shopping.useCounts[item.id] ?? 0,
@@ -173,6 +186,29 @@
     pendingHide = null
     if (item && auth.userId) void hideCatalogueItem(item.id, auth.userId)
   }
+
+  function choosePick(item: PickerItem) {
+    // Long press opens a menu rather than one action, because there are two
+    // things you might want and neither should happen by accident.
+    tileMenu = item
+  }
+
+  function applyIcon(icon: string) {
+    const item = pendingIcon
+    pendingIcon = null
+    if (item && auth.userId) void setItemIcon(item.id, icon, auth.userId)
+  }
+
+  function resetIcon() {
+    const item = pendingIcon
+    pendingIcon = null
+    if (item) void clearItemIcon(item.id)
+  }
+
+  /** Emptying the trolley is the end of a shop, so it says so. */
+  function finishShopping() {
+    void clearChecked()
+  }
 </script>
 
 {#if !isConfigured}
@@ -182,7 +218,7 @@
     blurb={strings.screens.shopping.blurb}
   />
 {:else}
-  <div class="screen">
+  <div class="screen {prefs.viewMode}">
     {#if shopping.error}
       <p class="error" role="alert">{shopping.error}</p>
     {/if}
@@ -205,6 +241,8 @@
               <ItemTile
                 name={item.name}
                 icon={item.icon}
+                emoji={item.emoji}
+                {layout}
                 state="list"
                 urgent={item.urgent}
                 isNew={isNew(item)}
@@ -218,21 +256,23 @@
       </section>
     {/if}
 
-    <!-- 2. In the trolley -->
+    <!-- 2. In the trolley — deliberately boxed and faded, because it is a
+         holding pen for this shop only, not part of the list proper. -->
     {#if inTrolley.length > 0}
-      <section class="block">
-        <h2 class="heading">
+      <section class="trolley" transition:slide={{ duration: 200 }}>
+        <h2 class="heading trolley-heading">
+          <TrolleyIcon />
           {strings.shopping.inTrolley}<span class="count">{inTrolley.length}</span>
-          <button class="clear" onclick={() => clearChecked()}>
-            {strings.shopping.clearTrolley}
-          </button>
         </h2>
+
         <div class="grid">
           {#each inTrolley as item (item.id)}
             <div animate:flip={{ duration: FLIP_MS }} in:tileIn out:tileOut>
               <ItemTile
                 name={item.name}
                 icon={item.icon}
+                emoji={item.emoji}
+                {layout}
                 state="checked"
                 detail={detailFor(item)}
                 onclick={() => handleToggle(item.id)}
@@ -241,6 +281,22 @@
             </div>
           {/each}
         </div>
+
+        <p class="trolley-note">{strings.shopping.trolleyNote}</p>
+
+        <!-- Only once nothing is left to buy does this become "you're done" —
+             before that, emptying the trolley mid-shop would be a mistake. -->
+        {#if toBuy.length === 0}
+          <button class="done-btn" onclick={finishShopping}>
+            <TrolleyIcon size={22} />
+            {strings.shopping.shoppingDone}
+          </button>
+          <p class="trolley-note">{strings.shopping.shoppingDoneHint}</p>
+        {:else}
+          <button class="clear-btn" onclick={finishShopping}>
+            {strings.shopping.clearTrolley}
+          </button>
+        {/if}
       </section>
     {/if}
 
@@ -257,9 +313,11 @@
                 <ItemTile
                   name={item.name}
                   icon={item.icon}
+                  emoji={item.emoji}
+                  {layout}
                   state="pick"
                   onclick={() => handleAdd(item.id)}
-                  onlongpress={() => (pendingHide = item)}
+                  onlongpress={() => choosePick(item)}
                 />
               </div>
             {/each}
@@ -276,9 +334,11 @@
                 <ItemTile
                   name={item.name}
                   icon={item.icon}
+                  emoji={item.emoji}
+                  {layout}
                   state="pick"
                   onclick={() => handleAdd(item.id)}
-                  onlongpress={() => (pendingHide = item)}
+                  onlongpress={() => choosePick(item)}
                 />
               </div>
             {/each}
@@ -298,7 +358,8 @@
             open={openCategories.has(name)}
             onToggle={() => toggleCategory(name)}
             onAdd={handleAdd}
-            onHide={(item) => (pendingHide = item)}
+            onHide={choosePick}
+            {layout}
           />
         {/each}
       </section>
@@ -334,6 +395,45 @@
           openItemId = null
         }}
         onClose={() => (openItemId = null)}
+      />
+    {/key}
+  {/if}
+
+  {#if tileMenu}
+    <div class="backdrop" role="presentation" onclick={() => (tileMenu = null)}></div>
+    <div class="confirm" role="dialog" aria-modal="true" aria-label={strings.shopping.tileMenuTitle}>
+      <h2>{tileMenu.name}</h2>
+      <div class="menu">
+        <button
+          class="menu-item"
+          onclick={() => {
+            pendingIcon = tileMenu
+            tileMenu = null
+          }}
+        >
+          {strings.shopping.changeIcon}
+        </button>
+        <button
+          class="menu-item danger"
+          onclick={() => {
+            pendingHide = tileMenu
+            tileMenu = null
+          }}
+        >
+          {strings.shopping.hideConfirm}
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  {#if pendingIcon}
+    {#key pendingIcon.id}
+      <IconPickerSheet
+        name={pendingIcon.name}
+        current={pendingIcon.icon}
+        onPick={applyIcon}
+        onReset={resetIcon}
+        onClose={() => (pendingIcon = null)}
       />
     {/key}
   {/if}
@@ -389,25 +489,102 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .clear {
-    margin-left: auto;
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-full);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-muted);
-    font-size: var(--text-xs);
-    text-transform: none;
-    letter-spacing: 0;
-  }
-
+  /* The three view modes. Four across is the default; three gives bigger
+     targets on a small phone; list is one full-width row each. */
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(4.75rem, 1fr));
+    grid-template-columns: repeat(var(--tile-columns, 4), minmax(0, 1fr));
     gap: var(--space-2);
     /* Rows size to the tallest tile in them, and each tile fills its cell, so a
        two-line name can't leave its neighbours short. */
     grid-auto-rows: 1fr;
     align-items: stretch;
+  }
+
+  .screen.grid-4 {
+    --tile-columns: 4;
+  }
+
+  .screen.grid-3 {
+    --tile-columns: 3;
+  }
+
+  .screen.list .grid,
+  .screen.list :global(.grid) {
+    grid-template-columns: 1fr;
+    grid-auto-rows: auto;
+    gap: var(--space-1);
+  }
+
+  /* ---- The trolley ------------------------------------------------------- */
+
+  .trolley {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px dashed var(--color-done-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-done-soft);
+  }
+
+  .trolley-heading {
+    color: var(--color-done);
+  }
+
+  .trolley-note {
+    color: var(--color-done);
+    font-size: var(--text-xs);
+    opacity: 0.85;
+    text-align: center;
+  }
+
+  .done-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: var(--tap-min);
+    border-radius: var(--radius-full);
+    background: var(--color-pick);
+    color: var(--color-accent-ink);
+    font-size: var(--text-base);
+    font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-1);
+  }
+
+  .done-btn:active {
+    transform: scale(0.98);
+  }
+
+  .clear-btn {
+    align-self: center;
+    min-height: 2.25rem;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--color-done-border);
+    border-radius: var(--radius-full);
+    color: var(--color-done);
+    font-size: var(--text-sm);
+  }
+
+  .menu {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .menu-item {
+    min-height: var(--tap-min);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    font-size: var(--text-base);
+  }
+
+  .menu-item.danger {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
   }
 
   /* The picker sits visually below the list, so it gets a rule above it. */
@@ -459,9 +636,22 @@
     gap: var(--space-2);
     max-width: var(--content-max);
     margin-inline: auto;
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-bg);
-    border-top: 1px solid var(--color-border);
+    /* Floating: no bar. The field itself carries the shadow and border. The
+       only thing behind it is a short fade to the page colour, so tiles
+       dissolve as they pass under instead of being sliced in half — without
+       that the transparent field sits on a band of chopped-off rows. */
+    padding: var(--space-5) var(--space-4) var(--space-3);
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      color-mix(in srgb, var(--color-bg) 70%, transparent) 45%,
+      var(--color-bg) 100%
+    );
+    pointer-events: none;
+  }
+
+  .search > * {
+    pointer-events: auto;
   }
 
   input {
@@ -472,6 +662,7 @@
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-full);
     background: var(--color-surface);
+    box-shadow: var(--shadow-2);
     color: var(--color-text);
     font: inherit;
     /* 16px floor, or Android zooms the page when the field takes focus. */

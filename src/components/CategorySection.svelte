@@ -24,6 +24,7 @@
     icon,
     items,
     open,
+    layout = 'tile',
     onToggle,
     onAdd,
     onHide,
@@ -32,6 +33,8 @@
     icon: string | null
     items: PickerItem[]
     open: boolean
+    /** Tile grid or single rows, following the view preference. */
+    layout?: 'tile' | 'row'
     onToggle: () => void
     onAdd: (id: string) => void
     onHide: (item: PickerItem) => void
@@ -71,6 +74,8 @@
             <ItemTile
               name={item.name}
               icon={item.icon}
+              emoji={item.emoji}
+              {layout}
               state="pick"
               onclick={() => onAdd(item.id)}
               onlongpress={() => onHide(item)}
@@ -143,7 +148,8 @@
 
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(4.75rem, 1fr));
+    /* --tile-columns is set once by the screen, from the view preference. */
+    grid-template-columns: repeat(var(--tile-columns, 4), minmax(0, 1fr));
     gap: var(--space-2);
     /* Rows size to the tallest tile in them, and each tile fills its cell, so a
        two-line name can't leave its neighbours short. */

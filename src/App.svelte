@@ -24,6 +24,7 @@
   import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
   import { clearShopping, loadShopping, watchShopping } from './lib/shopping.svelte'
   import { watchTheme } from './lib/theme.svelte'
+  import { loadPrefs } from './lib/prefs.svelte'
 
   let route = $state<RouteId>(parseRoute(location.hash))
 
@@ -53,6 +54,11 @@
   // Applies the stored light/dark choice, and keeps following the phone's own
   // setting while the choice is "system".
   $effect(() => watchTheme())
+
+  // Display preferences are device-local and don't need watching — read once.
+  $effect(() => {
+    loadPrefs()
+  })
 
   // One subscription for the life of the app. It reports the stored session on
   // its own, so this is also what moves us off the 'loading' screen at boot.

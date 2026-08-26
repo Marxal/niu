@@ -19,6 +19,7 @@ function item(overrides: Partial<DisplayItem> & { name: string }): DisplayItem {
     catalogueItemId: `cat-${overrides.name}`,
     category: 'Pantry',
     icon: null,
+    emoji: null,
     sortOrder: 0,
     quantity: null,
     unit: null,
@@ -58,6 +59,36 @@ describe('splitByChecked', () => {
     const { toBuy, inTrolley } = splitByChecked(items)
     expect(toBuy.map((i) => i.name)).toEqual(['milk', 'bread'])
     expect(inTrolley.map((i) => i.name)).toEqual(['eggs'])
+  })
+
+  it('puts the most recently ticked item at the top of the trolley', () => {
+    // Whatever you just tapped is what you might have tapped by mistake, so it
+    // has to be the easiest one to reach and put back.
+    const items = [
+      item({ name: 'first', checkedAt: '2026-01-01T10:00:00.000Z' }),
+      item({ name: 'third', checkedAt: '2026-01-01T10:20:00.000Z' }),
+      item({ name: 'second', checkedAt: '2026-01-01T10:10:00.000Z' }),
+    ]
+    expect(splitByChecked(items).inTrolley.map((i) => i.name)).toEqual([
+      'third',
+      'second',
+      'first',
+    ])
+  })
+
+  it('leaves the still-to-buy order alone', () => {
+    const items = [item({ name: 'a' }), item({ name: 'b' }), item({ name: 'c' })]
+    expect(splitByChecked(items).toBuy.map((i) => i.name)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('does not mutate the array it was given', () => {
+    const items = [
+      item({ name: 'x', checkedAt: '2026-01-01T10:00:00.000Z' }),
+      item({ name: 'y', checkedAt: '2026-01-01T11:00:00.000Z' }),
+    ]
+    const before = items.map((i) => i.name)
+    splitByChecked(items)
+    expect(items.map((i) => i.name)).toEqual(before)
   })
 })
 
@@ -156,6 +187,7 @@ function pick(overrides: Partial<PickerItem> & { id: string }): PickerItem {
     name: overrides.id,
     category: 'Pantry',
     icon: null,
+    emoji: null,
     sortOrder: 0,
     suggestedRank: null,
     useCount: 0,

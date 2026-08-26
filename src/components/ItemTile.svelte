@@ -2,16 +2,17 @@
   One grocery tile: a line icon (or the item's outlined initial), a name, and
   optional badges.
 
-  One colour, always. The icon, the letter and the label all take the tile's
-  `color`, and the tile picks that from its state — accent while it's something
-  you still need, muted once it's in the trolley, faint in the picker. Nothing
-  inside sets a colour of its own, which is what keeps a grid of 40 mixed tiles
-  looking like one set rather than a sticker album.
+  Three states, each with its own colour, so the two grids can be told apart at
+  a glance from arm's length mid-shop:
+    list    still to buy — red
+    checked in the trolley — grey, struck through, faded
+    pick    a catalogue tile you can tap to add — green
 
-  Three states, and they mean different things in the two places this is used:
-    list    something on the shopping list, still to buy
-    checked in the trolley — greyed, struck through
-    pick    a catalogue tile you can tap to add
+  Everything inside takes the tile's `color`; nothing sets a colour of its own.
+  That is what keeps forty tiles reading as one set rather than a sticker album,
+  and it is why swapping the icon style to emoji only changes the glyph.
+
+  `layout` switches between the tile shape and a single row, for the List view.
 
   Sized so the whole tile is the tap target, never just the label.
 -->
@@ -22,16 +23,22 @@
   let {
     name,
     icon = null,
+    emoji = null,
     state = 'list',
     isNew = false,
     urgent = false,
     detail = null,
+    layout = 'tile',
     onclick,
     onlongpress,
   }: {
     name: string
     /** Icon slug, or null for the outlined initial. */
     icon?: string | null
+    /** The item's emoji, used only under the Colour icon style. */
+    emoji?: string | null
+    /** Tile grid, or a single full-width row. */
+    layout?: 'tile' | 'row'
     state?: 'list' | 'checked' | 'pick'
     isNew?: boolean
     urgent?: boolean
@@ -77,7 +84,7 @@
 </script>
 
 <button
-  class="tile {state}"
+  class="tile {state} {layout}"
   onclick={handleClick}
   onpointerdown={start}
   onpointerup={cancel}
@@ -90,7 +97,7 @@
   }}
   aria-label={name}
 >
-  <span class="glyph"><GroceryIcon {icon} {name} size={30} /></span>
+  <span class="glyph"><GroceryIcon {icon} {emoji} {name} size={layout === 'row' ? 26 : 30} /></span>
 
   <span class="name">{name}</span>
 
@@ -131,26 +138,30 @@
       border-color var(--dur-fast) var(--ease);
   }
 
-  /* On the list and still needed: the accent. */
+  /* Still to buy: red. */
   .tile.list {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-    background: var(--color-accent-soft);
+    color: var(--color-need);
+    border-color: var(--color-need-border);
+    background: var(--color-need-soft);
   }
 
-  /* In the trolley: drained of colour, but still readable. */
+  /* In the trolley: grey and faded, so it reads as done and temporary. */
   .tile.checked {
-    color: var(--color-text-faint);
-    background: var(--color-surface-sunken);
+    color: var(--color-done);
+    border-color: var(--color-done-border);
+    background: var(--color-done-soft);
+    opacity: 0.62;
   }
 
   .tile.checked .name {
     text-decoration: line-through;
   }
 
-  /* In the picker: quiet, so the list above stays the loud thing. */
+  /* In the picker: green, and quieter than the list above it. */
   .tile.pick {
-    color: var(--color-text-muted);
+    color: var(--color-pick);
+    border-color: var(--color-pick-border);
+    background: var(--color-pick-soft);
   }
 
   .tile:active {
@@ -161,6 +172,40 @@
     display: grid;
     place-items: center;
     height: 1.875rem;
+  }
+
+  /* ---- Row layout, for the List view ------------------------------------ */
+
+  .tile.row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    min-height: var(--tap-min);
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+  }
+
+  .tile.row .glyph {
+    flex: none;
+    height: 1.625rem;
+  }
+
+  .tile.row .name {
+    flex: 1;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    font-size: var(--text-base);
+  }
+
+  .tile.row .detail {
+    flex: none;
+    font-size: var(--text-sm);
+  }
+
+  .tile.row .badge {
+    position: static;
+    flex: none;
   }
 
   .name {

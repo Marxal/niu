@@ -13,12 +13,30 @@
   import { household } from '../lib/household.svelte'
   import { install, promptInstall } from '../lib/install.svelte'
   import { setTheme, theme, type ThemeChoice } from '../lib/theme.svelte'
+  import {
+    prefs,
+    setIconStyle,
+    setViewMode,
+    type IconStyle,
+    type ViewMode,
+  } from '../lib/prefs.svelte'
   import { strings } from '../lib/strings'
 
   const choices: { id: ThemeChoice; label: string }[] = [
     { id: 'system', label: strings.theme.system },
     { id: 'light', label: strings.theme.light },
     { id: 'dark', label: strings.theme.dark },
+  ]
+
+  const iconStyles: { id: IconStyle; label: string }[] = [
+    { id: 'line', label: strings.prefs.iconsLine },
+    { id: 'colour', label: strings.prefs.iconsColour },
+  ]
+
+  const viewModes: { id: ViewMode; label: string }[] = [
+    { id: 'grid-4', label: strings.prefs.viewGrid4 },
+    { id: 'grid-3', label: strings.prefs.viewGrid3 },
+    { id: 'list', label: strings.prefs.viewList },
   ]
 </script>
 
@@ -37,6 +55,43 @@
             onclick={() => setTheme(choice.id)}
           >
             {choice.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+
+    <div class="row stack">
+      <div class="text">
+        <h2>{strings.prefs.iconsTitle}</h2>
+        <p>{strings.prefs.iconsHint}</p>
+      </div>
+      <div class="segmented two" role="group" aria-label={strings.prefs.iconsTitle}>
+        {#each iconStyles as style (style.id)}
+          <button
+            class="segment"
+            class:on={prefs.iconStyle === style.id}
+            aria-pressed={prefs.iconStyle === style.id}
+            onclick={() => setIconStyle(style.id)}
+          >
+            {style.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+
+    <div class="row stack">
+      <div class="text">
+        <h2>{strings.prefs.viewTitle}</h2>
+      </div>
+      <div class="segmented" role="group" aria-label={strings.prefs.viewTitle}>
+        {#each viewModes as mode (mode.id)}
+          <button
+            class="segment"
+            class:on={prefs.viewMode === mode.id}
+            aria-pressed={prefs.viewMode === mode.id}
+            onclick={() => setViewMode(mode.id)}
+          >
+            {mode.label}
           </button>
         {/each}
       </div>
@@ -167,6 +222,10 @@
     transition:
       background var(--dur-fast) var(--ease),
       color var(--dur-fast) var(--ease);
+  }
+
+  .segmented.two {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .segment.on {
