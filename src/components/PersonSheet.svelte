@@ -15,8 +15,11 @@
 
   `<input type="file" accept="image/*">` is the whole picker — on Android that
   offers the camera and the gallery, which is the two things anybody wants and
-  nothing to build. What comes back is cropped square and shrunk to 256px *on
-  the phone* before it goes anywhere; see photo.ts for why.
+  nothing to build. What comes back is decoded here, cropped by hand in
+  PhotoCropper, and shrunk to 256px *on the phone* before it goes anywhere.
+
+  Nothing is uploaded until the crop is confirmed, so backing out of the cropper
+  costs nothing and leaves nothing behind.
 
   The input is hidden behind a real button rather than styled, because a file
   input cannot be made to look like anything and every attempt is worse than a
@@ -32,8 +35,10 @@
     updatePerson,
     uploadPhoto,
   } from '../lib/people.svelte'
+  import type { CropRect } from '../lib/crop'
   import { checkPhoto } from '../lib/photo'
-  import { squarePhoto } from '../lib/photo.svelte'
+  import { type Decoded, decodeImage, renderSquare } from '../lib/photo.svelte'
+  import PhotoCropper from './PhotoCropper.svelte'
   import { auth } from '../lib/auth.svelte'
   import { strings } from '../lib/strings'
   import PersonAvatar from './PersonAvatar.svelte'
@@ -51,6 +56,16 @@
   let problem = $state<string | null>(null)
   let confirmingRemove = $state(false)
   let picker = $state<HTMLInputElement | null>(null)
+  /** The decoded picture while the cropper is open. Null the rest of the time. */
+  let cropping = $state<Decoded | null>(null)
+
+  // Whatever happens, the decoded bitmap and its object URL are freed. Without
+  // this, picking three photos in a row leaks three full-size decodes.
+  function closeCropper() {
+    cropping?.release()
+    cropping = null
+    if (picker) picker.value = ''
+  }
 
   /** Somebody else's account: theirs to edit, not yours. */
   let readOnly = $derived(person.userId !== null && person.userId !== auth.userId)
@@ -74,6 +89,13 @@
     void updatePerson(person.id, { avatar, photoPath: null, photoUrl: null })
   }
 
+  /**
+   * A picked file: check it, decode it, and hand it to the cropper.
+   *
+   * Nothing is uploaded here. Round 11.2 went straight from the picker to the
+   * bucket taking the middle square, and the middle is a decent guess and a
+   * poor decision — see PhotoCropper.
+   */
   async function onFile(event: Event) {
     const file = (event.currentTarget as HTMLInputElement).files?.[0]
     if (!file) return
@@ -81,31 +103,44 @@
     problem = null
 
     const bad = checkPhoto(file)
-    if (bad === 'type') {
-      problem = strings.people.photoWrongType
-      return
-    }
-    if (bad === 'size') {
-      problem = strings.people.photoTooBig
+    if (bad !== null) {
+      problem = bad === 'type' ? strings.people.photoWrongType : strings.people.photoTooBig
+      if (picker) picker.value = ''
       return
     }
 
     busy = true
-    const square = await squarePhoto(file)
+    const decoded = await decodeImage(file)
+    busy = false
+
+    if (decoded === null) {
+      problem = strings.people.photoUnreadable
+      if (picker) picker.value = ''
+      return
+    }
+
+    cropping = decoded
+  }
+
+  /** The square they chose: draw it small, upload it, close. */
+  async function useCrop(crop: CropRect) {
+    const decoded = cropping
+    if (!decoded) return
+
+    busy = true
+    const square = await renderSquare(decoded, crop)
 
     if (square === null) {
       busy = false
       problem = strings.people.photoUnreadable
+      closeCropper()
       return
     }
 
-    const ok = await uploadPhoto(person.id, square)
+    const failure = await uploadPhoto(person.id, square)
     busy = false
-    if (!ok) problem = strings.people.photoFailed
-
-    // Let the same file be picked again after a failure; without this the
-    // input holds the old value and the change event never fires.
-    if (picker) picker.value = ''
+    problem = failure
+    closeCropper()
   }
 
   async function clearPhoto() {
@@ -121,6 +156,10 @@
     if (ok) onclose()
   }
 </script>
+
+{#if cropping}
+  <PhotoCropper decoded={cropping} {busy} onuse={useCrop} oncancel={closeCropper} />
+{/if}
 
 <div class="backdrop" role="presentation" onclick={onclose}></div>
 
