@@ -3,15 +3,19 @@
 
   ## The shape of the screen
 
-  A month grid on top, the selected day's list underneath, and two buttons
-  floating above the nav — the same arrangement the planner settled on in round
-  10.1, for the same reason: the answer to "what is happening" and the way to
-  add to it should never be more than a thumb apart.
+  Two views, switched at the top, and two buttons floating above the nav — the
+  same arrangement the planner settled on in round 10.1, for the same reason:
+  the answer to "what is happening" and the way to add to it should never be
+  more than a thumb apart.
 
-  The grid answers *where* and the list answers *what*. That split is what makes
-  a 412px month grid work at all: a cell is 52px wide, which is room for a number
-  and three dots, so anything more than "there is something on that day" has to
-  live somewhere with room for words.
+  **Month** is a grid with the events drawn on it as small boxes, and the
+  selected day written out underneath. The grid answers *where* and the list
+  answers *what*: a cell is 55px wide, so a box can carry a word or two and the
+  rest has to live somewhere with room for it.
+
+  **Week** is seven days down the screen, each written out in full. It exists
+  for the question the month cannot answer at this size — what Thursday and
+  Saturday both look like, without tapping either.
 
   ## Waiting on you
 
@@ -51,7 +55,18 @@
     unaskConfirmation,
     updateEvent,
   } from '../lib/calendar.svelte'
-  import { addMonths, dayName, longDate, monthKey, monthName, todayKey } from '../lib/dates'
+  import {
+    addDays,
+    addMonths,
+    dateRange,
+    dayName,
+    longDate,
+    monthKey,
+    monthName,
+    shortDate,
+    startOfWeek,
+    todayKey,
+  } from '../lib/dates'
   import { google } from '../lib/google.svelte'
   import { runSync, sync, syncSoon } from '../lib/google-sync.svelte'
   import { household } from '../lib/household.svelte'
@@ -59,10 +74,21 @@
   import EventRow from '../components/EventRow.svelte'
   import EventSheet from '../components/EventSheet.svelte'
   import MonthGrid from '../components/MonthGrid.svelte'
+  import WeekView from '../components/WeekView.svelte'
+
+  type View = 'month' | 'week'
 
   let today = $state(todayKey())
   let selected = $state(todayKey())
   let month = $state(monthKey(todayKey()))
+  let view = $state<View>('month')
+
+  /**
+   * The week on show. Derived from the selected day rather than kept separately,
+   * so switching views lands you where you already were: tap the 14th in the
+   * month, switch to Week, and you get the week the 14th is in.
+   */
+  let weekStart = $derived(startOfWeek(selected))
 
   /** What the sheet is showing, or null when it is closed. */
   let sheet = $state<{ event: CalendarEvent | null; kind: EventKind } | null>(null)
@@ -97,8 +123,15 @@
     void setWindow(month)
   })
 
-  function step(months: number) {
-    month = addMonths(month, months)
+  function step(delta: number) {
+    if (view === 'week') {
+      // A week step moves the selection with it, keeping the same weekday.
+      selected = addDays(selected, delta * 7)
+      month = monthKey(selected)
+      return
+    }
+
+    month = addMonths(month, delta)
     // Keep the selection inside the month you are looking at, on the same date
     // where that date exists — stepping from the 31st to a 30-day month should
     // land on a real day rather than nothing.
@@ -124,6 +157,12 @@
 
   function create(kind: EventKind) {
     sheet = { event: null, kind }
+  }
+
+  /** The + on a day in the week view, and tapping an empty day there. */
+  function addOn(day: string) {
+    selected = day
+    sheet = { event: null, kind: 'event' }
   }
 
   async function save(draft: EventDraft, reask: boolean) {
@@ -187,27 +226,50 @@
   <header class="head">
     <button
       class="step"
-      aria-label={strings.calendar.previousMonth}
+      aria-label={view === 'week' ? strings.calendar.previousWeek : strings.calendar.previousMonth}
       onclick={() => step(-1)}>‹</button
     >
-    <h1>{monthName(month, today)}</h1>
+    <h1>
+      {view === 'week'
+        ? dateRange(weekStart, addDays(weekStart, 6))
+        : monthName(month, today)}
+    </h1>
     <button
       class="step"
-      aria-label={strings.calendar.nextMonth}
+      aria-label={view === 'week' ? strings.calendar.nextWeek : strings.calendar.nextMonth}
       onclick={() => step(1)}>›</button
     >
   </header>
+
+  <div class="views" role="group" aria-label={strings.calendar.title}>
+    <button
+      class="view"
+      class:on={view === 'month'}
+      aria-pressed={view === 'month'}
+      onclick={() => (view = 'month')}>{strings.calendar.viewMonth}</button
+    >
+    <button
+      class="view"
+      class:on={view === 'week'}
+      aria-pressed={view === 'week'}
+      onclick={() => (view = 'week')}>{strings.calendar.viewWeek}</button
+    >
+    {#if month !== monthKey(today) || selected !== today}
+      <button class="today" onclick={goToday}>{strings.calendar.today}</button>
+    {/if}
+  </div>
 
   {#if calendar.waitingOnMe.length > 0}
     <div class="asked">
       <h2>{strings.calendar.confirmSheetTitle}</h2>
       {#each calendar.waitingOnMe as event (event.id)}
         <div class="ask-card">
+          <!-- One line, not two. This card sits above the grid and its job is
+               to be impossible to miss, not to be the whole screen. -->
           <button class="ask-body" onclick={() => open(event)}>
             <span class="ask-title">{event.title}</span>
             <span class="ask-when">
-              {dayName(event.startsOn, today)} · {longDate(event.startsOn)}
-              {#if event.startTime}· {event.startTime}{/if}
+              {dayName(event.startsOn, today)}{#if event.startTime}, {event.startTime}{/if}
             </span>
           </button>
           <div class="ask-actions">
@@ -219,53 +281,71 @@
     </div>
   {/if}
 
-  <MonthGrid {month} {selected} {today} {byDay} onselect={select} />
+  {#if view === 'week'}
+    <WeekView
+      {weekStart}
+      {today}
+      events={calendar.events}
+      {unsyncedIds}
+      onopen={open}
+      ontoggleDone={toggleDone}
+      onadd={addOn}
+    />
+  {:else}
+    <MonthGrid {month} {selected} {today} events={calendar.events} {byDay} onselect={select} />
 
-  <div class="day">
-    <div class="day-head">
-      <h2>
-        <span class="day-name">{dayName(selected, today)}</span>
-        <span class="day-date">{longDate(selected)}</span>
-      </h2>
-      {#if month !== monthKey(today) || selected !== today}
-        <button class="today" onclick={goToday}>{strings.calendar.today}</button>
+    <div class="day">
+      <div class="day-head">
+        <h2>
+          <span class="day-name">{dayName(selected, today)}</span>
+          <span class="day-date">{longDate(selected)}</span>
+        </h2>
+      </div>
+
+      {#if dayEvents.length === 0}
+        <div class="empty">
+          <p class="empty-line">{strings.calendar.nothingOn}</p>
+          {#if next.length > 0}
+            <p class="empty-hint">{strings.calendar.comingUp}</p>
+            <!-- Each one says which day it is on (Marçal, round 11.1). Without
+                 it "Coming up" is three events with no dates, which is the one
+                 thing a calendar must never be. -->
+            <div class="rows">
+              {#each next as event (event.id)}
+                <div class="upcoming">
+                  <span class="upcoming-day">
+                    {dayName(event.startsOn, today)}
+                    <span class="upcoming-date">{shortDate(event.startsOn)}</span>
+                  </span>
+                  <EventRow
+                    {event}
+                    unsynced={unsyncedIds.has(event.id)}
+                    onopen={() => open(event)}
+                    ontoggleDone={() => toggleDone(event)}
+                  />
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <p class="empty-hint">{strings.calendar.nothingOnHint}</p>
+          {/if}
+        </div>
+      {:else}
+        <div class="rows">
+          {#each dayEvents as event (event.id)}
+            <EventRow
+              {event}
+              unsynced={unsyncedIds.has(event.id)}
+              onopen={() => open(event)}
+              ontoggleDone={() => toggleDone(event)}
+            />
+          {/each}
+        </div>
       {/if}
     </div>
+  {/if}
 
-    {#if dayEvents.length === 0}
-      <div class="empty">
-        <p class="empty-line">{strings.calendar.nothingOn}</p>
-        {#if next.length > 0}
-          <p class="empty-hint">{strings.calendar.comingUp}</p>
-          <div class="rows">
-            {#each next as event (event.id)}
-              <EventRow
-                {event}
-                unsynced={unsyncedIds.has(event.id)}
-                onopen={() => open(event)}
-                ontoggleDone={() => toggleDone(event)}
-              />
-            {/each}
-          </div>
-        {:else}
-          <p class="empty-hint">{strings.calendar.nothingOnHint}</p>
-        {/if}
-      </div>
-    {:else}
-      <div class="rows">
-        {#each dayEvents as event (event.id)}
-          <EventRow
-            {event}
-            unsynced={unsyncedIds.has(event.id)}
-            onopen={() => open(event)}
-            ontoggleDone={() => toggleDone(event)}
-          />
-        {/each}
-      </div>
-    {/if}
-
-    {#if calendar.error}<p class="error">{calendar.error}</p>{/if}
-  </div>
+  {#if calendar.error}<p class="error day-error">{calendar.error}</p>{/if}
 
   <div class="dock">
     {#if google.available && sync.pending > 0}
@@ -334,10 +414,35 @@
     line-height: 1;
   }
 
-  /* Sits in the day heading rather than the month heading. It is the way back
-     from wherever you have wandered to, and the day heading is the line that
-     says where that is. */
+  /* The two views, as a segmented control beside Today. Not a third tab in the
+     nav: this is a way of looking at one screen, not another screen. */
+  .views {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+  }
+
+  .view {
+    min-height: 2rem;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-full);
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .view.on {
+    border-color: var(--color-tab-calendar);
+    background: var(--color-tab-calendar);
+    color: var(--color-accent-ink);
+    font-weight: var(--weight-bold);
+  }
+
   .today {
+    margin-left: auto;
     flex: none;
     min-height: 2rem;
     padding: 0 var(--space-3);
@@ -353,9 +458,9 @@
   .asked {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-1);
     margin: 0 var(--space-3);
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-warning);
     border-radius: var(--radius-md);
     background: var(--color-surface);
@@ -376,9 +481,10 @@
   .ask-body {
     flex: 1;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
     min-height: var(--tap-min);
     padding: 0;
     border: none;
@@ -388,12 +494,12 @@
   }
 
   .ask-title {
-    font-size: var(--text-base);
-    font-weight: var(--weight-medium);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
   }
 
   .ask-when {
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     color: var(--color-text-muted);
   }
 
@@ -405,9 +511,9 @@
 
   .yes,
   .no {
-    min-width: 3.5rem;
+    min-width: 2.75rem;
     min-height: var(--tap-min);
-    padding: 0 var(--space-3);
+    padding: 0 var(--space-2);
     border-radius: var(--radius-full);
     font-size: var(--text-sm);
     font-weight: var(--weight-bold);
@@ -463,6 +569,26 @@
     gap: var(--space-2);
   }
 
+  .upcoming {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .upcoming-day {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--color-text-muted);
+  }
+
+  .upcoming-date {
+    font-weight: var(--weight-regular);
+    color: var(--color-text-faint);
+  }
+
   .empty {
     display: flex;
     flex-direction: column;
@@ -483,6 +609,10 @@
   .error {
     font-size: var(--text-sm);
     color: var(--color-danger);
+  }
+
+  .day-error {
+    padding: 0 var(--space-3);
   }
 
   /* Floating over the content with a gradient fade behind, the same way the

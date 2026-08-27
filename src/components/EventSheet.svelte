@@ -38,8 +38,9 @@
     needsReconfirming,
     newDraft,
   } from '../lib/calendar'
+  import { EVENT_COLOURS } from '../lib/calendar'
   import { addDays, longDate, shortDayName } from '../lib/dates'
-  import { TAG_COLOURS, tagStyle, type TagColour } from '../lib/dish-tags'
+  import { tagStyle, type TagColour } from '../lib/dish-tags'
   import { members, memberName } from '../lib/members.svelte'
   import { strings } from '../lib/strings'
   import MemberAvatar from './MemberAvatar.svelte'
@@ -75,6 +76,25 @@
 
   let more = $state(false)
   let confirmingRemove = $state(false)
+  let titleField = $state<HTMLInputElement | null>(null)
+
+  /**
+   * Put the keyboard up on a new one, straight away (Marçal, round 11.1).
+   *
+   * `autofocus` alone is not enough on Chrome for Android: it focuses the field
+   * but leaves the keyboard down, so you tap Add and then have to tap again to
+   * type. A real `.focus()` call inside the tap that opened the sheet counts as
+   * user activation and does raise it.
+   *
+   * Only for a *new* one. Opening something you already wrote to check the time
+   * and getting a keyboard over half the screen is the opposite of helpful.
+   */
+  $effect(() => {
+    if (event !== null) return
+    const field = titleField
+    if (!field) return
+    field.focus({ preventScroll: true })
+  })
 
   let isReminder = $derived(draft.kind === 'reminder')
   let editing = $derived(event !== null)
@@ -135,29 +155,33 @@
   </header>
 
   <div class="body">
-    <label class="field">
-      <span class="label">{strings.calendar.titleLabel}</span>
-      <!-- svelte-ignore a11y_autofocus -->
-      <input
-        class="input title-input"
-        type="text"
-        autofocus
-        autocomplete="off"
-        maxlength="120"
-        placeholder={isReminder
-          ? strings.calendar.reminderPlaceholder
-          : strings.calendar.eventPlaceholder}
-        bind:value={draft.title}
-      />
-    </label>
+    <!-- No label above it. The heading already says which of the two this is,
+         the placeholder says what to do, and a label would put a word between
+         the tap and the typing. -->
+    <input
+      class="input title-input"
+      type="text"
+      autocomplete="off"
+      enterkeyhint="done"
+      maxlength="120"
+      aria-label={strings.calendar.titleLabel}
+      placeholder={isReminder
+        ? strings.calendar.reminderPlaceholder
+        : strings.calendar.eventPlaceholder}
+      bind:this={titleField}
+      bind:value={draft.title}
+      onkeydown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          save()
+        }
+      }}
+    />
 
     <div class="field">
       <span class="label">{strings.calendar.whenLabel}</span>
       <div class="when">
         <input class="input day" type="date" bind:value={draft.startsOn} onchange={onStartDayChange} />
-        {#if draft.startTime !== null}
-          <input class="input time" type="time" bind:value={draft.startTime} />
-        {/if}
         <button
           class="chip"
           class:on={draft.startTime === null}
@@ -167,10 +191,36 @@
           {strings.calendar.allDayLabel}
         </button>
       </div>
+
+      <!-- Start and end together, up here rather than behind More (Marçal,
+           round 11.1). The end is optional and says so: an empty field reads as
+           "no end", which is exactly what it means, and Google gets its usual
+           hour when it is left that way. -->
+      {#if draft.startTime !== null}
+        <div class="times">
+          <label class="sub">
+            <span class="sub-label">{strings.calendar.startsLabel}</span>
+            <input class="input time" type="time" bind:value={draft.startTime} />
+          </label>
+          <label class="sub">
+            <span class="sub-label">{strings.calendar.endOptional}</span>
+            <input class="input time" type="time" bind:value={draft.endTime} />
+          </label>
+          {#if draft.endTime}
+            <button
+              class="clear"
+              aria-label={strings.calendar.clearEnd}
+              onclick={() => (draft.endTime = null)}>×</button
+            >
+          {/if}
+        </div>
+      {/if}
+
       {#if isReminder}
         <p class="hint">{strings.calendar.reminderHint}</p>
       {/if}
     </div>
+
 
     {#if !members.alone}
       <div class="field">
@@ -194,6 +244,24 @@
         {/if}
       </div>
     {/if}
+    <!-- Six colours, one line. Eight wrapped onto two rows and the second row
+         read as an afterthought; sage and stone were the two nobody reached
+         for. See EVENT_COLOURS in calendar.ts. -->
+    <div class="field">
+      <span class="label">{strings.calendar.colourLabel}</span>
+      <div class="colours">
+        {#each EVENT_COLOURS as colour (colour)}
+          <button
+            class="swatch"
+            class:on={draft.colour === colour}
+            style={tagStyle(colour)}
+            aria-label={colour}
+            aria-pressed={draft.colour === colour}
+            onclick={() => pickColour(colour)}
+          ></button>
+        {/each}
+      </div>
+    </div>
 
     {#if more}
       <div class="field">
@@ -209,9 +277,6 @@
           </button>
           {#if draft.endsOn !== draft.startsOn}
             <input class="input day" type="date" min={draft.startsOn} bind:value={draft.endsOn} />
-          {/if}
-          {#if draft.startTime !== null}
-            <input class="input time" type="time" bind:value={draft.endTime} />
           {/if}
         </div>
       </div>
@@ -238,21 +303,6 @@
         ></textarea>
       </label>
 
-      <div class="field">
-        <span class="label">{strings.calendar.colourLabel}</span>
-        <div class="colours">
-          {#each TAG_COLOURS as colour (colour)}
-            <button
-              class="swatch"
-              class:on={draft.colour === colour}
-              style={tagStyle(colour)}
-              aria-label={colour}
-              aria-pressed={draft.colour === colour}
-              onclick={() => pickColour(colour)}
-            ></button>
-          {/each}
-        </div>
-      </div>
     {:else}
       <button class="more-button" onclick={() => (more = true)}>
         {strings.calendar.moreLabel}
@@ -382,9 +432,59 @@
     font-family: inherit;
   }
 
+  /* Bigger and borderless: it is the first thing you see and the only thing
+     you always fill in, so it reads as a heading you are writing rather than a
+     field you are completing. */
   .title-input {
-    font-size: var(--text-lg);
+    border: none;
+    border-bottom: 2px solid var(--color-border-strong);
+    border-radius: 0;
+    padding: 0 var(--space-1);
+    background: none;
+    font-size: var(--text-xl);
     font-weight: var(--weight-medium);
+  }
+
+  .title-input:focus {
+    outline: none;
+    border-bottom-color: var(--color-tab-calendar);
+  }
+
+  .times {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2);
+  }
+
+  .sub {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sub-label {
+    font-size: var(--text-xs);
+    color: var(--color-text-faint);
+  }
+
+  /* `flex: none` is load-bearing. `.time` carries a flex basis for the row it
+     sits in elsewhere, and inside a *column* a basis is a height — which is how
+     a 48px time field turned into a 112px one. */
+  .sub .time {
+    flex: none;
+    width: 100%;
+  }
+
+  .clear {
+    flex: none;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    border: none;
+    background: none;
+    color: var(--color-text-faint);
+    font-size: var(--text-lg);
   }
 
   .notes {
@@ -450,7 +550,8 @@
   }
 
   .swatch {
-    width: var(--tap-min);
+    flex: 1;
+    min-width: 0;
     height: 2.25rem;
     border: 2px solid var(--tag-ink);
     border-radius: var(--radius-full);

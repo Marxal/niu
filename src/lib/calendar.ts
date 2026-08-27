@@ -86,6 +86,27 @@ export interface CalendarEvent {
   confirmations: Confirmation[]
 }
 
+/**
+ * The six an event can be painted, out of the eight in dish-tags.ts.
+ *
+ * Six rather than eight because they live on one line in the sheet now (Marçal,
+ * round 11.1), and because two of the eight were pulling their weight in the
+ * dish library and not here: sage sits too close to moss to be told apart in a
+ * 7px box in a month grid, and stone is the colour of something with no colour,
+ * which is not a category anyone chooses on purpose.
+ *
+ * The tokens are untouched — a dish tag still has all eight. This is a shorter
+ * menu over the same palette, not a different palette.
+ */
+export const EVENT_COLOURS: readonly TagColour[] = [
+  'clay',
+  'amber',
+  'moss',
+  'sky',
+  'plum',
+  'rose',
+]
+
 /** The colour an event gets when nobody has chosen one. */
 export const DEFAULT_EVENT_COLOUR: TagColour = 'sky'
 

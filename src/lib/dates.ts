@@ -110,6 +110,27 @@ export function weekDays(startKey: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(startKey, i))
 }
 
+/**
+ * The days of a week worth showing, which in the week you are actually in means
+ * from today onwards.
+ *
+ * The meal planner arrived at this in round 10.1 and the calendar's week view
+ * needed exactly the same rule in 11.1, so it lives here and plan.ts calls it
+ * `planningDays`. Two dead days at the top of a screen are two screens of
+ * scrolling before the question you opened the app to answer.
+ *
+ * Any other week shows all seven, and that is the same rule rather than an
+ * exception to it: a week you have deliberately stepped back to is one you are
+ * looking at on purpose, and a past week missing its first days would be a week
+ * with a hole in it.
+ */
+export function weekDaysFrom(startKey: string, today: string): string[] {
+  const all = weekDays(startKey)
+  const last = all[6] ?? startKey
+  if (today < startKey || today > last) return all
+  return all.filter((day) => day >= today)
+}
+
 /* -------------------------------------------------------------------------- */
 /* Months                                                                      */
 /* -------------------------------------------------------------------------- */

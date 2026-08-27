@@ -1751,3 +1751,123 @@ the Google Cloud part.
 - **An old-tombstone sweep.** `event_tombstones` keeps three columns per deleted
   event forever. A household making a few hundred a year will not notice; if it
   ever matters it is one scheduled delete.
+
+## Round 11.1 — The calendar, after using it
+
+**Branch:** `claude/calendar-r7-events-confirmations-htn01h`
+
+Nine notes from Marçal after a day with round 11. Eight are here; the ninth —
+people without accounts, photos, and your face in the nav — is round 11.2,
+because it needs Supabase Storage with its own security policies and that is a
+round rather than a note.
+
+### What changed
+
+1. **The month grid draws events, not dots.** Small boxes with the title in
+   them, and **a holiday running Friday to Tuesday is one unbroken bar** rather
+   than five separate blobs. The maths is in a new `src/lib/grid-layout.ts` and
+   it is the only genuinely algorithmic part of the calendar, so it is pure and
+   has 19 tests of its own.
+2. **A week view**, with a Month / Week switcher above it. Seven days down the
+   screen, each written out in full, using the same rows the day list uses.
+3. **The sheet opens straight into the title with the keyboard up.** No "What is
+   it?" label, no example title — just *Add a title* on a line of its own.
+   Pressing Enter saves.
+4. **Start and end time, side by side, on the basics.** The end says
+   "(optional)" and has an × to clear it; the multi-day toggle stayed behind
+   *More*, because that is the rarer thing.
+5. **Six colours in one line**, out of the eight the dish library uses. Sage sits
+   too close to moss to be told apart in a 7px box, and stone is the colour of
+   having no colour.
+6. **Coming up says which day each thing is on.** It was three events with no
+   dates, which is the one thing a calendar must never be.
+7. **The top bar is gone.** Settings moved into the bottom bar as your own face.
+8. **The planner's drop-to-remove bin is twice as tall.**
+
+### The week view starts at today
+
+The first version opened on Monday and showed three spent days before today.
+That is exactly the problem round 10.1 solved for the meal planner, so it now
+uses exactly the same rule — the current week starts at today, any other week
+shows all seven — and the rule itself moved into `dates.ts` as `weekDaysFrom()`,
+with `planningDays()` in the planner calling it. One implementation.
+
+### Why a bar cannot live inside a day cell
+
+A box that spans five days cannot be drawn by any one of those days: a cell
+cannot paint outside itself. So a week row is now two layers — seven buttons
+underneath carrying the dates, the taps and the "+2", and one CSS grid on top
+where a box is literally `grid-column: 3 / span 5`.
+
+The layer of boxes takes no taps at all. That is deliberate: a 17px-tall box is
+not a touch target, and the list below is where an event is meant to be read and
+opened. The grid answers *where*, the list answers *what*.
+
+**Longer events get their lane first.** Not an optimisation — a bar that changes
+lane halfway across a week reads as two different events, so the long ones take
+the low lanes and the single days shuffle around them.
+
+### The nav, and what it bought
+
+Removing the top bar wins 57 pixels — more than a whole row of the month grid —
+and the screen title it held was already being said by the tab bar underneath.
+
+Settings is **not** a fourth equal tab: it is a place you visit monthly, and four
+equal items would have shrunk the three you use daily from 137px to 103px. It is
+your avatar on the right instead, in a narrower slot, divided off by a hairline.
+It reads warmer than a gear and it is the same avatar the calendar draws beside
+an event. Settings grew its own heading; the dish library already had a back row.
+
+### How it was checked
+
+335 unit tests, 19 of them new, all passing. The grid layout ones are the ones
+that matter: a bar clipped at a week boundary appears in both weeks with the
+correct column and span, a long event keeps one lane the whole way across, a
+short event sits beside a bar it does not touch, and what does not fit is
+counted per *day* rather than per week.
+
+Rendered in a real Chromium at 412×915 in both themes: the month with a busy
+week, the week view, the event sheet and the reminder sheet. No console errors,
+nothing scrolls sideways. Three things the render caught that reading the code
+had not:
+
+- every box came out wordless — the "is this wide enough for a word" test was
+  set at two columns, and one column is five characters, which is a word
+- the time fields were 112px tall. `.time` carries a flex *basis* for the row it
+  sits in elsewhere, and inside a column a basis is a height
+- the week view opened on three empty days, which is what led to the rule above
+
+### How to test it
+
+No migration this round — just reload.
+
+1. **The top bar is gone**, and your face is at the bottom right. Tap it for
+   Settings; it turns into a way back to where you were.
+2. **Calendar → a busy week.** Events are boxes with words in them now. Put a
+   holiday across a weekend (**＋ Event → All day → More → More than one day**)
+   and it should draw as *one* bar straight through, including across the join
+   between two weeks.
+3. **Week**, top left. Seven days down the screen. This week starts at today;
+   step back with ‹ and you get all seven.
+4. **＋ Event.** The keyboard should already be up with the cursor in the title.
+   Type and press Enter — it saves without you reaching for the button.
+5. **Times.** Start and end are both there now, side by side. Set an end, then
+   tap the × beside it to take it off again.
+6. **Colours** are six, on one line, under the faces.
+7. **Empty day → Coming up.** Each row says which day it is on.
+8. **Meals → hold a card.** The bin is about twice as tall as it was.
+
+### Deliberately not done
+
+- **People without accounts, photos, and the Google profile picture.** Round
+  11.2. It needs a Storage bucket with its own policies, a table for people who
+  have no account to attach to, and image resizing on the phone — which is a
+  round, not a note.
+- **Tapping a box in the month grid.** They are 17px tall; the day underneath
+  takes the tap and the list below opens the event. Worth revisiting only if
+  reading the list ever feels like a detour.
+- **Swiping between months.** A horizontal swipe on the grid fights Android's
+  own back gesture at the screen edges, which is the one gesture that must keep
+  working.
+- **A month view for the meal planner.** Still open from round 10, still a
+  separate thing.
