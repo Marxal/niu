@@ -18,7 +18,7 @@
   import PlanCard from './PlanCard.svelte'
   import type { Dish } from '../lib/dishes'
   import type { DishTag } from '../lib/dish-tags'
-  import { type DragSlot, drag, slotKey } from '../lib/drag.svelte'
+  import { type DragSlot, carry, drag, slotKey } from '../lib/drag.svelte'
   import { MEAL_LABELS, type Meal, type PlanEntry, type Rhythm } from '../lib/plan'
   import type { CatalogueItem } from '../lib/shopping.svelte'
   import { strings } from '../lib/strings'
@@ -54,7 +54,11 @@
   } = $props()
 
   let key = $derived(slotKey(date, meal))
-  let over = $derived(drag.active && drag.overKey === key)
+  /* Either kind of thing in the air: a card being moved, or an ingredient
+     carried in from the What's home sheet. */
+  let over = $derived(
+    (drag.active && drag.overKey === key) || (carry.active && carry.overKey === key),
+  )
 </script>
 
 <section

@@ -15,8 +15,12 @@
     1. what you can make from what you already have — the shop → plan direction,
        at the exact moment it is useful
     2. the rest of the library, what this household plans most first (§4.2)
-    3. a plain catalogue thing, because "broccoli on Tuesday" is a complete
-       thought and shouldn't need a dish written for it first (§4.2)
+    3. **recently bought** — the things that came home on Saturday, which is what
+       you are actually choosing between when you look at Tuesday on a Sunday
+       evening. A plain catalogue thing can be planned directly, because
+       "broccoli on Tuesday" is a complete thought and shouldn't need a dish
+       written for it first (§4.2). Typing turns this group into ordinary
+       catalogue search, so anything at all is still reachable.
 
   Bottom, pinned: the search box and **New dish**. They are last because they are
   the fallbacks — if what you wanted was on screen you never reach them, and a
@@ -39,9 +43,10 @@
   import TagChip from './TagChip.svelte'
   import { type Dish, filterDishes, sortDishes } from '../lib/dishes'
   import { type DishTag, tagsOf } from '../lib/dish-tags'
-  import { type PickerItem, matchesSearch, suggestedPicks } from '../lib/list-view'
+  import { type PickerItem, matchesSearch } from '../lib/list-view'
+  import { learning } from '../lib/learning.svelte'
   import { MEAL_LABELS, type Meal } from '../lib/plan'
-  import { MAKEABLE_FLOOR, type Pantry, scoreDish } from '../lib/plannable'
+  import { MAKEABLE_FLOOR, type Pantry, recentlyBought, scoreDish } from '../lib/plannable'
   import type { PlanOptions, PlanTarget } from '../lib/plan.svelte'
   import { shopping } from '../lib/shopping.svelte'
   import { strings } from '../lib/strings'
@@ -103,8 +108,20 @@
       ),
   )
 
+  /**
+   * Idle: what this household bought most recently. Searching: the catalogue.
+   *
+   * Two different questions sharing one strip, which is why the heading changes
+   * with it — a list headed "Recently bought" that quietly turns into search
+   * results would be lying about where its contents came from.
+   */
   let items = $derived.by<PickerItem[]>(() => {
-    if (!searching) return suggestedPicks(shopping.picker, new Set(), 9)
+    if (!searching) {
+      return recentlyBought(learning.stats, 9).flatMap((id) => {
+        const item = shopping.picker.find((row) => row.id === id)
+        return item ? [item] : []
+      })
+    }
     return shopping.picker
       .filter((item) => matchesSearch(item.name, trimmed))
       .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -200,7 +217,7 @@
     </section>
 
     <section>
-      <h3>{strings.plan.pickItems}</h3>
+      <h3>{searching ? strings.plan.pickItemsSearch : strings.plan.pickItems}</h3>
       <div class="grid">
         {#each items as item (item.id)}
           <button

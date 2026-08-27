@@ -255,3 +255,37 @@ export function atHomeItems(
   // stable order between renders rather than swapping places.
   return out.sort((a, b) => a.daysAgo - b.daysAgo || a.itemId.localeCompare(b.itemId))
 }
+
+/**
+ * Catalogue ids in the order they were most recently bought.
+ *
+ * The picker's third group used to be "or just a thing", filled with the
+ * hand-picked "typical stuff" order — which is a guess about households in
+ * general. This is a fact about *this* one, and a much better answer to the
+ * question actually being asked at that moment: you are standing in front of the
+ * fridge deciding what Tuesday looks like, and the things you bought on Saturday
+ * are the things you are deciding between (Marçal, round 10.2).
+ *
+ * Unlike `atHomeItems`, nothing is filtered and nothing is judged — no freshness
+ * window, no rhythm, and things already on the list are kept, because planning
+ * broccoli for Tuesday is a perfectly good reason to have broccoli on the list.
+ * It is a recency order, not a claim.
+ */
+export function recentlyBought(
+  stats: Readonly<Record<string, BuyingStat>>,
+  limit = 9,
+): string[] {
+  const dated: { itemId: string; at: number }[] = []
+
+  for (const [itemId, stat] of Object.entries(stats)) {
+    if (!stat.lastBoughtAt) continue
+    const at = Date.parse(stat.lastBoughtAt)
+    if (Number.isNaN(at)) continue
+    dated.push({ itemId, at })
+  }
+
+  return dated
+    .sort((a, b) => b.at - a.at || a.itemId.localeCompare(b.itemId))
+    .slice(0, limit)
+    .map((row) => row.itemId)
+}

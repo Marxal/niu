@@ -222,7 +222,7 @@
       {/if}
     </div>
 
-    <div class="control inline">
+    <div class="control">
       <span class="label">{strings.dishes.cookTitle}</span>
       <div class="segmented" role="group" aria-label={strings.dishes.cookTitle}>
         {#each DISH_COOKS as option (option)}
@@ -401,22 +401,6 @@
     gap: var(--space-2);
   }
 
-  /* Label beside its control rather than above it. The cooking row is three
-     short words and there is room on one line — which buys back a whole row of
-     vertical space in a sheet that is mostly under the keyboard (Marçal, round
-     10.1). It wraps back to two rows on a narrow phone rather than squeezing. */
-  .control.inline {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2) var(--space-3);
-  }
-
-  .control.inline .segmented {
-    flex: 1 1 15rem;
-  }
-
   .label {
     color: var(--color-text-muted);
     font-size: var(--text-sm);
@@ -467,14 +451,19 @@
     font-weight: var(--weight-medium);
   }
 
-  /* Icon over label rather than beside it: three labels plus three glyphs on one
-     row do not fit at 412px without shrinking the text below the readable floor. */
+  /* Icon *beside* its label rather than above it (Marçal, round 10.2), which
+     halves the height of this row. It fits at 412px because the three words are
+     short and the glyph is 16px: measured, not hoped for. `min-width: 0` lets a
+     segment shrink rather than pushing the row wider than the sheet. */
   .cook {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
+    justify-content: center;
+    min-width: 0;
     gap: var(--space-1);
-    min-height: 3.5rem;
+    white-space: nowrap;
+    min-height: var(--tap-min);
     font-size: var(--text-xs);
   }
 

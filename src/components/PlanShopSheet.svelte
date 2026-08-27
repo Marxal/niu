@@ -19,6 +19,11 @@
   Everything starts ticked, because the common case is that the plan is right —
   the ticks are for the exceptions, not a checklist to complete.
 
+  The **whole row** is the target, not the little box (Marçal, round 10.2). A
+  1.6rem checkbox is below the tap floor this project sets, and aiming at one
+  while walking is exactly the situation the floor exists for. The box is now
+  drawn state rather than the control.
+
   Nothing here writes. It shows what planNeeds() worked out and hands the chosen
   ids back to the planner, which calls add_plan_to_list() — one round trip, and
   the database returns the count that gets reported.
@@ -132,32 +137,18 @@
         {#each rows as row (row.need.itemId)}
           {@const item = itemsById.get(row.need.itemId)}
           {@const ticked = !row.on && !unticked.has(row.need.itemId)}
-          <li class="row" class:on={row.on}>
-            {#if row.on}
-              <span class="box done" aria-hidden="true">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.6"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="m5 13 4 4L19 7" />
-                </svg>
-              </span>
-            {:else}
-              <button
-                class="box"
-                class:ticked
-                role="checkbox"
-                aria-checked={ticked}
-                aria-label={item?.name ?? ''}
-                onclick={() => toggle(row.need.itemId)}
-              >
-                {#if ticked}
+          <li>
+            <button
+              class="row"
+              class:on={row.on}
+              class:ticked
+              role="checkbox"
+              aria-checked={row.on ? true : ticked}
+              aria-disabled={row.on}
+              onclick={() => !row.on && toggle(row.need.itemId)}
+            >
+              <span class="box" class:done={row.on} aria-hidden="true">
+                {#if ticked || row.on}
                   <svg
                     width="16"
                     height="16"
@@ -167,29 +158,28 @@
                     stroke-width="2.6"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    aria-hidden="true"
                   >
                     <path d="m5 13 4 4L19 7" />
                   </svg>
                 {/if}
-              </button>
-            {/if}
-            <span class="glyph">
-              <GroceryIcon
-                icon={item?.icon ?? null}
-                emoji={item?.emoji ?? null}
-                name={item?.name ?? '?'}
-                size={22}
-              />
-            </span>
-            <span class="text">
-              <span class="name">{item?.name ?? '—'}</span>
-              <span class="why">
-                {row.need.dishNames.length > 0
-                  ? strings.plan.shopFor(row.need.dishNames.join(', '))
-                  : strings.plan.shopForNobody}
               </span>
-            </span>
+              <span class="glyph">
+                <GroceryIcon
+                  icon={item?.icon ?? null}
+                  emoji={item?.emoji ?? null}
+                  name={item?.name ?? '?'}
+                  size={22}
+                />
+              </span>
+              <span class="text">
+                <span class="name">{item?.name ?? '—'}</span>
+                <span class="why">
+                  {row.need.dishNames.length > 0
+                    ? strings.plan.shopFor(row.need.dishNames.join(', '))
+                    : strings.plan.shopForNobody}
+                </span>
+              </span>
+            </button>
           </li>
         {/each}
       </ul>
@@ -277,11 +267,25 @@
 
   .row {
     display: flex;
+    width: 100%;
     align-items: center;
     gap: var(--space-3);
-    min-height: 2.75rem;
-    padding: var(--space-1) var(--space-2);
+    min-height: var(--tap-min);
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
+    text-align: left;
+  }
+
+  /* Ticked rows carry a tint as well as a mark, so the shape of what you are
+     about to buy reads without having to check eight little boxes one by one. */
+  .row.ticked {
+    border-color: var(--color-pick-border);
+    background: var(--color-pick-soft);
+  }
+
+  .row:active {
+    transform: scale(0.995);
   }
 
   /* Already on the list: still shown, because "we have that" is half the answer,
@@ -347,7 +351,7 @@
     color: transparent;
   }
 
-  .box.ticked {
+  .row.ticked .box {
     border-color: var(--color-pick);
     background: var(--color-pick);
     color: var(--color-accent-ink);

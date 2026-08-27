@@ -24,9 +24,12 @@
   a dish is eight or ten ingredients, and four across shows a dozen candidates in
   the strip of sheet the keyboard leaves behind, where rows showed three.
 
-  The chosen ingredients and the browsable categories stay as rows. Those are
-  read rather than scanned — you are checking a list you already made, and the
-  category sections are long enough that four-across would make them a wall.
+  Round 10.2 put the chosen ingredients on the same grid. They were rows on the
+  argument that you *read* a list you already made — but a dish's ingredients and
+  the candidates for it are the same kind of thing, and two layouts a centimetre
+  apart made the sheet read as two unrelated lists rather than one before-and-
+  after. The browsable categories underneath stay as rows: those are long enough
+  that four-across would make a wall.
 
   Nothing here writes to the dish. It hands a new array of catalogue ids to its
   parent, and the parent saves the whole dish in one go.
@@ -150,13 +153,12 @@
   {#if chosenItems.length === 0}
     <p class="none">{strings.dishes.ingredientsEmpty}</p>
   {:else}
-    <div class="rows">
+    <div class="chosen">
       {#each chosenItems as item (item.id)}
         <ItemTile
           name={item.name}
           icon={item.icon}
           emoji={item.emoji}
-          layout="row"
           state="list"
           onclick={() => remove(item.id)}
         />
@@ -258,7 +260,8 @@
     the sticky search box above solves the problem the cap was there for — you
     can always get back to the field that shortens the list.
   */
-  .results {
+  .results,
+  .chosen {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--space-2);
@@ -298,12 +301,6 @@
   .none {
     color: var(--color-text-faint);
     font-size: var(--text-xs);
-  }
-
-  .rows {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
   }
 
   .categories {

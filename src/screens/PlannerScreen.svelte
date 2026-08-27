@@ -40,6 +40,7 @@
   import DishSheet from '../components/DishSheet.svelte'
   import EntryPickerSheet from '../components/EntryPickerSheet.svelte'
   import Flash from '../components/Flash.svelte'
+  import GroceryIcon from '../components/GroceryIcon.svelte'
   import MakeableSheet from '../components/MakeableSheet.svelte'
   import PlanCard from '../components/PlanCard.svelte'
   import PlanDay from '../components/PlanDay.svelte'
@@ -51,7 +52,13 @@
   import { isConfigured } from '../lib/config'
   import type { Dish } from '../lib/dishes'
   import { addDishToList, dishes } from '../lib/dishes.svelte'
-  import { type DragSlot, drag } from '../lib/drag.svelte'
+  import {
+    type CarriedItem,
+    type DragSlot,
+    carry,
+    drag,
+    startCarry,
+  } from '../lib/drag.svelte'
   import { household } from '../lib/household.svelte'
   import { learning } from '../lib/learning.svelte'
   import {
@@ -113,6 +120,8 @@
   let shopping_sheet = $state(false)
   let makeable_sheet = $state(false)
   let home_sheet = $state(false)
+  /** The What's home sheet is out of sight but still mounted, mid-carry. */
+  let homeCarrying = $state(false)
   let editingDish = $state<Dish | 'new' | null>(null)
   let busy = $state(false)
   let homeBusyId = $state<string | null>(null)
@@ -258,6 +267,30 @@
         )
       },
     }
+  }
+
+  /**
+   * Held down in the What's home sheet: close it and carry the item onto the
+   * week.
+   *
+   * The sheet closes first and on purpose — you cannot aim at days you cannot
+   * see. `startCarry` then drives the whole gesture off the window, so the row
+   * disappearing underneath the finger costs nothing.
+   */
+  function carryFromHome(item: CarriedItem, at: { x: number; y: number }) {
+    // Hidden, *not* closed: unmounting the row the finger is on would cancel the
+    // pointer and kill the gesture on its first move. See drag.svelte.ts.
+    homeCarrying = true
+    startCarry(item, at, {
+      onDrop: (itemId, slot) => {
+        if (!auth.userId) return
+        void planEntry(slot, { kind: 'item', itemId }, auth.userId).then(markFresh)
+      },
+      onEnd: () => {
+        homeCarrying = false
+        home_sheet = false
+      },
+    })
   }
 
   /** "Out of it" on a What's home row: straight onto the shopping list. */
@@ -481,52 +514,79 @@
 
   </div>
 
-  <!-- Pinned, because both questions are asked *while* looking at the week
-       rather than after scrolling to the end of it. -->
-  <div class="dock">
-    <button class="shop" onclick={() => (shopping_sheet = true)}>
-      <svg
-        width="19"
-        height="19"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.8"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M4 5h2l2.2 10.2a2 2 0 0 0 2 1.6h6.4a2 2 0 0 0 2-1.5L20 8H7" />
-        <circle cx="10" cy="20" r="1" />
-        <circle cx="17" cy="20" r="1" />
-      </svg>
-      <span class="label">{strings.plan.shopWeek}</span>
-      {#if needs.missing.length > 0}
-        <span class="count">{needs.missing.length}</span>
-      {/if}
-    </button>
+  <!--
+    The strip above the nav. It is two things at different moments, and never
+    both: the two questions you ask while looking at the week, and — while a card
+    is in the air — the bin.
 
-    <button class="home" onclick={() => (home_sheet = true)}>
+    Swapping rather than stacking is deliberate. A bin that is always there is a
+    permanently armed delete sitting under your thumb; one that appears only when
+    something is actually being carried can't be hit by accident, and it lands
+    exactly where a thumb already is at the end of a downward drag.
+  -->
+  {#if drag.active}
+    <div class="trash" class:over={drag.overTrash} data-trash>
       <svg
-        width="19"
-        height="19"
+        width="22"
+        height="22"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        stroke-width="1.8"
+        stroke-width="1.9"
         stroke-linecap="round"
         stroke-linejoin="round"
         aria-hidden="true"
       >
-        <path d="M4 11 12 4l8 7" />
-        <path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9" />
+        <path d="M5 7h14M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
       </svg>
-      <span class="label">{strings.plan.homeTitle}</span>
-      {#if atHome.length > 0}
-        <span class="count">{atHome.length}</span>
-      {/if}
-    </button>
-  </div>
+      {drag.overTrash ? strings.plan.trashOver : strings.plan.trashDrop}
+    </div>
+  {:else}
+    <div class="dock">
+      <button class="shop" onclick={() => (shopping_sheet = true)}>
+        <svg
+          width="19"
+          height="19"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 5h2l2.2 10.2a2 2 0 0 0 2 1.6h6.4a2 2 0 0 0 2-1.5L20 8H7" />
+          <circle cx="10" cy="20" r="1" />
+          <circle cx="17" cy="20" r="1" />
+        </svg>
+        <span class="label">{strings.plan.shopShort}</span>
+        {#if needs.missing.length > 0}
+          <span class="count">{needs.missing.length}</span>
+        {/if}
+      </button>
+
+      <button class="home" onclick={() => (home_sheet = true)}>
+        <svg
+          width="19"
+          height="19"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 11 12 4l8 7" />
+          <path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9" />
+        </svg>
+        <span class="label">{strings.plan.homeShort}</span>
+        {#if atHome.length > 0}
+          <span class="count">{atHome.length}</span>
+        {/if}
+      </button>
+    </div>
+  {/if}
 
   <!-- The copy that follows the finger. At the root of the screen so the
        scroller can't clip it, and inert so elementFromPoint sees past it. -->
@@ -544,6 +604,19 @@
         rhythm={rhythm.get(dragged.id) ?? null}
         size={view === 'week' ? 'compact' : 'full'}
       />
+    </div>
+  {/if}
+
+  <!-- Something carried in from another sheet. Same rules as the card copy:
+       fixed, inert, and above everything because it is under the finger. -->
+  {#if carry.active}
+    <div
+      class="carried"
+      style={`left: ${carry.x}px; top: ${carry.y}px`}
+      aria-hidden="true"
+    >
+      <GroceryIcon icon={carry.icon} emoji={carry.emoji} name={carry.name} size={22} />
+      <span>{carry.name}</span>
     </div>
   {/if}
 
@@ -617,7 +690,9 @@
       items={atHome}
       itemsById={shopping.byId}
       busyId={homeBusyId}
+      hidden={homeCarrying}
       onAddToList={outOfIt}
+      onCarry={carryFromHome}
       onClose={() => (home_sheet = false)}
     />
   {/if}
@@ -768,21 +843,35 @@
     neither needs scrolling to. Side by side and equal width because they are
     genuinely a pair — one is "what do we need", the other "what have we got" —
     even though only the first writes anything.
+
+    Floating rather than a bar, the same way the shopping tab's search field
+    does it: the only thing behind them is a short fade to the page colour, so a
+    day card dissolves as it passes under instead of being sliced off by a hard
+    edge. The names are one word each — side by side on a 412px phone, each with
+    a count badge, there is room for a word and not a sentence.
   */
-  .dock {
+  .dock,
+  .trash {
     position: fixed;
     right: 0;
     bottom: var(--nav-height);
     left: 0;
     z-index: var(--z-nav);
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--space-5) var(--space-3) var(--space-3);
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      color-mix(in srgb, var(--color-bg) 70%, transparent) 45%,
+      var(--color-bg) 100%
+    );
+  }
+
+  .dock {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-2);
-    max-width: var(--content-max);
-    margin-inline: auto;
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-bg);
-    border-top: 1px solid var(--color-border);
   }
 
   .dock button {
@@ -791,16 +880,69 @@
     justify-content: center;
     gap: var(--space-2);
     min-height: var(--tap-min);
-    padding: 0 var(--space-2);
+    padding: 0 var(--space-3);
     border-radius: var(--radius-full);
-    font-size: var(--text-sm);
+    font-size: var(--text-base);
     font-weight: var(--weight-bold);
+    box-shadow: var(--shadow-1);
   }
 
   .dock .label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /*
+    The bin, in place of the two buttons while something is being carried.
+
+    Deliberately loud even at rest, and louder still under the finger: it is on
+    screen for two seconds at a time, at arm's length, competing with a card the
+    thumb is covering. `pointer-events: none` on the *contents* keeps
+    elementFromPoint finding the bin itself rather than its label.
+  */
+  .trash {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    color: var(--color-need);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    /* The gradient fade belongs to the strip; the pill is drawn by ::before
+       inside it, so the fade still softens whatever scrolls under the bin. */
+    isolation: isolate;
+  }
+
+  /* The pill itself, inset to match where the two buttons sit, so the bin
+     replaces them without anything jumping. */
+  .trash::before {
+    content: '';
+    position: absolute;
+    inset: var(--space-5) var(--space-3) var(--space-3);
+    z-index: -1;
+    border: 2px dashed var(--color-need-border);
+    border-radius: var(--radius-full);
+    background: var(--color-need-soft);
+    transition:
+      background var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+
+  /* Under the finger: filled, solid-edged, and the label flips to read on it. */
+  .trash.over {
+    color: var(--color-accent-ink);
+  }
+
+  .trash.over::before {
+    border-style: solid;
+    border-color: var(--color-need);
+    background: var(--color-need);
+  }
+
+  /* Never the thing elementFromPoint finds — the bin itself has to be. */
+  .trash > svg {
+    pointer-events: none;
   }
 
   .shop {
@@ -843,6 +985,28 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  /* Follows the finger from its own centre rather than from a grab offset:
+     it was picked up in a sheet that has since closed, so there is no longer a
+     meaningful "where on the card you took hold of it". */
+  .carried {
+    position: fixed;
+    z-index: var(--z-drag);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-pick-border);
+    border-radius: var(--radius-full);
+    background: var(--color-pick-soft);
+    color: var(--color-pick);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translate(-50%, -50%) scale(1.04);
+    filter: drop-shadow(0 8px 18px rgb(42 35 32 / 0.28));
   }
 
   .ghost {

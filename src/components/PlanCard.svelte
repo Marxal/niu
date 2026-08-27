@@ -199,6 +199,17 @@
   .card {
     position: relative;
     z-index: 1;
+    /*
+      The single most important line for the swipe, and it was missing.
+
+      `pan-y` tells the compositor: vertical panning is yours, horizontal is
+      mine. Without it (the `auto` default) the compositor keeps the right to
+      claim a sideways drag as a pan, and on a real phone it does — firing
+      `pointercancel` at the card mid-swipe, which sprang it back. That is why
+      swiping "moved a bit" and then did nothing on Marçal's phone while passing
+      every mouse-driven test here. See drag.svelte.ts.
+    */
+    touch-action: pan-y;
     /* The colour bar is a border rather than a pseudo-element so a card with no
        dish (eating out) simply has no bar, with nothing to switch off. */
     border-left: var(--space-1) solid transparent;
