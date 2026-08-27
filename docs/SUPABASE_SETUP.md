@@ -301,3 +301,119 @@ this".
 
 The Meals tab shows an empty chip row and the library goes uncoloured; the
 shopping list simply never says which dish wanted what. Nothing errors.
+
+---
+
+## Round 11: the calendar, and Google
+
+Two halves. The first is a migration like every round before it. The second is
+new: a bit of setup in Google Cloud, so that Niu can write into your Google
+Calendar. **The calendar works without the second half** — it just keeps its
+events to itself.
+
+### The migration
+
+One file. In the **SQL Editor**:
+
+1. `supabase/migrations/0012_calendar.sql`
+
+It does four things:
+
+- **People get names.** `household_members` grows `display_name`, `colour`,
+  `avatar` and `email`, plus a policy that lets you edit *your own* row and
+  nobody else's. Until now a member was a user id and nothing more, which is
+  enough to keep two households apart and not enough to draw a face beside an
+  event.
+- **A join code.** `households.join_code` plus two functions,
+  `household_join_code()` and `join_household()`. That is the invite flow round 2
+  deferred: six characters read off one phone and typed into the other. There is
+  no email invite because sending email needs a server, and this project has
+  neither one nor a budget for one.
+- **Events.** One `events` table covering both an event and a reminder, with
+  `event_attendees` (who goes) and `event_confirmations` (who has said yes)
+  beside it. All three carry `household_id` and all three have the full set of
+  policies.
+- **Sync bookkeeping.** `event_sync` records what your phone has already told
+  Google, and `event_tombstones` remembers a deleted event's id long enough for
+  the *other* phone to remove its copy too.
+
+Afterwards, check **Database → Replication**: `events`, `event_attendees`,
+`event_confirmations`, `event_tombstones` and `household_members` should all
+have joined the `supabase_realtime` publication. Without the first three, an
+event added on one phone doesn't appear on the other until a reload — and a
+confirmation is exactly the thing that has to arrive by itself.
+
+### Getting your wife into the household
+
+Once the migration has run:
+
+1. On your phone: **Settings → Add someone → Show the code.**
+2. On hers: sign in with Google, then **Settings → Join a household**, type the
+   six characters, tap **Join**.
+
+Both of you then set a name, a colour and a face in **Settings → You**. The
+colour is what tells you apart on the calendar, so pick two that aren't
+neighbours.
+
+### The Google Calendar half
+
+This is a one-time setup in the Google Cloud console — the same project the
+Google sign-in already uses.
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and pick
+   the project you made in step 3 near the top of this file.
+2. **APIs & Services → Enabled APIs & services → + Enable APIs and services.**
+   Search for **Google Calendar API** and enable it.
+3. **APIs & Services → OAuth consent screen → Data access** (older consoles call
+   it "Scopes"). **Add or remove scopes**, then paste this into the filter box
+   and tick it:
+
+   ```
+   https://www.googleapis.com/auth/calendar.app.created
+   ```
+
+   That scope means "make secondary calendars and manage events on them". It is
+   the *only* calendar permission Niu asks for, and it is why Niu cannot read
+   your work meetings — not "does not", cannot.
+4. **APIs & Services → Credentials.** Open the **OAuth 2.0 Client ID** of type
+   *Web application* that Supabase's Google sign-in uses. Under **Authorised
+   JavaScript origins**, add both of these:
+
+   ```
+   https://marxal.github.io
+   http://localhost:5173
+   ```
+
+   This is the step that is easy to miss. The redirect URI you set up for
+   Supabase is a different setting; a token requested from the page itself needs
+   the *origin* to be listed too, and without it Google refuses with an error
+   that doesn't say why.
+5. Still on that page, copy the **Client ID** — it looks like
+   `1234567890-abc123.apps.googleusercontent.com`. Paste it into `.env` in the
+   repo, after `VITE_GOOGLE_CLIENT_ID=`, and let it deploy.
+
+Then on the phone: **Settings → Google Calendar → Connect Google Calendar.**
+Google will ask once. The first time it will also warn that the app isn't
+verified — that is expected for an app used by two people (see NIU.md §9);
+tap **Advanced** and continue.
+
+Niu makes a calendar called **Niu** in your Google account and writes into it.
+Each of you gets your own copy: the scope above cannot share a calendar with
+anyone else, which is exactly the same property that stops it reading yours.
+
+### Why there is a Sync button rather than silent syncing
+
+Google only hands a token to a page that asked for one because somebody tapped,
+and a token lasts an hour. So the first sync after opening the app is a tap, and
+everything for the next hour goes across on its own. That is why the calendar
+screen shows a **Sync 3** pill instead of pretending it is automatic.
+
+Nothing is lost while it is unsynced. Niu's own database is the truth; Google is
+a copy.
+
+### Nothing is lost if you don't run it
+
+Skip the migration and the Calendar tab shows an error line and stays empty;
+everything else works exactly as before. Skip only the Google half and the
+calendar works fully on both phones — it just never reaches Google, and the
+Settings card says so.

@@ -50,6 +50,20 @@ const url = import.meta.env.VITE_SUPABASE_URL?.trim() ?? ''
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? ''
 
 /**
+ * The Google OAuth client id, used to ask for a Calendar token in the browser.
+ *
+ * Public by design, like the two above: a client id identifies the app, it does
+ * not authorise anything. What stops somebody else using it is the list of
+ * authorised JavaScript origins on the client itself, which only Google can
+ * check. There is no client *secret* anywhere in this project and there must
+ * never be one — a secret in a static bundle is not a secret.
+ *
+ * Empty until it is filled in, and the calendar simply keeps its events to
+ * itself until then. See googleReady in src/lib/google.svelte.ts.
+ */
+const googleClient = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
+
+/**
  * A service-role key in the bundle would hand every visitor full read/write on
  * the whole database, bypassing every RLS policy. Refuse to start rather than
  * ship it. This throws on purpose — it is the one thing worth breaking loudly
@@ -65,6 +79,8 @@ if (anonKey !== '' && looksLikeSecretKey(anonKey)) {
 
 export const supabaseUrl = url
 export const supabaseAnonKey = anonKey
+
+export const googleClientId = googleClient
 
 /** False until the two values are filled in; the app stays usable either way. */
 export const isConfigured = url !== '' && anonKey !== ''

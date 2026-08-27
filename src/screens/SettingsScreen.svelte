@@ -16,6 +16,9 @@
   import { install, promptInstall } from '../lib/install.svelte'
   import { setTheme, theme, type ThemeChoice } from '../lib/theme.svelte'
   import ShopsCard from '../components/ShopsCard.svelte'
+  import GoogleCard from '../components/GoogleCard.svelte'
+  import HouseholdCard from '../components/HouseholdCard.svelte'
+  import ProfileCard from '../components/ProfileCard.svelte'
   import {
     prefs,
     setIconStyle,
@@ -71,7 +74,13 @@
 </script>
 
 <section class="settings">
+  <!-- You, your household and Google come first: they are the three that are
+       set up once and then never touched, and burying a first-run step under
+       four display preferences is how a first-run step gets missed. -->
   {#if auth.status === 'signed-in'}
+    <ProfileCard />
+    <HouseholdCard />
+    <GoogleCard />
     <ShopsCard userId={auth.userId} />
   {/if}
 
@@ -210,20 +219,6 @@
           <p>{strings.settings.signedInAs} {auth.email ?? ''}</p>
         </div>
         <button class="button ghost" onclick={signOut}>{strings.auth.signOut}</button>
-      </div>
-      <div class="row">
-        <div class="text">
-          <h2>{strings.settings.householdTitle}</h2>
-          <p>
-            {#if household.error}
-              {household.error}
-            {:else if household.name}
-              {household.name}
-            {:else}
-              {strings.household.loading}
-            {/if}
-          </p>
-        </div>
       </div>
     </div>
 

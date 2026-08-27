@@ -13,18 +13,15 @@
  * tags, and "a protein, a carb and a vegetable" is something you can see rather
  * than a shape you have to fill.
  *
- * ## Dates are keys, not Date objects
+ * ## Dates live next door
  *
- * Every day is an ISO `YYYY-MM-DD` string, which is also exactly what Postgres
- * `date` gives back. They compare and sort as strings, they survive a round trip
- * through JSON unchanged, and they carry no time and therefore no timezone.
- *
- * A `Date` is only ever built to do arithmetic with, always from local parts —
- * `new Date(y, m - 1, d)`, never `new Date('2026-09-01')`, which the spec reads
- * as UTC midnight and which is therefore the *previous* day in Gothenburg for
- * most of the year. That single distinction is the whole reason this file exists.
+ * A day is an ISO `YYYY-MM-DD` string and the arithmetic on those strings moved
+ * to dates.ts in round 11, when the calendar turned out to need every line of
+ * it. The rules are unchanged and they are written down there; what is left
+ * here is the part that is about *weeks of meals* rather than about days.
  */
 
+import { addDays, dateRange, daysBetween, startOfWeek, weekDays } from './dates'
 import { strings } from './strings'
 
 /** Which meals a day can have. §4.2: configurable, defaulting to lunch+dinner. */
@@ -98,76 +95,24 @@ export function sameSlot(a: Slot, b: Slot): boolean {
 /* Dates                                                                       */
 /* -------------------------------------------------------------------------- */
 
-/** A local Date as an ISO day key. Local parts only — see the header. */
-export function dateKey(date: Date): string {
-  const y = date.getFullYear()
-  const m = `${date.getMonth() + 1}`.padStart(2, '0')
-  const d = `${date.getDate()}`.padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-/**
- * A key back to a local Date at midnight.
- *
- * Anything unparseable comes back as today rather than an Invalid Date, because
- * one bad row from the database should not blank the whole planner.
+/*
+ * The date arithmetic lives in dates.ts now — the calendar needs every line of
+ * it and two copies of "which day is this" is exactly the bug this project
+ * cannot afford. It is re-exported rather than moved outright so that the
+ * planner's own files keep importing days from the module about days.
  */
-export function parseKey(key: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key)
-  if (!match) return startOfDay(new Date())
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
-}
-
-function startOfDay(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
-}
-
-export function todayKey(now: Date = new Date()): string {
-  return dateKey(now)
-}
-
-/**
- * N days on from a key. Handles month ends, leap years and the two clock
- * changes for free, because Date does — as long as it is built from local parts,
- * which parseKey guarantees.
- */
-export function addDays(key: string, days: number): string {
-  const date = parseKey(key)
-  date.setDate(date.getDate() + days)
-  return dateKey(date)
-}
-
-/**
- * Whole days from a to b, negative if b is earlier.
- *
- * Rounded rather than truncated: the two days a year that are 23 or 25 hours
- * long would otherwise come out as 0.96 and truncate to 0, making "yesterday"
- * read as "today" twice a year.
- */
-export function daysBetween(a: string, b: string): number {
-  const ms = parseKey(b).getTime() - parseKey(a).getTime()
-  return Math.round(ms / 86_400_000)
-}
-
-/**
- * The Monday of the week a day falls in.
- *
- * Monday because both households this is built for are in Europe. A household
- * that wanted Sunday would change this one number — it is deliberately not a
- * preference, because a week that starts differently on two phones is a week
- * two people cannot talk about.
- */
-export function startOfWeek(key: string): string {
-  const date = parseKey(key)
-  // getDay(): 0 = Sunday. Monday-based offset, so Sunday goes back six days.
-  const offset = (date.getDay() + 6) % 7
-  return addDays(key, -offset)
-}
-
-/** The seven day keys of the week that starts on `startKey`. */
-export function weekDays(startKey: string): string[] {
-  return Array.from({ length: 7 }, (_, i) => addDays(startKey, i))
-}
+export {
+  addDays,
+  dateKey,
+  dayName,
+  daysBetween,
+  parseKey,
+  shortDate,
+  shortDayName,
+  startOfWeek,
+  todayKey,
+  weekDays,
+} from './dates'
 
 /**
  * The days the *day view* should show — which is not always the whole week.
@@ -190,43 +135,6 @@ export function planningDays(startKey: string, today: string): string[] {
   return all.filter((day) => day >= today)
 }
 
-/* -------------------------------------------------------------------------- */
-/* Reading a date out loud                                                     */
-/* -------------------------------------------------------------------------- */
-
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTHS_SHORT = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-]
-
-/**
- * "Today", "Tomorrow", "Yesterday", or the weekday name.
- *
- * The three relative words are worth the special case: the planner's whole job
- * is answering "what are we eating tonight", and a heading reading "Wednesday"
- * makes you check what day it is first.
- */
-export function dayName(key: string, today: string): string {
-  const gap = daysBetween(today, key)
-  if (gap === 0) return 'Today'
-  if (gap === 1) return 'Tomorrow'
-  if (gap === -1) return 'Yesterday'
-  return WEEKDAYS[parseKey(key).getDay()] ?? key
-}
-
-/** Three letters, for the week view where there is no room for a word. */
-export function shortDayName(key: string): string {
-  return WEEKDAYS_SHORT[parseKey(key).getDay()] ?? key
-}
-
-/** "3 Sep" — the date under the day's name. */
-export function shortDate(key: string): string {
-  const date = parseKey(key)
-  return `${date.getDate()} ${MONTHS_SHORT[date.getMonth()]}`
-}
-
 /**
  * What the week stepper says: "This week", "Next week", or a date range.
  *
@@ -238,15 +146,7 @@ export function weekName(startKey: string, today: string): string {
   if (gap === 0) return 'This week'
   if (gap === 7) return 'Next week'
   if (gap === -7) return 'Last week'
-
-  const end = addDays(startKey, 6)
-  const from = parseKey(startKey)
-  const to = parseKey(end)
-  // Same month: say the month once. "1–7 Sep" rather than "1 Sep – 7 Sep".
-  if (from.getMonth() === to.getMonth()) {
-    return `${from.getDate()}–${to.getDate()} ${MONTHS_SHORT[from.getMonth()]}`
-  }
-  return `${shortDate(startKey)} – ${shortDate(end)}`
+  return dateRange(startKey, addDays(startKey, 6))
 }
 
 /* -------------------------------------------------------------------------- */

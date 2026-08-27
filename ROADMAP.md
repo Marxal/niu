@@ -1543,3 +1543,211 @@ No migration this time — just reload.
 - **Undo on a bin drop.** It uses the same path as a swipe, so it gets the same
   Undo — nothing extra was needed.
 - **Reordering within one meal**, still.
+
+## Round 11 — The calendar
+
+**Branch:** `claude/calendar-r7-events-confirmations-htn01h`
+
+Feature round 7 in NIU.md §10's numbering. The third of the three things Niu is
+for, plus the thing that had been quietly missing since round 2: a second person.
+
+### What changed
+
+**People, at last.** Round 2 built households and deferred the invite flow, and
+nothing since had needed it — a shopping list shared by one person works fine.
+The calendar is the first feature that cannot exist without it: "who goes" needs
+faces and "send it to her to confirm" needs a her. So `household_members` grew a
+name, a colour, an emoji face and an email, and a household grew a **six-character
+join code** you read out across the kitchen. No email invite: sending email needs
+a server, and this project has neither one nor a budget for one (§1).
+
+**The month grid**, with the selected day's list underneath it. The grid answers
+*where* and the list answers *what*, which is the only way a month works at
+412px: a cell is 52px wide, which is room for a number and three coloured dots.
+Today is a filled circle and the selected day is a ring — two marks, because they
+are two facts and usually two different days.
+
+**Events**, with the fields §4.3 asked for: title, day, start and end time, all
+day, more than one day, who goes, where, notes, colour. The sheet shows four
+things — title, time, faces, Save — and hides the rest behind **More**. Nine
+evenings out of ten the other five are empty, and a form that shows ten fields to
+collect two is a form people stop using.
+
+**Reminders**, which Marçal asked for this round: "x day remember to do x thing",
+faster than an event. Same table, fewer fields, and one thing an event doesn't
+have — **a checkbox**. A reminder that just slid into the past never told you the
+permit got renewed.
+
+**Send it for confirmation.** The feature this round was really about. Tap *Ask
+Marta to confirm* on any event and it appears on her phone with **Yes** and
+**Can't** beside it, at the top of her calendar screen, above the grid, wherever
+in the year the event actually is. The Calendar tab wears a count, so it is
+visible from the shopping list too.
+
+An unconfirmed event is **dashed, not hidden**. That is the one design decision
+worth arguing about and it went this way on purpose: an event that only appeared
+once the other person had agreed to it would be an event you cannot talk about.
+It is on the calendar the moment it is written; the dashes say she hasn't seen it
+yet.
+
+**Moving the time asks again.** Edit an event people have already answered, and if
+the day, the time or the place changed, the old answers are cleared and everyone
+is asked afresh — with a line saying so. A "yes" to Thursday is not a yes to
+Saturday. A fixed typo changes nothing.
+
+**One-way push to Google**, as §4.3 wanted, with one deviation described below.
+Everything goes: events, reminders, multi-day, the lot. A reminder crosses over
+with an alarm on it, so Google's own notification is what buzzes the phone — which
+is the promise §9 made when it deferred push notifications, now actually kept.
+
+### The Google deviation, and why it is better
+
+§4.3 imagined **one shared Google calendar that both accounts subscribe to**.
+That is not what got built, and the reason is worth writing down.
+
+Niu asks Google for exactly one permission:
+`https://www.googleapis.com/auth/calendar.app.created` — *"make secondary Google
+calendars, and see, create, change and delete events on them."* It is the
+narrowest scope that can do the job, and with it **Niu is incapable of reading
+anyone's other calendars**. §4.3's promise stops being a promise about our
+intentions and becomes a fact about the token.
+
+The price is that the scope covers only calendars this app made *for this user*,
+and it cannot write sharing rules — so one account cannot be given write access to
+the other's calendar. Each member therefore gets **their own calendar called
+"Niu"**, and each phone pushes the household's events into its own copy. On the
+phone the result is identical to what §4.3 described. NIU.md has been updated.
+
+### Three decisions inside the sync
+
+**The Google event id is derived, not stored.** Google lets the caller choose an
+event's id as long as it is base32hex — lowercase a–v and digits. Our uuids are
+hex, which fits, so the Google id is `niu` + the uuid. That is worth more than the
+column it saves: a push that half-fails can simply be retried, because the retry
+hits the same id and *updates* rather than making a second copy of Thursday's
+dinner. It is also why deleting still works after our row is gone, and why the
+tombstone table is three columns instead of a join.
+
+**Google's all-day end date is exclusive and ours is inclusive.** A holiday from
+the 1st to the 7th is stored here as ending on the 7th and has to be sent as the
+8th. That conversion happens in exactly one function and it has the most
+important test in the file — get it wrong and every multi-day event is a day
+short, which is the kind of bug nobody notices for a month.
+
+**An all-day reminder is pushed as a 09:00 appointment.** Not a preference — a
+hard limit. Google counts a reminder in minutes *before* an event, an all-day
+event starts at midnight, and the number cannot be negative. So an all-day
+reminder could only ever buzz at midnight or the day before. Sending it as a
+short 09:00 slot is what makes "Tuesday, renew the permit" arrive on Tuesday
+morning. In Niu it stays a day's task with no time on it, which is what it is.
+
+### Why there is a Sync button
+
+Getting a Google token in a browser needs a popup, and a browser only opens one
+for a page that asked because somebody tapped. So **the first sync after opening
+the app is a tap**, and everything for the next hour goes across on its own.
+
+Rather than hide that behind a background job that silently does nothing, the
+calendar shows a **Sync 3** pill with the count on it. The alternative was a
+Supabase Edge Function holding the Google client secret — which is the right
+answer eventually and is what round 11.1 needs anyway for push notifications, but
+which is a deploy step and a stored refresh token in exchange for a problem
+Google already solves for browser apps.
+
+The token is kept **in memory only**, never in localStorage. A bearer token in
+storage outlives the tab and is exactly what an XSS would go looking for, and the
+cost of not storing it is the tap that was needed anyway.
+
+### A refactor that came along the way
+
+The date arithmetic moved out of `plan.ts` into **`src/lib/dates.ts`**, and the
+planner now imports it from there. The calendar needed every line of it, and two
+copies of "which day is this" is precisely the bug this project cannot afford.
+`plan.ts` re-exports the lot, so nothing else changed.
+
+### How it was checked
+
+104 new unit tests, 315 in total, all passing. The ones that matter:
+
+- the inclusive→exclusive all-day conversion, in both directions
+- a timed event with no end time at 23:30 rolling its *day* forward, not just its
+  hour — an end before its start is a 400 from Google
+- the month grid: whole weeks always, every day of the month exactly once, four
+  rows for a February that starts on a Monday and six for a 31-day month starting
+  on a Saturday
+- one "no" outweighing a missing answer
+- the sync queue: nothing pushed twice, nothing deleted that Google was never
+  told about, nothing deleted twice
+- `GOOGLE_SCOPE` pinned by a test, so widening it to the read-everything scope is
+  a deliberate act rather than an edit
+
+Rendered in a real Chromium at 412×915 in both themes: the month with a busy day,
+the day list, the event sheet, the reminder sheet, and the "Waiting on you" card.
+No console errors, nothing scrolls sideways. Two things the render caught that
+reading the code had not: the unanswered dot was invisible at 6px (it is a ring
+in the page colour now), and the last event of a busy day sat permanently under
+the floating Add button.
+
+### How to test it
+
+**Run `supabase/migrations/0012_calendar.sql` in the Supabase SQL editor first**,
+then reload. `docs/SUPABASE_SETUP.md` has the whole round written out, including
+the Google Cloud part.
+
+1. **Settings → You.** Give yourself a name, a colour and a face. Do the same on
+   her phone after step 2.
+2. **Settings → Add someone → Show the code.** Read the six characters out. On
+   her phone: sign in with Google, **Settings → Join a household**, type it,
+   **Join**. Her name should appear in your list without a reload.
+3. **Calendar tab → + Event.** Type a title, keep 18:00, tap both faces, **Add
+   it**. It lands on today with two small faces on the row and a dot on the grid.
+4. **Tap the event → Ask <her name> to confirm.** The row goes dashed and says
+   "Waiting on <name>". **On her phone**, the Calendar tab grows a red 1, and the
+   event is at the top of the screen with **Yes** / **Can't**. Tap Yes. Your
+   phone should stop being dashed without a reload.
+5. **Move the time and save.** Everyone gets asked again, and the sheet says why
+   before you press Save.
+6. **⏰ Reminder.** Type "Renew the parking permit", leave it All day, **Add it**.
+   It gets a checkbox on the left. Tap the box — it fills, the title strikes
+   through and the row drops to the bottom of the day.
+7. **A holiday.** + Event → title → **All day** → **More** → **More than one
+   day** → pick a day a week out. The row says "1–8 Sep · 8 days" and every one
+   of those days wears a dot on the grid.
+8. **Step months** with ‹ ›, tap any day, and use **Today** in the day heading to
+   come back.
+9. **Google** (only once the Cloud setup is done). **Settings → Google Calendar →
+   Connect**. Accept the warning about the unverified app. Then open Google
+   Calendar on the phone: there is a new calendar called **Niu** with everything
+   in it. The reminder should buzz at 09:00 on its day.
+10. **Both phones:** add something on one and watch it appear on the other's
+    month without a reload.
+
+### Deliberately not done
+
+- **Push notifications.** Marçal's call this round: confirmations land in-app and
+  on the tab badge now, and a real phone notification is round 11.1 on its own.
+  It needs three new things — a service worker that handles push, a VAPID key
+  pair, and one small Supabase function holding the private key — and it is the
+  part most likely to need two or three goes on a real Android phone. Worth
+  getting right rather than bolting on. This round deliberately built the thing
+  the notification will point at.
+- **Typed quick-add** — "Thursday 18:30 dinner". §11's first open question,
+  which said to decide in round 7. **Decided: not now.** Reliable date parsing
+  across English, Catalan and Swedish is a real project, and §4.3 says the
+  structured flow "must be excellent on its own" regardless. Revisit once the
+  structured flow has been used for a month and it is clear what typing would
+  actually save.
+- **Recurrence.** §4.3 wants "repeats X times per week or month; ends after X
+  times", and it is a genuine third of the calendar — the recurrence itself, the
+  "this one or all of them?" question on every edit and delete, and the same
+  again on the Google side, where it means RRULE. It earns its own round.
+- **Event categories with names.** §4.3 wants categories that have colours *and*
+  are distinguishable from people's colours. Half of that shipped: an event has
+  one of the eight colours, and a person's colour shows as their avatar's ring,
+  so the two never collide. Named categories can wait until there is evidence
+  anyone wants to filter by one.
+- **Reading a Google calendar back.** Still explicitly not a feature (§4.3), and
+  now not even possible with the scope Niu asks for.
+- **An old-tombstone sweep.** `event_tombstones` keeps three columns per deleted
+  event forever. A household making a few hundred a year will not notice; if it
+  ever matters it is one scheduled delete.
