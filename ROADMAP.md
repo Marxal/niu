@@ -2001,3 +2001,122 @@ Then reload and:
 - **`household_members`' old profile columns.** Left in place, unread, so a phone
   running the previous version does not show blanks. Droppable in a later round
   once both phones have certainly updated.
+
+## Round 11.3 — Choosing the square, and saying what actually went wrong
+
+**Branch:** `claude/calendar-r7-events-confirmations-htn01h`
+
+Marçal, after trying round 11.2's photos: *"do the cropping feature because most
+pictures get denied. It says Couldn't save that photo. Try another one."*
+
+Two separate problems in one sentence, and the second one is the one that was
+costing him pictures.
+
+### The message was lying
+
+"Couldn't save that photo. Try another one." was shown for **three** different
+failures, only one of which had anything to do with which photo you picked:
+
+- there is no `avatars` bucket
+- Storage refused the write, because 0013 has not been run
+- the upload worked and the row update afterwards did not
+
+Advising somebody to try another photo when the bucket does not exist sends them
+through their whole camera roll getting the same sentence. That is worse than no
+message: it names an innocent cause confidently.
+
+So each cause now gets its own line, and the two that are setup rather than
+usage say exactly what to do — *"In Supabase: Storage → New bucket → name it
+avatars, leave it private"* and *"Run migration 0013 in the SQL editor"*.
+Anything unrecognised falls through with Supabase's own wording attached.
+"Fail soft" has to mean degrading *and* telling the truth; the first half alone
+is a shrug.
+
+**Worth checking first:** if photos are still refused after this deploys, the
+message will now name the reason. Almost certainly one of those two setup steps.
+
+### And the type allowlist was refusing real photos
+
+`checkPhoto` had a list of five accepted MIME types. Anything else — `image/avif`,
+`image/jxl`, whatever a particular Android build labels its camera output — was
+rejected outright as "That isn't a picture."
+
+That list added no safety. The picker is already `accept="image/*"`, and the
+*decoder* is the thing that actually knows whether the bytes are an image. It now
+accepts any `image/*` and lets the decoder be the gate, which is where the real
+answer was all along.
+
+### The cropper
+
+Round 11.2 took the middle square without asking, reasoning that a phone photo of
+a person has the person in the middle. That is a decent guess and a poor
+decision: a photo of two people has neither of them in the middle, and a portrait
+of somebody standing up has their face in the top third.
+
+So there is a cropper now. **Drag to move, pinch to zoom**, a circle showing
+exactly what the avatar will be, and **Centre** to start again. It opens on the
+same middle square 11.2 would have taken, so doing nothing gives the old result;
+everybody else gets their face.
+
+Nothing is uploaded until the crop is confirmed, so backing out costs nothing and
+leaves nothing in the bucket.
+
+**The one rule the maths keeps:** the picture always covers the hole. No gap, at
+any zoom, in any position — so there is no way to produce an avatar with a
+transparent corner. `crop.ts` is pure and has 28 tests, and several of them are
+that invariant asserted across a spread of image shapes and pan extremes.
+
+Two things in there are less obvious than they look:
+
+- **Zooming happens around the point between the fingers**, not the corner. That
+  is the whole feel of a pinch — the picture grows where you are holding it.
+- **The clamp writes `min(0, max(offset, viewport - width))` in that order.** For
+  an image exactly the viewport's size in one axis both bounds are zero, and the
+  other way round they cross and produce NaN — which is the case that happens
+  every single time somebody crops a square photo.
+
+### What the render caught
+
+The mask was drawn as two mismatched circles. A `radial-gradient` defaults to
+`farthest-corner`, so on a square `100%` reaches the corner — about 1.41× the
+half-width — and the clear circle came out visibly bigger than the rim drawn
+under it. `circle closest-side` makes 100% the inscribed circle, which is the one
+the avatar actually crops to.
+
+The gestures were driven with real drags in Chromium rather than eyeballed: the
+picture follows the pointer, and after dragging thirty times further than the
+image can go, the measured gap between the picture and the stage is zero on every
+edge.
+
+### Also
+
+`coverCrop`, `outputSize` and `photoVersion` are gone, along with their tests.
+The cropper supersedes the first two and the third was never called. Dead code
+with tests around it is worse than dead code — it reads as load-bearing.
+
+369 tests, 28 of them new.
+
+### How to test it
+
+No migration this round — just reload. If your photos were being refused, the
+message will now tell you which of the two setup steps is missing.
+
+1. **Settings → tap yourself → Choose a photo.** Pick a wide picture with a face
+   off to one side.
+2. **The cropper opens on the middle.** Drag the picture until the face is in the
+   circle. Pinch to zoom in on it.
+3. **Drag it as far as it will go.** It should stop at the edge of the picture
+   rather than pulling away and leaving a gap.
+4. **Centre** puts it back. **Cancel** leaves without uploading anything.
+5. **Use it.** The avatar in the list, in the bottom bar and on any event should
+   be the square you chose.
+6. **Try a photo that was refused before.** If it still is, read the message — it
+   now names the cause.
+
+### Deliberately not done
+
+- **Rotation.** A photo that arrives sideways would need EXIF orientation
+  handling, and `createImageBitmap` already applies it on the browsers this app
+  runs on. Worth revisiting only if a sideways face actually turns up.
+- **A zoom slider.** Pinch is the gesture everybody already knows, and a slider
+  would be a second control for the same thing on a screen with no room for it.

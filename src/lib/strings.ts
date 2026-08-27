@@ -379,13 +379,27 @@ export const strings = {
     faceReplace: 'Change photo',
     faceRemove: 'Remove photo',
     faceClear: 'Just the initial',
-    faceUploading: 'Shrinking it…',
-    photoFailed: "Couldn't save that photo. Try another one.",
+    faceUploading: 'Saving…',
+    // The cropper
+    cropTitle: 'Move and scale',
+    cropHint: 'Drag to move, pinch to zoom. What is inside the circle is the face.',
+    cropUse: 'Use it',
+    cropReset: 'Centre',
+    // One line per cause. The round-11.2 version blamed the picture for three
+    // failures that had nothing to do with it, which sent Marçal off trying
+    // photo after photo. See uploadPhoto().
+    photoFailed: (why: string) => `Google Storage said no: ${why}`,
+    photoNoBucket:
+      'There is no photo store yet. In Supabase: Storage → New bucket → name it avatars, leave it private.',
+    photoNotAllowed:
+      "The photo store won't accept it. Run migration 0013 in the Supabase SQL editor — it writes the rules that allow this.",
+    photoSavedNotLinked: "The photo uploaded but couldn't be attached. Try once more.",
+    photoNoBackend: 'Not connected to Supabase, so there is nowhere to put it.',
     photoUnreadable: "Couldn't read that picture. Try a different one.",
     photoTooBig: 'That file is too big. A photo from your camera is fine.',
     photoWrongType: "That isn't a picture.",
     photoHint:
-      "Cropped square and shrunk to a thumbnail on your phone — nothing big is uploaded.",
+      'You choose the square. Shrunk to a thumbnail on your phone — nothing big is uploaded.',
     // People without an account
     addTitle: 'Someone without a phone',
     addBody:
@@ -554,6 +568,6 @@ export const strings = {
     notConnectedTitle: 'Not connected yet',
     notConnectedBody:
       'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
-    version: 'Niu · round 11.2',
+    version: 'Niu · round 11.3',
   },
 } as const

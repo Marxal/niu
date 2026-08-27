@@ -409,14 +409,29 @@ export async function removePerson(id: string): Promise<boolean> {
 /**
  * Puts a prepared square JPEG in the bucket and points the person at it.
  *
+ * Returns null on success, or a sentence to show.
+ *
+ * ## Why it returns a sentence rather than false
+ *
+ * Round 11.2 returned a boolean and the sheet said "Couldn't save that photo.
+ * Try another one." That line was wrong in the most expensive way a message
+ * can be: it named the *photo* as the problem for three failures that have
+ * nothing to do with which photo you picked — no bucket, a policy refusing the
+ * write, or the row update afterwards. Somebody following its advice tries
+ * another picture, gets the same message, and concludes the feature is broken.
+ *
+ * So each cause gets its own line, and the two that a person can actually do
+ * something about say what to do. "Fail soft" has to mean degrading *and*
+ * telling the truth; the first half without the second is just a shrug.
+ *
  * `upsert` because the path is derived from the two ids and never changes:
  * replacing a photo overwrites in place rather than leaving the old one behind.
  * That is also why the row is re-saved even when `photo_path` already holds the
  * same string — the write is what tells the *other* phone to fetch a new signed
  * link for bytes that changed underneath the same address.
  */
-export async function uploadPhoto(id: string, blob: Blob): Promise<boolean> {
-  if (!supabase || !household.id) return false
+export async function uploadPhoto(id: string, blob: Blob): Promise<string | null> {
+  if (!supabase || !household.id) return strings.people.photoNoBackend
 
   const path = photoPath(household.id, id)
 
@@ -424,15 +439,36 @@ export async function uploadPhoto(id: string, blob: Blob): Promise<boolean> {
     .from('avatars')
     .upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
 
-  if (uploadError) {
-    people.error = strings.people.photoFailed
-    return false
-  }
+  if (uploadError) return storageProblem(uploadError.message)
 
   // Clearing the emoji is deliberate: a photo is a stronger statement, and
   // leaving both would mean the emoji reappears if the photo is ever removed,
   // which reads as the app forgetting rather than falling back.
-  return updatePerson(id, { photoPath: path, avatar: null })
+  const saved = await updatePerson(id, { photoPath: path, avatar: null })
+  return saved ? null : strings.people.photoSavedNotLinked
+}
+
+/**
+ * Storage's own complaint, turned into something worth reading.
+ *
+ * The two that matter are both setup rather than usage, and both have an exact
+ * fix that belongs in the message: the bucket has to exist, and 0013 has to
+ * have been run. Anything else falls through with Supabase's own wording
+ * attached, because a message nobody recognises is still better than a message
+ * that misdirects.
+ */
+function storageProblem(message: string): string {
+  const text = message.toLowerCase()
+  if (text.includes('bucket not found') || text.includes('does not exist')) {
+    return strings.people.photoNoBucket
+  }
+  if (text.includes('row-level security') || text.includes('unauthorized')) {
+    return strings.people.photoNotAllowed
+  }
+  if (text.includes('exceeded') || text.includes('too large')) {
+    return strings.people.photoTooBig
+  }
+  return strings.people.photoFailed(message)
 }
 
 /** Takes the photo off, back to the emoji or the letter. */

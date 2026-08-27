@@ -1,9 +1,14 @@
 /*
- * Decoding a picked photo and drawing it into a small square JPEG.
+ * Decoding a picked photo, and drawing a chosen square of it into a small JPEG.
  *
- * Everything that could be got wrong by arithmetic is in photo.ts and tested;
- * this is the part that needs a browser — a decoder and a canvas — and it is
- * deliberately as thin as it can be.
+ * Everything that could be got wrong by arithmetic is in photo.ts and crop.ts
+ * and tested; this is the part that needs a browser — a decoder and a canvas —
+ * and it is deliberately as thin as it can be.
+ *
+ * Round 11.2 did the whole thing in one call, taking the middle square without
+ * asking. Round 11.3 split it in two — `decodeImage` then `renderSquare` — so
+ * the cropper can sit in between and let somebody choose the square. The middle
+ * is still where it opens; it is now a starting point rather than a verdict.
  *
  * ## Why it happens on the phone
  *
@@ -17,61 +22,87 @@
  * `createImageBitmap` decodes off the main thread, so a five-megapixel photo
  * does not freeze the sheet mid-tap. Every browser this app targets has it; the
  * `<img>` path underneath is there because a decoder that is merely *present*
- * can still refuse a format (HEIC, mostly), and falling back costs twenty lines.
+ * can still refuse a format, and falling back costs twenty lines.
  *
  * Fail soft: anything that cannot be decoded comes back null and the caller
  * shows a line of text. Nothing here throws.
  */
 
-import { AVATAR_QUALITY, coverCrop, outputSize } from './photo'
+import type { CropRect } from './crop'
+import { AVATAR_QUALITY, AVATAR_SIZE } from './photo'
 
-/** Decodes a file to something drawable, or null if it cannot be read. */
-async function decode(file: Blob): Promise<ImageBitmap | HTMLImageElement | null> {
+/** A decoded picture, plus the size the cropper needs to do its maths. */
+export interface Decoded {
+  source: ImageBitmap | HTMLImageElement
+  width: number
+  height: number
+  /** An address the cropper can put in an `<img>`. Revoked by `release`. */
+  url: string
+  /** Frees the bitmap and the object URL. Call it once, when done. */
+  release: () => void
+}
+
+/**
+ * Decodes a file, or null if it cannot be read.
+ *
+ * The object URL is kept alive rather than revoked immediately, because the
+ * cropper draws the same picture in an `<img>` while you drag it. That is the
+ * one difference from round 11.2's version, and it is why `release` exists: the
+ * URL now outlives this function and something has to end it.
+ */
+export async function decodeImage(file: Blob): Promise<Decoded | null> {
+  const url = URL.createObjectURL(file)
+
   try {
-    return await createImageBitmap(file)
+    const bitmap = await createImageBitmap(file)
+    return {
+      source: bitmap,
+      width: bitmap.width,
+      height: bitmap.height,
+      url,
+      release: () => {
+        bitmap.close()
+        URL.revokeObjectURL(url)
+      },
+    }
   } catch {
     // Fall through to the <img> decoder, which handles some formats the bitmap
     // one refuses.
   }
 
-  const url = URL.createObjectURL(file)
   try {
     const image = new Image()
     image.src = url
     await image.decode()
-    return image
+
+    if (image.naturalWidth === 0 || image.naturalHeight === 0) {
+      URL.revokeObjectURL(url)
+      return null
+    }
+
+    return {
+      source: image,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      url,
+      release: () => URL.revokeObjectURL(url),
+    }
   } catch {
-    return null
-  } finally {
-    // Revoking immediately is safe: the bitmap has already been decoded into
-    // the element by the time decode() resolves.
     URL.revokeObjectURL(url)
+    return null
   }
 }
 
-function sizeOf(source: ImageBitmap | HTMLImageElement): { width: number; height: number } {
-  return source instanceof HTMLImageElement
-    ? { width: source.naturalWidth, height: source.naturalHeight }
-    : { width: source.width, height: source.height }
-}
-
 /**
- * A picked file as a square JPEG ready to upload, or null if it could not be
- * decoded.
+ * A chosen square of a decoded picture, as a JPEG ready to upload.
  *
- * The crop is worked out by `coverCrop` and the size capped by `outputSize`;
- * this only draws what those two decide.
+ * The output is capped at AVATAR_SIZE and never enlarged past the crop's own
+ * size: somebody's 90px crop stays 90px and slightly soft rather than becoming
+ * 256px, exactly as soft, and four times the file.
  */
-export async function squarePhoto(file: Blob): Promise<Blob | null> {
-  const source = await decode(file)
-  if (source === null) return null
-
+export async function renderSquare(decoded: Decoded, crop: CropRect): Promise<Blob | null> {
   try {
-    const { width, height } = sizeOf(source)
-    if (width === 0 || height === 0) return null
-
-    const crop = coverCrop(width, height)
-    const side = outputSize(crop)
+    const side = Math.max(1, Math.min(AVATAR_SIZE, crop.size))
 
     const canvas = document.createElement('canvas')
     canvas.width = side
@@ -84,14 +115,22 @@ export async function squarePhoto(file: Blob): Promise<Blob | null> {
     // is always a downscale.
     context.imageSmoothingEnabled = true
     context.imageSmoothingQuality = 'high'
-    context.drawImage(source, crop.x, crop.y, crop.size, crop.size, 0, 0, side, side)
+    context.drawImage(
+      decoded.source,
+      crop.x,
+      crop.y,
+      crop.size,
+      crop.size,
+      0,
+      0,
+      side,
+      side,
+    )
 
     return await new Promise<Blob | null>((resolve) => {
       canvas.toBlob((blob) => resolve(blob), 'image/jpeg', AVATAR_QUALITY)
     })
   } catch {
     return null
-  } finally {
-    if (!(source instanceof HTMLImageElement)) source.close()
   }
 }

@@ -1,75 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import {
-  AVATAR_SIZE,
-  MAX_INPUT_BYTES,
-  checkPhoto,
-  coverCrop,
-  outputSize,
-  photoPath,
-  photoVersion,
-} from './photo'
+import { MAX_INPUT_BYTES, checkPhoto, looksLikeImage, photoPath } from './photo'
 
-describe('coverCrop', () => {
-  it('takes the whole of a square', () => {
-    expect(coverCrop(500, 500)).toEqual({ x: 0, y: 0, size: 500 })
-  })
-
-  it('trims the sides of a landscape photo evenly', () => {
-    // 1000 wide, 600 tall: a 600 square with 200 off each side.
-    expect(coverCrop(1000, 600)).toEqual({ x: 200, y: 0, size: 600 })
-  })
-
-  it('trims the top and bottom of a portrait photo evenly', () => {
-    expect(coverCrop(600, 1000)).toEqual({ x: 0, y: 200, size: 600 })
-  })
-
-  it('never runs off the edge on an odd overhang', () => {
-    // 101px to lose: 50 off the left, 51 off the right. Flooring is what keeps
-    // x + size inside the image rather than one pixel past it.
-    const crop = coverCrop(701, 600)
-    expect(crop.x).toBe(50)
-    expect(crop.x + crop.size).toBeLessThanOrEqual(701)
-    expect(crop.y + crop.size).toBeLessThanOrEqual(600)
-  })
-
-  it('stays inside the image for a spread of awkward sizes', () => {
-    for (const [w, h] of [
-      [3, 7], [7, 3], [1, 1], [4032, 3024], [3024, 4032], [1000, 999], [999, 1000],
-    ] as const) {
-      const crop = coverCrop(w, h)
-      expect(crop.x).toBeGreaterThanOrEqual(0)
-      expect(crop.y).toBeGreaterThanOrEqual(0)
-      expect(crop.x + crop.size).toBeLessThanOrEqual(w)
-      expect(crop.y + crop.size).toBeLessThanOrEqual(h)
-      expect(crop.size).toBe(Math.min(w, h))
-    }
-  })
-
-  it('never returns a zero-sized square', () => {
-    expect(coverCrop(0, 500).size).toBe(1)
-    expect(coverCrop(0, 0).size).toBe(1)
-  })
-})
-
-describe('outputSize', () => {
-  it('caps a big photo at the avatar size', () => {
-    expect(outputSize(coverCrop(4032, 3024))).toBe(AVATAR_SIZE)
-  })
-
-  it('leaves a small one alone rather than blowing it up', () => {
-    expect(outputSize(coverCrop(90, 120))).toBe(90)
-  })
-
-  it('is exactly the avatar size at the boundary', () => {
-    expect(outputSize(coverCrop(AVATAR_SIZE, AVATAR_SIZE))).toBe(AVATAR_SIZE)
-  })
-})
 
 describe('checkPhoto', () => {
   it('accepts what a phone picker hands back', () => {
     expect(checkPhoto({ type: 'image/jpeg', size: 3_000_000 })).toBe(null)
     expect(checkPhoto({ type: 'image/png', size: 100 })).toBe(null)
     expect(checkPhoto({ type: 'image/HEIC', size: 100 })).toBe(null)
+  })
+
+  it('accepts an image type it has never heard of', () => {
+    // The round-11.2 allowlist rejected these outright, which is a way to
+    // refuse a real photo for having an unusual label. The decoder is the gate.
+    expect(checkPhoto({ type: 'image/avif', size: 100 })).toBe(null)
+    expect(checkPhoto({ type: 'image/jxl', size: 100 })).toBe(null)
+    expect(checkPhoto({ type: 'image/x-adobe-dng', size: 100 })).toBe(null)
+    expect(looksLikeImage('image/anything')).toBe(true)
+    expect(looksLikeImage('text/plain')).toBe(false)
   })
 
   it('lets an empty type through for the decoder to judge', () => {
@@ -96,12 +43,3 @@ describe('photoPath', () => {
   })
 })
 
-describe('photoVersion', () => {
-  it('changes when the photo does, so the old bytes stop being served', () => {
-    expect(photoVersion(1000)).not.toBe(photoVersion(2000))
-  })
-
-  it('is short enough to sit in a query string', () => {
-    expect(photoVersion(Date.now()).length).toBeLessThan(12)
-  })
-})

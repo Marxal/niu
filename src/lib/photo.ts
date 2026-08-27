@@ -16,10 +16,9 @@
  * ## Why cover rather than fit
  *
  * An avatar is a circle. A photo letterboxed into a square would show bars
- * inside that circle; a photo cropped to fill it shows a face. So the short
- * side is used whole and the long side is cropped evenly from both ends, which
- * for a phone photo of a person means keeping the middle — where people put
- * faces.
+ * inside that circle; a photo cropped to fill it shows a face. That invariant —
+ * the picture always fills the hole — is what crop.ts exists to keep, at any
+ * zoom and in any position.
  */
 
 /** The side of the square we store. See the header for the arithmetic. */
@@ -28,8 +27,18 @@ export const AVATAR_SIZE = 256
 /** JPEG quality. 0.8 is where the size curve flattens and the artefacts start. */
 export const AVATAR_QUALITY = 0.8
 
-/** What the picker is allowed to hand back. */
-export const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+/**
+ * Whether a file is worth handing to the decoder.
+ *
+ * Any `image/*` at all, plus an empty type — some Android pickers report none
+ * for a perfectly good JPEG. Round 11.2 had a list of five specific types, and
+ * that list was a way to reject a real photo for having an unusual label while
+ * adding no safety at all: the input is already `accept="image/*"`, and the
+ * decoder is the thing that actually knows whether the bytes are a picture.
+ */
+export function looksLikeImage(type: string): boolean {
+  return type === '' || type.toLowerCase().startsWith('image/')
+}
 
 /**
  * The largest file worth even trying to decode, before resizing.
@@ -40,48 +49,11 @@ export const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/h
  */
 export const MAX_INPUT_BYTES = 20 * 1024 * 1024
 
-/** The rectangle to take out of the source image. */
-export interface CropRect {
-  x: number
-  y: number
-  size: number
-}
-
-/**
- * The square to cut out of a `width × height` image so it fills an avatar.
- *
- * The short side becomes the square's side; the long side is trimmed equally
- * from both ends. Fractional halves are floored, so a 101px overhang takes 50
- * off the left and 51 off the right — off by one pixel, in the direction that
- * cannot round the rectangle off the edge of the image.
- */
-export function coverCrop(width: number, height: number): CropRect {
-  const size = Math.max(1, Math.min(width, height))
-  return {
-    x: Math.floor((width - size) / 2),
-    y: Math.floor((height - size) / 2),
-    size,
-  }
-}
-
-/**
- * How big to draw it: the crop's own size, capped at AVATAR_SIZE.
- *
- * The cap is a *maximum*, never a stretch. Somebody's 90px avatar from an old
- * export should stay 90px and slightly soft rather than be blown up to 256 and
- * be exactly as soft but four times the file.
- */
-export function outputSize(crop: CropRect): number {
-  return Math.min(AVATAR_SIZE, crop.size)
-}
-
 /** Why a chosen file was refused, or null when it is fine. */
 export type PhotoProblem = 'type' | 'size' | null
 
 export function checkPhoto(file: { type: string; size: number }): PhotoProblem {
-  // An empty type happens on some Android pickers even for a real JPEG, so it
-  // is allowed through and left for the decoder to reject.
-  if (file.type !== '' && !ACCEPTED_TYPES.includes(file.type.toLowerCase())) return 'type'
+  if (!looksLikeImage(file.type)) return 'type'
   if (file.size > MAX_INPUT_BYTES) return 'size'
   return null
 }
@@ -96,15 +68,4 @@ export function checkPhoto(file: { type: string; size: number }): PhotoProblem {
  */
 export function photoPath(householdId: string, personId: string): string {
   return `${householdId}/${personId}.jpg`
-}
-
-/**
- * A cache-busting suffix for a photo's URL.
- *
- * The path never changes when somebody replaces their photo — same household,
- * same person — so the browser and Supabase's CDN would both go on serving the
- * old bytes. A changing query string is what makes a new picture appear.
- */
-export function photoVersion(now: number = Date.now()): string {
-  return now.toString(36)
 }
