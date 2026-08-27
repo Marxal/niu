@@ -248,13 +248,24 @@ behind it first — which round 10's `times_planned` now records.
 
 ### 4.3 Calendar — built last
 
-**Our database holds the truth.** Niu owns the events. It pushes them **one way** to a
-single shared Google Calendar called "Niu" that both accounts subscribe to. It does not
-read work meetings or other calendars back in — family events only.
+**Our database holds the truth.** Niu owns the events. It pushes them **one way** into
+Google Calendar. It does not read work meetings or other calendars back in — family
+events only.
 
 This is a much simpler arrangement than two-way sync, and it's only possible because
 Marçal said he doesn't want other calendars shown. Keep it that way unless he changes
 his mind, because two-way is a different project.
+
+**Each member gets their own calendar called "Niu"** (round 11, replacing this
+section's original "a single shared calendar both accounts subscribe to"). The
+reason is a hard limit that turned out to be a better design. Niu asks Google for
+`calendar.app.created` — "make secondary calendars and manage events on them" — which
+is the narrowest scope that can do the job and which makes Niu *incapable* of reading
+anyone's other calendars. The promise in the paragraph above stops depending on our
+good intentions and becomes a property of the token. The price is that the scope
+covers only calendars this app made for this user and cannot write sharing rules, so
+there is no single calendar for both accounts to write into. Each phone pushes the
+household's events into its own copy; on the phone the result is identical.
 
 Nice side effect: **reminders come free.** Because every event lands in a real Google
 Calendar, Google's own notifications fire on both phones without us building push.
@@ -269,9 +280,35 @@ Calendar, Google's own notifications fire on both phones without us building pus
 - **Who's involved:** a row of avatars you tap. None selected is fine and means everyone.
 - **Recurrence, simplified:** repeats X times per week or month; ends after X times.
   Deleting asks: this one, or all of them? Full RRULE support is not a v1 goal.
+  Deferred out of round 11 — it is a genuine third of the calendar, since it means the
+  recurrence, the "this one or all of them?" question on every edit *and* delete, and
+  the same again as RRULE on the Google side.
 - **Colour:** categories have colours *and* people have colours, and the two must be
   visually distinguishable — e.g. category as the event's fill, person as an avatar ring.
+  Round 11 shipped exactly that shape, minus the names: an event carries one of the
+  eight colours, a person's colour is their avatar's ring.
 - The meal plan does **not** appear in this calendar. It has its own.
+
+**Reminders are a second, lighter kind of thing** (Marçal, round 11). "Tuesday,
+remember to renew the parking permit" — a title, a day, optionally an hour, and
+nothing else. It is the same row in the same table as an event, because everything
+around them is shared: the grid draws both, the push writes both, RLS protects both.
+It has one thing an event does not: **a checkbox**. A reminder that merely slid into
+the past never told anybody the permit got renewed.
+
+**Send it for confirmation** (Marçal, round 11), and the reason the calendar is
+really worth building. Any event can be sent to the rest of the household, who see it
+with Yes / Can't on it, pinned to the top of their calendar screen wherever in the
+year it actually falls. An unconfirmed event is **dashed rather than hidden**: it is
+on the calendar the moment it is written, and the mark says the other person has not
+seen it yet. An event that only appeared once agreed to would be an event you cannot
+talk about. Moving the day, the time or the place clears the answers and asks again —
+a yes to Thursday is not a yes to Saturday.
+
+**A second person can finally join** (round 11). Six characters read off one phone
+and typed into the other. Round 2 deferred the invite flow and nothing needed it
+until "who goes" and "ask her to confirm" did. Not an email invite: sending email
+needs a server, and §1 says there is no budget for one.
 
 ---
 
@@ -368,10 +405,22 @@ Not final. Enough to build round 3 against.
 
 **Calendar**
 
-- `events` — id, household_id, title, starts_at, ends_at, all_day, location, notes,
-  category_id, created_by, google_event_id, repeat_rule
-- `event_members` — event_id, member_id
-- `event_categories` — id, household_id, name, colour
+Round 11 built this, with three changes worth knowing:
+
+- `events` — id, household_id, **kind** ('event' or 'reminder'), title, **starts_on,
+  ends_on, start_time, end_time**, location, notes, colour, confirm_requested,
+  done_at/done_by, created_by. A day is a `date` and a time is a `time`, not two
+  timestamps: "the 3rd of September" is the 3rd wherever you read it, and storing it
+  as an instant makes it the 2nd for anyone an hour west. A null `start_time` *is*
+  "all day" — no boolean beside it that could disagree. `ends_on` is inclusive.
+- `event_attendees` — event_id, user_id, household_id. No rows means everyone.
+- `event_confirmations` — event_id, user_id, household_id, answer, answered_at.
+- `event_sync` / `event_tombstones` — what each member's phone has told Google.
+  **There is no `google_event_id`**: it is derived from our uuid, which makes a push
+  idempotent and a deletion possible after the row is gone.
+- `household_members` also grew display_name, colour, avatar, email; `households` grew
+  a join_code.
+- Still to come: `repeat_rule` (recurrence, deferred) and named `event_categories`.
 
 ---
 
@@ -403,7 +452,15 @@ lands, it lives in **one token file** — no raw hex anywhere in a component.
   a local copy, and it's a real option later. But it's the change that costs the most to
   retrofit, so if the app ever feels broken in a supermarket, this is the first thing to
   revisit. **Flag it the first time it bites.**
-- **No push notifications in v1.** Calendar reminders come from Google Calendar itself.
+- **Push notifications are back on, as round 11.1.** This said "v2" and Marçal
+  reversed it in round 11: "this is turning so good that we can integrate
+  notifications". The trigger is the confirmation request — a question that arrives
+  only when you happen to open the app is a question nobody answers in time. Round 11
+  ships the in-app half (the tab badge, live over Realtime) and Google's own alarms
+  for reminders; the real phone notification is its own round because it needs three
+  new things: a service worker that handles `push`, a VAPID key pair, and one small
+  Supabase Edge Function holding the private key. Free tier throughout — flag it if
+  that ever stops being true.
 - **Last write wins.** If both phones edit the same item in the same second, one wins.
   Fine for two people; the first thing to fix if the household grows.
 - **No purchase history**, only per-item stats (§5).
@@ -434,8 +491,9 @@ in the repo; this is the shape.
 | 4 | **Order and learning** — shop order, per-item stats, the suggestions strip, multiple shops | The list starts sorting itself sensibly |
 | 5 | **Dishes** — dish objects, the dishes category in the catalogue, tap-a-dish-adds-its-items | Bundles working from the shopping side |
 | 6 | **Meal planner** — day/week views, meals, plan-to-list *and* list-to-plan, repeat and leftover markers, dragging | A planned week that fills the shopping list (round 10). Month view and auto-suggest-a-week deferred |
-| 7 | **Calendar** — events, month grid, quick add, avatars, one-way push to the shared Google calendar | Shared family events on both phones |
-| 8+ | Stock inference, offline, push, export, icon upgrades | As they earn their place |
+| 7 | **Calendar** — events, reminders, month grid, avatars, confirmations, one-way push to Google | Shared family events on both phones (round 11). Quick-add and recurrence deferred |
+| 7.1 | **Push notifications** — service worker, VAPID, one Supabase function | The confirmation request buzzes the other phone |
+| 8+ | Stock inference, offline, export, icon upgrades | As they earn their place |
 
 Marçal said the smallest version he'd genuinely use daily is "v0.6" — effectively the
 whole thing. That's the destination, not the first useful moment: **the app becomes
@@ -454,9 +512,11 @@ use. Worth remembering when round 4 feels slow.
 
 ## 11. Questions still open
 
-1. **Quick-add typing** — "Thursday 18:30 dinner" is wanted but reliable natural-language
-   date parsing in four languages is a real project. Decide in round 7 whether it's a
-   nice-to-have on top of an excellent structured flow, or a requirement.
+1. ~~**Quick-add typing**~~ — **settled in round 11: a nice-to-have, and not yet.**
+   Reliable date parsing across English, Catalan and Swedish is a real project, and
+   §4.3 requires the structured flow to be excellent on its own regardless — so the
+   structured flow was built first and typing was not built at all. Revisit once the
+   sheet has been used for a month and it is clear what typing would actually save.
 2. ~~**Dragging in the meal planner**~~ — **settled in round 10.** Long-press and drag,
    chosen over tap-to-lift-tap-to-drop. Adding is still a tap on the meal; dragging is
    only for moving something already planned. See `src/lib/drag.svelte.ts` for the four

@@ -11,11 +11,24 @@
      env(safe-area-inset-bottom) as padding, so nothing lands under the system UI.
 -->
 <script lang="ts">
+  import { calendar } from '../lib/calendar.svelte'
   import { TABS, hrefFor, type RouteId } from '../lib/router'
   import { strings } from '../lib/strings'
   import TabIcon from './TabIcon.svelte'
 
   let { route }: { route: RouteId } = $props()
+
+  /**
+   * How many things are waiting on an answer from you.
+   *
+   * Only the calendar carries a count for now, and the reason it is here rather
+   * than on the calendar screen is the whole reason to have it: a question you
+   * only see once you open the tab it is on is not a question anyone answers.
+   * Round 11.1 turns this same number into a notification on the phone itself.
+   */
+  let badges = $derived<Partial<Record<RouteId, number>>>({
+    calendar: calendar.waitingOnMe.length,
+  })
 </script>
 
 <nav class="nav" aria-label={strings.nav.label}>
@@ -29,8 +42,22 @@
       aria-current={active ? 'page' : undefined}
       style="--tab-accent: var(--color-tab-{tab.id})"
     >
-      <TabIcon name={tab.id} />
-      <span class="label">{tab.label}</span>
+      <span class="icon">
+        <TabIcon name={tab.id} />
+        {#if (badges[tab.id] ?? 0) > 0}
+          <span class="badge" aria-hidden="true">{badges[tab.id]}</span>
+        {/if}
+      </span>
+      <span class="label">
+        {tab.label}
+        {#if (badges[tab.id] ?? 0) > 0}
+          <span class="sr">
+            {badges[tab.id] === 1
+              ? strings.calendar.badgeOne
+              : strings.calendar.badgeMany(badges[tab.id] ?? 0)}
+          </span>
+        {/if}
+      </span>
     </a>
   {/each}
 </nav>
@@ -61,6 +88,41 @@
 
   .tab.active {
     color: var(--tab-accent);
+  }
+
+  .icon {
+    position: relative;
+    display: inline-flex;
+  }
+
+  /* A count, not a dot: "3 to confirm" and "1 to confirm" are different enough
+     to deserve different marks, and the number is what makes it worth walking
+     over to the tab. */
+  .badge {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.5rem;
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0 0.25rem;
+    border-radius: var(--radius-full);
+    background: var(--color-danger);
+    color: var(--color-accent-ink);
+    font-size: 0.625rem;
+    font-weight: var(--weight-bold);
+    line-height: 1rem;
+    text-align: center;
+  }
+
+  /* Read out by a screen reader, invisible to everyone else — the badge itself
+     is a bare digit and does not say what it counts. */
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .label {

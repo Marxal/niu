@@ -82,7 +82,9 @@ uses those, it's the old API; convert it.
 Don't add them without being asked:
 
 - Offline support / service worker caching (deferred, see `NIU.md` §9)
-- Push notifications (v2)
+- Push notifications — **planned now, as round 11.1** (Marçal reversed the v2 call in
+  round 11). Until that round lands, don't add a service worker `push` handler,
+  a VAPID key or an Edge Function ad hoc; see `NIU.md` §9.
 - Photos, a desktop layout, cooking instructions, prices, barcode scanning
 - Any analytics
 - Any CSS framework, component library or icon npm package
