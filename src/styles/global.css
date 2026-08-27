@@ -71,3 +71,14 @@ a {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* While a planned meal is being carried across the planner. Nothing on the page
+   may select or start its own gesture: a long press that ends up highlighting
+   the dish's name is a drag that looks broken. `touch-action` here is belt to
+   drag.svelte.ts's braces — the non-passive touchmove listener is what actually
+   stops the scroll, this is what stops a *new* gesture starting mid-drag. */
+body.dragging {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}

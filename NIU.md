@@ -156,36 +156,63 @@ items, it becomes a bundle in the shopping list too, and it works in **both dire
 
 - **Plan → shop.** Add "Lasagne" to Thursday, and the app asks: *add the four missing
   ingredients to the list?*
-- **Shop → plan.** "Lasagne" also sits in the shopping catalogue as a tappable tile that
+- **Dish → shop.** "Lasagne" also sits in the shopping catalogue as a tappable tile that
   adds its ingredients in one go. Anything a dish put on the list wears a small tag
   saying which dish wanted it, and an ingredient two dishes share wears both.
-- **Stock → plan.** Later, once the app has purchase data, it can favour dishes whose
-  ingredients it thinks are already in the house.
+- **What you have → plan.** Round 10, and cheaper than §5 assumed. It does *not* guess what is in
+  the house — that is stock inference, still deferred below. It answers a smaller
+  question with data the app already has: how many of a dish's ingredients are on the
+  list right now, or were bought in the last few days (`last_bought_at`, kept since
+  round 7). That shows as "4 of 5" beside every dish in the picker, and as a "What can we
+  make?" sheet in the planner. Both halves are needed: on shopping day the list is the
+  answer, and the morning after — when the list is empty and the food is in the fridge —
+  the recent purchases are.
+- **Stock → plan.** Later still, once there are months of data: favouring dishes whose
+  ingredients it *infers* are in the house, with shelf-life learning behind it.
 
 Cooking instructions are explicitly **not** a feature. If a note is ever needed, it's a
 notes field.
 
-**Structure:** meals per day are configurable, defaulting to lunch and dinner. Slots
-inside a meal are configurable, defaulting to protein / carbs / vegetables. A meal can
-also be a single dish rather than three slots.
+**Structure:** meals per day are configurable, defaulting to lunch and dinner.
+
+**A meal is a bag, not a set of slots** (Marçal, round 10). This section used to say
+slots inside a meal were configurable and defaulted to protein / carbs / vegetables —
+but round 9 had already turned exactly those three words into *dish tags*, free-form and
+several per dish. Keeping both would have been two systems for one idea, and would have
+forced every lasagne to choose between being protein and being carbs. So a meal holds
+any number of entries in the order you put them there, each carrying its own colour from
+its dish's tags. "A protein, a carb and a vegetable" is now something you can *see*
+rather than a shape you must fill, and a meal that is one dish is simply a meal with one
+thing in it.
 
 **Views:** vertical scrolling days by default (the Daily Meal Planner shape), with a
-switcher to week and month.
+switcher to week. A month view is still wanted but was deferred out of round 10: on a
+412px screen it can only be coloured dots, which answers "what did we eat a fortnight
+ago" rather than a daily question.
 
-**Adding:** tap a slot, pick from the library sorted by most-used. Dragging to move and
-rearrange dishes across days is wanted, at least for editing an existing plan.
+**Adding:** tap a meal, pick from the library sorted by most-planned. The picker leads
+with dishes whose ingredients are already to hand — see "What you have → plan" above.
 
-**A slot can hold a plain shopping item, not only a dish** (Marçal, after round 8).
-"Broccoli" on a Tuesday is a complete thought and should not need a dish written for it
-first. So the picker on a slot offers both: the dish library, and the catalogue behind it.
-A slot therefore points at *either* a dish or a catalogue item — worth knowing before the
-planner's schema is written, because retrofitting it is a table change.
+**Moving:** long-press a card and drag it (Marçal, round 10, choosing this over the
+safer tap-to-lift-tap-to-drop). The week view exists partly for this: seven days on one
+screen means the card only has to travel an inch.
 
-**Planning horizon:** a week.
+**A meal can hold a plain shopping item, not only a dish** (Marçal, after round 8; built
+in round 10). "Broccoli" on a Tuesday is a complete thought and should not need a dish
+written for it first. So the picker offers both: the dish library, and the catalogue
+behind it.
+An entry therefore points at *either* a dish or a catalogue item, and `meal_entries.kind`
+in 0010 is what keeps the two straight.
+
+**Planning horizon:** a week — but any week. The stepper goes back and forward
+indefinitely and old weeks stay readable, which is where "what did we have on Tuesday"
+gets answered.
 
 **"Shop for this week"** — one button, turns the week's plan into shopping list entries.
 
-**Markers:** leftovers, eating out.
+**Markers:** leftovers, eating out. Both are *kinds of entry* rather than dishes you have
+to write first, and neither ever puts anything on the shopping list — which is the point
+of them. A leftovers entry may name the dish it is left over from.
 
 **Repeats are normal in this household** and must not be discouraged. The app should not
 avoid recent dishes. It should instead learn the *cook-then-repeat* rhythm: the first
@@ -193,6 +220,9 @@ appearance of a dish is a cook, an immediately following one is a repeat. Worth 
 visually so the plan reads correctly at a glance.
 
 **Auto-suggest a week:** yes, once there's enough data. The user always approves.
+Deliberately not built in round 10: with no planning history it could only rank by
+times-added, which is the picker you already have. It wants a few weeks of real plans
+behind it first — which round 10's `times_planned` now records.
 
 ### 4.3 Calendar — built last
 
@@ -381,7 +411,7 @@ in the repo; this is the shape.
 | 3 | **The shopping list** — catalogue, categories, tile grid, tap-to-add, trolley, realtime sync. Likely two or three rounds; it's the biggest single piece | A shopping list they actually use |
 | 4 | **Order and learning** — shop order, per-item stats, the suggestions strip, multiple shops | The list starts sorting itself sensibly |
 | 5 | **Dishes** — dish objects, the dishes category in the catalogue, tap-a-dish-adds-its-items | Bundles working from the shopping side |
-| 6 | **Meal planner** — day/week views, slots, plan-to-list, repeat and leftover markers, auto-suggest | A planned week that fills the shopping list |
+| 6 | **Meal planner** — day/week views, meals, plan-to-list *and* list-to-plan, repeat and leftover markers, dragging | A planned week that fills the shopping list (round 10). Month view and auto-suggest-a-week deferred |
 | 7 | **Calendar** — events, month grid, quick add, avatars, one-way push to the shared Google calendar | Shared family events on both phones |
 | 8+ | Stock inference, offline, push, export, icon upgrades | As they earn their place |
 
@@ -405,8 +435,10 @@ use. Worth remembering when round 4 feels slow.
 1. **Quick-add typing** — "Thursday 18:30 dinner" is wanted but reliable natural-language
    date parsing in four languages is a real project. Decide in round 7 whether it's a
    nice-to-have on top of an excellent structured flow, or a requirement.
-2. **Dragging in the meal planner** — wanted for rearranging, unclear whether it's needed
-   for the initial add. Decide when round 6 has something to drag.
+2. ~~**Dragging in the meal planner**~~ — **settled in round 10.** Long-press and drag,
+   chosen over tap-to-lift-tap-to-drop. Adding is still a tap on the meal; dragging is
+   only for moving something already planned. See `src/lib/drag.svelte.ts` for the four
+   things that make it work on a phone.
 3. **Icon set** — verify OpenMoji's licence and food coverage before committing (§6).
 4. **When "who added it" is shown** — Marçal said "in some situations, decide later".
 5. **Catalogue language** — English at launch, with users free to type Catalan. Whether

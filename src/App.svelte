@@ -14,15 +14,17 @@
   import AppHeader from './components/AppHeader.svelte'
   import BottomNav from './components/BottomNav.svelte'
   import CalendarScreen from './screens/CalendarScreen.svelte'
-  import MealsScreen from './screens/MealsScreen.svelte'
+  import DishesScreen from './screens/DishesScreen.svelte'
+  import PlannerScreen from './screens/PlannerScreen.svelte'
   import SettingsScreen from './screens/SettingsScreen.svelte'
   import ShoppingScreen from './screens/ShoppingScreen.svelte'
   import SignInScreen from './screens/SignInScreen.svelte'
-  import { TABS, parseRoute, type RouteId, type TabId } from './lib/router'
+  import { TABS, parseRoute, parseSubRoute, type RouteId, type TabId } from './lib/router'
   import { strings } from './lib/strings'
   import { auth, watchAuth } from './lib/auth.svelte'
   import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
   import { clearDishes, loadDishes, watchDishes } from './lib/dishes.svelte'
+  import { clearPlan, loadPlan, plan, watchPlan } from './lib/plan.svelte'
   import { clearShopping, loadShopping, watchShopping } from './lib/shopping.svelte'
   import { clearShops, loadShops, shops, watchShops } from './lib/shops.svelte'
   import { clearLearning, loadLearning } from './lib/learning.svelte'
@@ -31,6 +33,8 @@
   import { loadPrefs } from './lib/prefs.svelte'
 
   let route = $state<RouteId>(parseRoute(location.hash))
+  /** The segment after the route: 'dishes' under Meals, otherwise nothing. */
+  let sub = $state<string | null>(parseSubRoute(location.hash))
 
   // Where the close button in Settings sends you back to.
   let lastTab = $state<TabId>('shopping')
@@ -42,9 +46,15 @@
     settings: strings.header.settings,
   }
 
+  // The library is the one screen whose title isn't its tab's.
+  let title = $derived(
+    route === 'meals' && sub === 'dishes' ? strings.dishes.title : titles[route],
+  )
+
   $effect(() => {
     const sync = () => {
       route = parseRoute(location.hash)
+      sub = parseSubRoute(location.hash)
     }
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
@@ -83,6 +93,7 @@
       clearShops()
       clearLearning()
       clearDishes()
+      clearPlan()
     }
   })
 
@@ -112,6 +123,23 @@
     return watchDishes()
   })
 
+  // The plan. Re-reads when the week on screen moves, because only a window
+  // around it is fetched — see plan.svelte.ts.
+  $effect(() => {
+    const week = plan.weekStart
+    if (!household.id || !week) return
+
+    void loadPlan()
+  })
+
+  // One subscription for the plan, independent of which week is shown: the
+  // channel is per household, and re-subscribing on every arrow tap would drop
+  // events in the gap.
+  $effect(() => {
+    if (!household.id) return
+    return watchPlan()
+  })
+
   // What the app has learned. Re-runs when the chosen shop changes, because the
   // aisle order is per shop — the stats alongside it are not, and reloading
   // both is one round trip either way.
@@ -131,14 +159,18 @@
   <SignInScreen />
 {:else}
   <div class="shell">
-    <AppHeader {route} title={titles[route]} backTo={lastTab} />
+    <AppHeader {route} {title} backTo={lastTab} />
 
     <main id="main">
       <div class="content">
         {#if route === 'shopping'}
           <ShoppingScreen />
         {:else if route === 'meals'}
-          <MealsScreen />
+          {#if sub === 'dishes'}
+            <DishesScreen />
+          {:else}
+            <PlannerScreen />
+          {/if}
         {:else if route === 'calendar'}
           <CalendarScreen />
         {:else}

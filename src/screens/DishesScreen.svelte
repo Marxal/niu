@@ -1,11 +1,16 @@
 <!--
-  The Meals tab, which for now is the dish library.
+  The dish library, at `#/meals/dishes` — behind the planner rather than in front
+  of it since round 10.
 
-  NIU.md §4.2: "There is only one concept: a dish." Round 8 builds the dishes
-  themselves and the shopping half of what they do — the weekly plan they get
-  dropped into is the next round. So this screen is the library: write down what
-  you cook, say what it's made of, and it turns up as a tappable tile in the
-  shopping catalogue.
+  NIU.md §4.2: "There is only one concept: a dish." This screen is where you
+  write one down: a name, a picture, which parts of a meal it is, how much
+  cooking it takes, and — if you want — the things it's made of. It then turns up
+  in two places: as a tappable tile in the shopping catalogue, and in the
+  planner's picker.
+
+  It sits one tap behind the plan because it is the raw material rather than the
+  daily question. You visit it when a dish is missing or wrong; you visit the
+  planner to decide dinner.
 
   There is no search box. A household has twenty-odd dishes, not three hundred,
   and a grid of twenty is faster to look at than to type into. If the library
@@ -22,6 +27,7 @@
   import Placeholder from '../components/Placeholder.svelte'
   import { auth } from '../lib/auth.svelte'
   import { isConfigured } from '../lib/config'
+  import { hrefFor } from '../lib/router'
   import { type Dish, sortDishes } from '../lib/dishes'
   import { dishes } from '../lib/dishes.svelte'
   import { FLIP_MS, tileIn, tileOut } from '../lib/motion'
@@ -48,6 +54,23 @@
     {#if dishes.error}
       <p class="error" role="alert">{dishes.error}</p>
     {/if}
+
+    <a class="back" href={hrefFor('meals')}>
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m15 6-6 6 6 6" />
+      </svg>
+      {strings.plan.dishesBack}
+    </a>
 
     <p class="hint">{strings.dishes.hint}</p>
 
@@ -82,7 +105,6 @@
       </div>
     {/if}
 
-    <p class="note">{strings.dishes.plannerNote}</p>
   </div>
 
   {#if editing}
@@ -161,11 +183,18 @@
     font-size: var(--text-sm);
   }
 
-  .note {
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--color-border);
-    color: var(--color-text-faint);
-    font-size: var(--text-xs);
+  .back {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    align-self: flex-start;
+    min-height: var(--tap-min);
+    margin-left: calc(var(--space-2) * -1);
+    padding-right: var(--space-2);
+    color: var(--color-tab-meals);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    text-decoration: none;
   }
 
   .error {

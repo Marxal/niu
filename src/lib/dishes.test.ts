@@ -22,6 +22,8 @@ function dish(overrides: Partial<Dish> = {}): Dish {
     itemIds: [],
     timesAdded: 0,
     lastAddedAt: null,
+    timesPlanned: 0,
+    lastPlannedAt: null,
     ...overrides,
   }
 }

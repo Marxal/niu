@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_ROUTE, TABS, hrefFor, parseRoute } from './router'
+import { DEFAULT_ROUTE, TABS, hrefFor, parseRoute, parseSubRoute } from './router'
 
 describe('parseRoute', () => {
   it('defaults to shopping when there is no hash', () => {
@@ -36,5 +36,25 @@ describe('hrefFor', () => {
       expect(parseRoute(hrefFor(tab.id))).toBe(tab.id)
     }
     expect(parseRoute(hrefFor('settings'))).toBe('settings')
+  })
+})
+
+describe('parseSubRoute', () => {
+  it('reads the segment after the route', () => {
+    expect(parseSubRoute('#/meals/dishes')).toBe('dishes')
+    expect(parseSubRoute('#/meals/dishes/')).toBe('dishes')
+    expect(parseSubRoute('#/MEALS/DISHES')).toBe('dishes')
+    expect(parseSubRoute('#/meals/dishes?x=1')).toBe('dishes')
+  })
+
+  it('is null where there is no sub-route', () => {
+    expect(parseSubRoute('#/meals')).toBe(null)
+    expect(parseSubRoute('#/meals/')).toBe(null)
+    expect(parseSubRoute('')).toBe(null)
+    expect(parseSubRoute('#')).toBe(null)
+  })
+
+  it('leaves an unknown sub-route alone for the screen to ignore', () => {
+    expect(parseSubRoute('#/meals/nonsense')).toBe('nonsense')
   })
 })

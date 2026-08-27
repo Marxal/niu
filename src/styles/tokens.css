@@ -162,6 +162,9 @@
   --z-nav: 100;
   --z-sheet: 200;
   --z-toast: 300;
+  /* A card being dragged across the planner rides above everything, including a
+     sheet, because it is literally under the user's finger. */
+  --z-drag: 400;
 }
 
 /*
