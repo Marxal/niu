@@ -417,3 +417,77 @@ Skip the migration and the Calendar tab shows an error line and stays empty;
 everything else works exactly as before. Skip only the Google half and the
 calendar works fully on both phones — it just never reaches Google, and the
 Settings card says so.
+
+---
+
+## Round 11.2: people without accounts, and photos
+
+Two steps, and **the first one is not SQL** — it has to be done by hand before
+the migration will make sense.
+
+### 1. Make the photo bucket
+
+In the Supabase dashboard: **Storage → New bucket.**
+
+- Name it exactly `avatars` — the app and the policies both use that word.
+- Leave **Public bucket** switched **off**.
+
+Private rather than public, deliberately. These are photographs of a family
+including children, and a public bucket means anybody holding the address can
+view them forever, with no way to take it back. Private means the app asks for a
+link that expires after an hour. That costs one extra call when the app loads
+and it is the right way round for this content.
+
+### 2. Run the migration
+
+In the **SQL Editor**:
+
+1. `supabase/migrations/0013_people_and_photos.sql`
+
+It does four things:
+
+- **A `household_people` table**, where `user_id` is *nullable*. That one nullable
+  column is the whole round: a person with an account and a person without are
+  the same kind of row, and having an account is a property rather than a
+  category. `household_members` keeps its old job and only that job — it is the
+  *access* record that Row Level Security reads; `household_people` is the
+  *identity* record, the name and the face.
+- **Your existing profiles are carried across.** The name, colour, avatar and
+  email that round 11 put on `household_members` are copied over. The old
+  columns are left in place rather than dropped, so a phone still running the
+  previous version does not suddenly show blanks.
+- **Attendees now point at people**, not at accounts. `event_attendees.user_id`
+  becomes `person_id`, backfilled in the same file so there is never a moment
+  with two sources of truth. Confirmations are deliberately left alone: only
+  somebody with an account can be asked to confirm anything.
+- **Storage policies for the bucket** you just made.
+
+Afterwards, check **Database → Replication**: `household_people` should have
+joined the `supabase_realtime` publication, so a face added on one phone appears
+on the other without a reload.
+
+### The path is the permission
+
+Every photo is stored as `household_id/person_id.jpg`, and every Storage policy
+reads the household out of that first folder. That is not a naming convention —
+it is the security model. If the path shape ever changes in the app without
+changing it in the migration, the policies stop matching and the bucket stops
+being protected the way it looks like it is.
+
+### What you can and cannot edit
+
+The database enforces three things, so the app does not have to be trusted with
+them:
+
+- Anyone in the household can rename, dress or remove a person **without** an
+  account. They belong to the household.
+- Only *you* can edit your own row. Your partner cannot rename you.
+- Nobody can delete a person **with** an account from here. Leaving a household
+  is its own act, not something a housemate does to you.
+
+### Nothing is lost if you don't run it
+
+The Calendar tab's "who goes" row and the whole Settings people card stop
+loading and show a short line instead. Everything else — the list, the planner,
+the events themselves — carries on. Skip only the bucket and everything works
+except choosing a photo, which reports that it couldn't be saved.

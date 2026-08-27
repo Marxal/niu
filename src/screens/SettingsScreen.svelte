@@ -18,7 +18,6 @@
   import ShopsCard from '../components/ShopsCard.svelte'
   import GoogleCard from '../components/GoogleCard.svelte'
   import HouseholdCard from '../components/HouseholdCard.svelte'
-  import ProfileCard from '../components/ProfileCard.svelte'
   import {
     prefs,
     setIconStyle,
@@ -78,11 +77,12 @@
        screen is gone, and Settings is the one place with no other landmark. -->
   <h1>{strings.header.settings}</h1>
 
-  <!-- You, your household and Google come first: they are the three that are
-       set up once and then never touched, and burying a first-run step under
-       four display preferences is how a first-run step gets missed. -->
+  <!-- Your household and Google come first: both are set up once and then
+       never touched, and burying a first-run step under four display
+       preferences is how a first-run step gets missed. You are the first row of
+       the household card — round 11.2 folded the separate "You" card into it,
+       because editing yourself and editing a child are the same sheet. -->
   {#if auth.status === 'signed-in'}
-    <ProfileCard />
     <HouseholdCard />
     <GoogleCard />
     <ShopsCard userId={auth.userId} />

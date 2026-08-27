@@ -28,9 +28,9 @@
   } from '../lib/calendar'
   import { dateRange, timeLabel } from '../lib/dates'
   import { tagStyle } from '../lib/dish-tags'
-  import { memberById, memberName } from '../lib/members.svelte'
+  import { personById, personByUserId, personName } from '../lib/people.svelte'
   import { strings } from '../lib/strings'
-  import MemberAvatar from './MemberAvatar.svelte'
+  import PersonAvatar from './PersonAvatar.svelte'
 
   let {
     event,
@@ -49,8 +49,8 @@
   let done = $derived(event.doneAt !== null)
   let time = $derived(timeLabel(event.startTime, event.endTime))
 
-  let people = $derived(
-    event.attendees.map((id) => memberById(id)).filter((m) => m !== null),
+  let going = $derived(
+    event.attendees.map((id) => personById(id)).filter((p) => p !== null),
   )
 
   /** Who we are waiting on, or who said no — named, because "waiting" alone in
@@ -61,14 +61,14 @@
 
     if (state === 'declined') {
       const who = refused[0]
-      const name = who ? memberName(memberById(who.userId)) : null
+      const name = who ? personName(personByUserId(who.userId)) : null
       return refused.length === 1 && name
         ? strings.calendar.declinedBy(name)
         : strings.calendar.declined
     }
     if (state === 'waiting') {
       const who = pending[0]
-      const name = who ? memberName(memberById(who.userId)) : null
+      const name = who ? personName(personByUserId(who.userId)) : null
       return pending.length === 1 && name
         ? strings.calendar.waitingOn(name)
         : strings.calendar.waiting
@@ -97,10 +97,10 @@
   <button class="body" class:done onclick={onopen}>
     <span class="line">
       <span class="title">{event.title}</span>
-      {#if people.length > 0}
+      {#if going.length > 0}
         <span class="faces">
-          {#each people as member (member.userId)}
-            <MemberAvatar {member} size="sm" />
+          {#each going as person (person.id)}
+            <PersonAvatar {person} size="sm" />
           {/each}
         </span>
       {/if}

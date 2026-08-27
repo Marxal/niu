@@ -26,8 +26,9 @@
   import { clearShopping, loadShopping, watchShopping } from './lib/shopping.svelte'
   import { clearShops, loadShops, shops, watchShops } from './lib/shops.svelte'
   import { clearCalendar, loadInitialWindow, loadTombstones, watchCalendar } from './lib/calendar.svelte'
-  import { clearMembers, loadMembers, watchMembers } from './lib/members.svelte'
+  import { clearPeople, loadPeople, watchPeople } from './lib/people.svelte'
   import { clearSync, loadSyncRows } from './lib/google-sync.svelte'
+  import { loadCalendarId } from './lib/google.svelte'
   import { clearLearning, loadLearning } from './lib/learning.svelte'
   import { watchKeyboard } from './lib/keyboard'
   import { watchTheme } from './lib/theme.svelte'
@@ -84,7 +85,7 @@
       clearDishes()
       clearPlan()
       clearCalendar()
-      clearMembers()
+      clearPeople()
       clearSync()
     }
   })
@@ -143,14 +144,14 @@
   })
 
   // Who lives here. Loaded at the shell rather than on the calendar screen
-  // because an avatar and a name are needed wherever "who added this" is shown,
-  // and because the confirmation badge below has to be right on the shopping
-  // tab too.
+  // because a face and a name are needed wherever "who added this" is shown —
+  // the bottom bar draws your own — and because the confirmation badge below
+  // has to be right on the shopping tab too.
   $effect(() => {
     if (!household.id) return
 
-    void loadMembers()
-    return watchMembers()
+    void loadPeople()
+    return watchPeople()
   })
 
   // The calendar, for the same reason: the count on the Calendar tab is the
@@ -163,6 +164,7 @@
     void loadInitialWindow().then(() => {
       void loadTombstones()
       void loadSyncRows()
+      void loadCalendarId()
     })
 
     return watchCalendar()

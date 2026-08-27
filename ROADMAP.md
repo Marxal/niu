@@ -1871,3 +1871,133 @@ No migration this round — just reload.
   working.
 - **A month view for the meal planner.** Still open from round 10, still a
   separate thing.
+
+## Round 11.2 — People, not members
+
+**Branch:** `claude/calendar-r7-events-confirmations-htn01h`
+
+The ninth of Marçal's round-11 notes, held back from 11.1 because it needed
+Supabase Storage with its own security policies and a change to the data model.
+
+### What changed
+
+**People without a phone.** Kids, grandparents — anyone who is part of the
+family's plans without being part of its logins. They have a name, a colour and
+a face, they can be put on events, and they are never asked to confirm
+anything. **Settings → Who lives here → Add a person.**
+
+**Photos.** Any person can have a real photograph instead of an emoji, taken or
+picked with the phone's own picker. Your Google profile picture is captured on
+first sign-in, so a new account has a face before anybody has done anything.
+
+**One sheet for everybody.** Tapping a person in Settings opens the same editor
+whether they have an account or not — name, photo, emoji, colour. The separate
+"You" card is gone; you are simply the first row of the household, with a tag.
+
+### The model change, which is the actual round
+
+Until now a person *was* a `household_members` row, which is a row about an auth
+user. A child has no auth user. The obvious move — a second table for
+account-less people — would have meant every list of people being a union of two
+tables and every attendee row pointing at one of two things.
+
+So there is now one table of **people**, with a nullable `user_id`. A person with
+an account and a person without are the same kind of row; the account is a
+property, not a category. `household_members` keeps its old job and only that
+job — it is the *access* record, the thing RLS reads — while `household_people`
+is the *identity* record. Joining a household makes you a person, by trigger, so
+every route in produces the same result.
+
+`event_attendees.user_id` became `person_id`, backfilled inside the same
+migration. `event_confirmations` was deliberately left keyed on auth users: only
+somebody with an account can be asked anything.
+
+The app renamed to match. `members.svelte.ts` is `people.svelte.ts`,
+`MemberAvatar` is `PersonAvatar`, and "member" no longer appears in any user-
+facing string. That was the point of the rename — the old word was quietly
+telling us the model was wrong.
+
+### Three decisions about the photos
+
+**The bucket is private.** These are photographs of a family including children;
+a public bucket means anybody holding the address can view them forever. Private
+costs one signing call on load — batched, so a household of four is one request
+rather than four — and it is the right way round for this content.
+
+**The path is the permission.** Every object is `household_id/person_id.jpg`, and
+every Storage policy reads the household out of that first folder. Not a naming
+convention: the security model. The helper that does the reading returns null
+rather than casting, because a policy that *throws* on a badly shaped path fails
+the whole query — including for objects in other buckets, since SQL does not
+promise to evaluate `bucket_id` first.
+
+**Resizing happens on the phone.** A photo off an Android camera is four or five
+megabytes; an avatar is drawn at 48 pixels. It is cropped square and shrunk to
+256px before it goes anywhere, which makes the upload about 20KB. The
+alternative is resizing on a server, and this project has no server (§1). The
+crop arithmetic is in `src/lib/photo.ts`, pure and tested; the canvas work
+around it is thin on purpose.
+
+**Google's picture is kept as an address, not as bytes.** Downloading it into our
+bucket would depend on the image being readable cross-origin into a canvas,
+which is not something to build on — and the address works perfectly well as an
+image source. If Google ever stops serving it, the emoji fallback is there.
+
+### How it was checked
+
+351 unit tests, 16 of them new: the cover-crop rectangle stays inside the image
+for a spread of awkward sizes including odd overhangs and 1×1, the output size
+caps without ever blowing a small photo up, the file guard lets an empty MIME
+type through (some Android pickers report none for a perfectly good JPEG) and
+refuses a video, and the storage path puts the household first.
+
+Rendered in a real Chromium at 412×915 in both themes: the household card with
+four people of four different face kinds, the person sheet for a child, for
+yourself and for somebody else's account, and the event sheet's attendee row.
+Two things the render caught:
+
+- `.tag.quiet` on the "No phone" chip was silently inheriting a `.quiet` text
+  button's 48px min-height from elsewhere in the same file, making a 18px chip
+  48px tall. Renamed to `.outline`.
+- the selected state inverted the circle, which works for a letter and turns an
+  emoji into a muddy blob. Only the letter inverts now; a photo or an emoji says
+  "chosen" on its edge instead.
+
+### How to test it
+
+**Two setup steps this round, and the first is not SQL** —
+`docs/SUPABASE_SETUP.md` has both written out:
+
+1. **Storage → New bucket**, named `avatars`, **not public**.
+2. Run `supabase/migrations/0013_people_and_photos.sql` in the SQL Editor.
+
+Then reload and:
+
+1. **Settings → Who lives here.** You and anyone who has joined are listed, you
+   with a **You** tag. Your Google profile picture should already be your face.
+2. **Add a person** → type a child's name → **Add**. Their sheet opens straight
+   away, because naming somebody and giving them a face is one thought.
+3. **Choose a photo.** The phone offers the camera and the gallery. Pick
+   anything — it should come back cropped to a circle in about a second, and it
+   is a 20KB upload, not a 5MB one.
+4. **Tap a person in the list** to edit them again. Try tapping your partner:
+   their name and face are read-only, and the sheet says why.
+5. **Calendar → ＋ Event → Who goes.** Everyone is there, kids included. Tap the
+   child; the ring goes solid. Save, and the row on the calendar wears their
+   face.
+6. **Ask to confirm** still only ever names somebody with an account. A child is
+   never asked.
+7. **Both phones:** add a person on one and watch them appear in the other's
+   list, with their photo, without a reload.
+
+### Deliberately not done
+
+- **Cropping by hand.** The crop is the middle square, which for a phone photo
+  of a person is where the face is. A pinch-and-drag cropper is a real piece of
+  work and worth building only if the automatic one turns out to be wrong often.
+- **A photo for the household itself.** Nothing asks for one yet.
+- **Removing somebody with an account.** Leaving a household is its own act and
+  needs its own confirmation flow; the database refuses it from here for now.
+- **`household_members`' old profile columns.** Left in place, unread, so a phone
+  running the previous version does not show blanks. Droppable in a later round
+  once both phones have certainly updated.
