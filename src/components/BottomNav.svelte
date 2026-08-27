@@ -23,10 +23,10 @@
 -->
 <script lang="ts">
   import { calendar } from '../lib/calendar.svelte'
-  import { members } from '../lib/members.svelte'
+  import { people } from '../lib/people.svelte'
   import { TABS, hrefFor, type RouteId, type TabId } from '../lib/router'
   import { strings } from '../lib/strings'
-  import MemberAvatar from './MemberAvatar.svelte'
+  import PersonAvatar from './PersonAvatar.svelte'
   import TabIcon from './TabIcon.svelte'
 
   let { route, backTo }: { route: RouteId; backTo: TabId } = $props()
@@ -83,7 +83,7 @@
     aria-label={inSettings ? strings.header.closeSettings : strings.header.settings}
     aria-current={inSettings ? 'page' : undefined}
   >
-    <MemberAvatar member={members.me} size="md" />
+    <PersonAvatar person={people.me} size="md" />
   </a>
 </nav>
 

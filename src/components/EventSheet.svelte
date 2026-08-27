@@ -41,9 +41,10 @@
   import { EVENT_COLOURS } from '../lib/calendar'
   import { addDays, longDate, shortDayName } from '../lib/dates'
   import { tagStyle, type TagColour } from '../lib/dish-tags'
-  import { members, memberName } from '../lib/members.svelte'
+  import { people, personName } from '../lib/people.svelte'
+  import { auth } from '../lib/auth.svelte'
   import { strings } from '../lib/strings'
-  import MemberAvatar from './MemberAvatar.svelte'
+  import PersonAvatar from './PersonAvatar.svelte'
 
   let {
     event = null,
@@ -126,10 +127,10 @@
     }
   }
 
-  function toggleAttendee(userId: string) {
-    draft.attendees = draft.attendees.includes(userId)
-      ? draft.attendees.filter((id) => id !== userId)
-      : [...draft.attendees, userId]
+  function toggleAttendee(personId: string) {
+    draft.attendees = draft.attendees.includes(personId)
+      ? draft.attendees.filter((id) => id !== personId)
+      : [...draft.attendees, personId]
   }
 
   function pickColour(colour: TagColour) {
@@ -141,9 +142,17 @@
     onsave(draft, willReask)
   }
 
-  /** The one other person, when there is exactly one — so the button can say
-   *  "Ask Marta to confirm" rather than a pronoun-free "Ask to confirm". */
-  let theOther = $derived(members.others.length === 1 ? members.others[0] : null)
+  /**
+   * The one other *account*, when there is exactly one — so the button can say
+   * "Ask Marta to confirm" rather than a pronoun-free "Ask to confirm".
+   *
+   * Accounts, not people: a five-year-old on the attendee row has no phone to
+   * be asked on.
+   */
+  let theOther = $derived.by(() => {
+    const others = people.accounts.filter((p) => p.userId !== auth.userId)
+    return others.length === 1 ? others[0] : null
+  })
 </script>
 
 <div class="backdrop" role="presentation" onclick={onclose}></div>
@@ -222,7 +231,7 @@
     </div>
 
 
-    {#if !members.alone}
+    {#if people.list.length > 1}
       <div class="field">
         <!-- A reminder is a job rather than an outing: you do not "go" to
              renewing a parking permit, you are the one who has to. -->
@@ -230,12 +239,12 @@
           {isReminder ? strings.calendar.whoForLabel : strings.calendar.whoLabel}
         </span>
         <div class="faces">
-          {#each members.list as member (member.userId)}
-            <MemberAvatar
-              {member}
+          {#each people.list as person (person.id)}
+            <PersonAvatar
+              {person}
               size="lg"
-              on={draft.attendees.includes(member.userId)}
-              onclick={() => toggleAttendee(member.userId)}
+              on={draft.attendees.includes(person.id)}
+              onclick={() => toggleAttendee(person.id)}
             />
           {/each}
         </div>
@@ -309,7 +318,7 @@
       </button>
     {/if}
 
-    {#if editing && !members.alone}
+    {#if editing && !people.alone}
       <div class="field confirm">
         <span class="label">{strings.calendar.askTitle}</span>
         {#if willReask}
@@ -318,17 +327,17 @@
         {#if asked}
           <p class="answers">
             {#each event?.confirmations ?? [] as answer (answer.userId)}
-              {@const who = members.list.find((m) => m.userId === answer.userId) ?? null}
+              {@const who = people.list.find((p) => p.userId === answer.userId) ?? null}
               <span class="answer" class:yes={answer.answer === 'yes'} class:no={answer.answer === 'no'}>
                 {answer.answer === 'yes' ? '✓' : answer.answer === 'no' ? '✕' : '…'}
-                {memberName(who)}
+                {personName(who)}
               </span>
             {/each}
           </p>
           <button class="text-button quiet" onclick={onunask}>{strings.calendar.unask}</button>
         {:else}
           <button class="ask" onclick={onask}>
-            {theOther ? strings.calendar.askOne(memberName(theOther)) : strings.calendar.askEveryone}
+            {theOther ? strings.calendar.askOne(personName(theOther)) : strings.calendar.askEveryone}
           </button>
         {/if}
       </div>

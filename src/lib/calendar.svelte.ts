@@ -173,7 +173,7 @@ export async function loadEvents(): Promise<void> {
       .gte('ends_on', calendar.from),
     supabase
       .from('event_attendees')
-      .select('event_id, user_id')
+      .select('event_id, person_id')
       .eq('household_id', household.id),
     supabase
       .from('event_confirmations')
@@ -191,12 +191,12 @@ export async function loadEvents(): Promise<void> {
   const attendees = new Map<string, string[]>()
   const attendeeRows = (attendeesResult.data ?? []) as unknown as {
     event_id: string
-    user_id: string
+    person_id: string
   }[]
   for (const row of attendeeRows) {
     const list = attendees.get(row.event_id)
-    if (list) list.push(row.user_id)
-    else attendees.set(row.event_id, [row.user_id])
+    if (list) list.push(row.person_id)
+    else attendees.set(row.event_id, [row.person_id])
   }
 
   const confirmations = new Map<string, CalendarEvent['confirmations']>()
@@ -349,20 +349,23 @@ export async function updateEvent(id: string, draft: EventDraft): Promise<boolea
 /**
  * Replaces an event's attendee list.
  *
+ * The ids are *people* since round 11.2, not accounts — which is the whole
+ * point of that round: a child can be on the list without having a phone.
+ *
  * Delete-then-insert rather than a diff: the list is at most a handful of rows
  * and working out which two changed costs more code than rewriting all of them.
  */
-async function setAttendees(eventId: string, userIds: readonly string[]): Promise<void> {
+async function setAttendees(eventId: string, personIds: readonly string[]): Promise<void> {
   if (!supabase || !household.id) return
 
   await supabase.from('event_attendees').delete().eq('event_id', eventId)
 
-  if (userIds.length === 0) return
+  if (personIds.length === 0) return
 
   await supabase.from('event_attendees').insert(
-    userIds.map((userId) => ({
+    personIds.map((personId) => ({
       event_id: eventId,
-      user_id: userId,
+      person_id: personId,
       household_id: household.id,
     })),
   )

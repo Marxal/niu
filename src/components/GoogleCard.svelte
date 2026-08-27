@@ -22,7 +22,6 @@
 <script lang="ts">
   import { connectGoogle, disconnectGoogle, google } from '../lib/google.svelte'
   import { runSync, sync } from '../lib/google-sync.svelte'
-  import { members } from '../lib/members.svelte'
   import { strings } from '../lib/strings'
 
   async function connect() {
@@ -71,7 +70,7 @@
       {/if}
     {/if}
 
-    {#if members.me?.googleCalendarId}
+    {#if google.calendarId}
       <p class="hint faint">Writing to your “Niu” calendar.</p>
     {/if}
   {/if}

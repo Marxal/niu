@@ -359,24 +359,46 @@ export const strings = {
       'Which meals the planner gives each day. This one is shared: it changes on both phones, because you both look at the same plan.',
   },
 
-  members: {
-    // Who is in the household, and getting the second person in
+  people: {
+    // Everyone in the household, with an account or without
     title: 'Who lives here',
     someone: 'Someone',
     you: 'You',
+    noAccount: 'No phone',
     loadFailed: "Couldn't load who's in your household.",
     saveFailed: "Couldn't save that just now. Try again in a moment.",
-    // Your own row
-    profileTitle: 'You',
-    nameLabel: 'Your name',
+    removeFailed: "Couldn't remove them just now.",
+    // Names and colours
+    nameLabel: 'Name',
     namePlaceholder: 'What the others see',
-    nameHint: 'Shown on events you add and beside your face on the calendar.',
-    colourLabel: 'Your colour',
-    avatarLabel: 'Your face',
-    avatarHint: 'Pick an emoji, or leave it and Niu draws your initial.',
-    avatarClear: 'Use my initial instead',
+    colourLabel: 'Colour',
+    theirsToEdit: 'Their name and face are theirs to change, on their own phone.',
+    // Faces
+    faceEmoji: 'Or an emoji',
+    faceChoose: 'Choose a photo',
+    faceReplace: 'Change photo',
+    faceRemove: 'Remove photo',
+    faceClear: 'Just the initial',
+    faceUploading: 'Shrinking it…',
+    photoFailed: "Couldn't save that photo. Try another one.",
+    photoUnreadable: "Couldn't read that picture. Try a different one.",
+    photoTooBig: 'That file is too big. A photo from your camera is fine.',
+    photoWrongType: "That isn't a picture.",
+    photoHint:
+      "Cropped square and shrunk to a thumbnail on your phone — nothing big is uploaded.",
+    // People without an account
+    addTitle: 'Someone without a phone',
+    addBody:
+      'Kids, grandparents — anyone who is part of the plans without being part of the logins. They can go on events; they never get asked to confirm anything.',
+    addButton: 'Add a person',
+    addPlaceholder: 'Their name',
+    add: 'Add',
+    remove: 'Remove',
+    removeConfirm: 'Remove them?',
+    cancel: 'Cancel',
+    done: 'Done',
     // The invite
-    inviteTitle: 'Add someone',
+    inviteTitle: 'Someone with a phone',
     inviteBody:
       'Read this code out. They sign in with Google on their own phone, open Settings, and type it in.',
     inviteShow: 'Show the code',
@@ -391,7 +413,7 @@ export const strings = {
       'This leaves the household you are in now. Anything only you have added moves out of reach.',
     joinFailed: "Couldn't join just now. Check your connection and try again.",
     codeWrongLength: 'A code is six characters.',
-    codeNotFound: "No household has that code. Check the letters and try again.",
+    codeNotFound: 'No household has that code. Check the letters and try again.',
     leaveFirst: 'You are already sharing with someone. Leave that household first.',
     joined: "You're in. Everything is shared now.",
     alone: "It's just you so far.",
@@ -532,6 +554,6 @@ export const strings = {
     notConnectedTitle: 'Not connected yet',
     notConnectedBody:
       'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
-    version: 'Niu · round 11',
+    version: 'Niu · round 11.2',
   },
 } as const

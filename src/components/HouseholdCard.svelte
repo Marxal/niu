@@ -1,37 +1,56 @@
 <!--
-  Who lives here, and how a second person gets in.
+  Who lives here, and the two ways somebody gets added.
 
-  Round 2 built households and left the invite for later; this is later. It is
-  a six-character code rather than an email invite because an email invite needs
-  something that sends email, and this project has no server and no budget
-  (NIU.md §1). For two people in the same kitchen, reading six characters out is
-  also simply quicker than typing an address.
+  The two are genuinely different things and the card says so rather than
+  hiding it behind one button:
+
+   - **Someone with a phone** gets a six-character code, signs in with their own
+     Google account, and can be asked to confirm events. Not an email invite:
+     sending email needs a server, and NIU.md §1 says there is no budget for one.
+   - **Someone without a phone** — a child, a grandparent — is just a name and a
+     face that events can point at. Round 11.2 added them, and they are the
+     reason the app talks about *people* rather than members now.
 
   The code is only fetched when the button is tapped. There is no reason for
   every Settings visit to mint one, and a code sitting permanently on screen is
-  a code someone eventually photographs.
+  a code somebody eventually photographs.
 
   Joining is the destructive half, so it says what it will do *before* the
-  button rather than after: you leave the household you are in, and anything
-  only you put there stops being reachable. The database refuses the case that
-  really would lose something — walking out of a household somebody else is
-  already in — so the warning here covers the one case it allows.
+  button rather than after. The database refuses the case that would really lose
+  something — walking out of a household somebody else is already in — so the
+  warning here covers the one case it allows.
 -->
 <script lang="ts">
+  import { auth } from '../lib/auth.svelte'
+  import { DEFAULT_TAG_COLOUR, TAG_COLOURS } from '../lib/dish-tags'
+  import { household, loadHousehold } from '../lib/household.svelte'
   import {
+    type Person,
+    addPerson,
     fetchJoinCode,
     joinHousehold,
-    memberName,
-    members,
-  } from '../lib/members.svelte'
-  import { auth } from '../lib/auth.svelte'
-  import { household, loadHousehold } from '../lib/household.svelte'
+    people,
+    personName,
+  } from '../lib/people.svelte'
   import { strings } from '../lib/strings'
-  import MemberAvatar from './MemberAvatar.svelte'
+  import PersonAvatar from './PersonAvatar.svelte'
+  import PersonSheet from './PersonSheet.svelte'
 
   let code = $state('')
   let problem = $state<string | null>(null)
   let joined = $state(false)
+  let adding = $state(false)
+  let newName = $state('')
+  let editing = $state<Person | null>(null)
+
+  /**
+   * The colour a new person gets: the first of the eight nobody is using yet,
+   * so a household of three does not end up with three sky-blue faces and a
+   * settings trip to fix it.
+   */
+  let nextColour = $derived(
+    TAG_COLOURS.find((c) => !people.list.some((p) => p.colour === c)) ?? DEFAULT_TAG_COLOUR,
+  )
 
   async function join() {
     problem = null
@@ -48,69 +67,117 @@
     // be read again. loadHousehold() is what every other screen keys off.
     await loadHousehold()
   }
+
+  async function add() {
+    const id = await addPerson(newName, nextColour)
+    if (id === null) return
+    newName = ''
+    adding = false
+    // Straight into their sheet: you have just named somebody, and giving them
+    // a face is the obvious next thing rather than a second trip.
+    editing = people.list.find((p) => p.id === id) ?? null
+  }
 </script>
 
 <div class="card">
-  <h2>{strings.members.title}</h2>
+  <h2>{strings.people.title}</h2>
 
   <ul class="people">
-    {#each members.list as member (member.userId)}
-      <li class="person">
-        <MemberAvatar {member} size="md" />
-        <span class="name">{memberName(member)}</span>
-        {#if member.userId === auth.userId}<span class="you">{strings.members.you}</span>{/if}
+    {#each people.list as person (person.id)}
+      <li>
+        <button class="person" onclick={() => (editing = person)}>
+          <PersonAvatar {person} size="md" />
+          <span class="name">{personName(person)}</span>
+          {#if person.userId === auth.userId}
+            <span class="tag">{strings.people.you}</span>
+          {:else if person.userId === null}
+            <span class="tag outline">{strings.people.noAccount}</span>
+          {/if}
+        </button>
       </li>
     {/each}
   </ul>
 
-  {#if members.alone}
-    <p class="hint">{strings.members.alone}</p>
-  {/if}
+  <div class="block">
+    <h3>{strings.people.addTitle}</h3>
+    <p class="hint">{strings.people.addBody}</p>
+    {#if adding}
+      <div class="row">
+        <!-- svelte-ignore a11y_autofocus -->
+        <input
+          class="input"
+          type="text"
+          autofocus
+          maxlength="40"
+          placeholder={strings.people.addPlaceholder}
+          bind:value={newName}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') void add()
+          }}
+        />
+        <button class="action" disabled={newName.trim() === ''} onclick={add}>
+          {strings.people.add}
+        </button>
+      </div>
+    {:else}
+      <button class="action" onclick={() => (adding = true)}>{strings.people.addButton}</button>
+    {/if}
+  </div>
 
   <div class="block">
-    <h3>{strings.members.inviteTitle}</h3>
-    <p class="hint">{strings.members.inviteBody}</p>
-    {#if members.joinCode}
-      <p class="code">{members.joinCode}</p>
+    <h3>{strings.people.inviteTitle}</h3>
+    <p class="hint">{strings.people.inviteBody}</p>
+    {#if people.joinCode}
+      <p class="code">{people.joinCode}</p>
       <button class="quiet" onclick={() => void fetchJoinCode()}>
-        {strings.members.inviteRefresh}
+        {strings.people.inviteRefresh}
       </button>
     {:else}
       <button class="action" onclick={() => void fetchJoinCode()}>
-        {strings.members.inviteShow}
+        {strings.people.inviteShow}
       </button>
     {/if}
   </div>
 
   <div class="block">
-    <h3>{strings.members.joinTitle}</h3>
-    <p class="hint">{strings.members.joinBody}</p>
-    <div class="join">
+    <h3>{strings.people.joinTitle}</h3>
+    <p class="hint">{strings.people.joinBody}</p>
+    <div class="row">
       <input
-        class="input"
+        class="input code-input"
         type="text"
         autocapitalize="characters"
         autocomplete="off"
         spellcheck="false"
         maxlength="6"
-        placeholder={strings.members.joinPlaceholder}
+        placeholder={strings.people.joinPlaceholder}
         bind:value={code}
       />
       <button
         class="action"
-        disabled={members.joining || code.trim().length !== 6}
+        disabled={people.joining || code.trim().length !== 6}
         onclick={join}
       >
-        {members.joining ? strings.members.joining : strings.members.joinButton}
+        {people.joining ? strings.people.joining : strings.people.joinButton}
       </button>
     </div>
-    {#if !joined}<p class="hint warn">{strings.members.joinWarning}</p>{/if}
+    {#if !joined}<p class="hint warn">{strings.people.joinWarning}</p>{/if}
     {#if problem}<p class="error">{problem}</p>{/if}
-    {#if joined}<p class="good">{strings.members.joined}</p>{/if}
+    {#if joined}<p class="good">{strings.people.joined}</p>{/if}
   </div>
 
+  {#if people.error}<p class="error">{people.error}</p>{/if}
   {#if household.name}<p class="hint faint">{household.name}</p>{/if}
 </div>
+
+{#if editing}
+  {#key editing.id}
+    <PersonSheet
+      person={people.list.find((p) => p.id === editing?.id) ?? editing}
+      onclose={() => (editing = null)}
+    />
+  {/key}
+{/if}
 
 <style>
   .card {
@@ -137,30 +204,48 @@
   .people {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-1);
   }
 
+  /* The whole row opens their sheet — a name and a face are one target, and
+     hunting for a pencil at the end of a row is worse than tapping the person. */
   .person {
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    width: 100%;
+    min-height: var(--tap-min);
+    padding: 0 var(--space-1);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--color-text);
+    text-align: left;
   }
 
   .name {
     flex: 1;
+    min-width: 0;
     font-size: var(--text-base);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .you {
+  .tag {
     flex: none;
     padding: 0 var(--space-2);
     border-radius: var(--radius-full);
     background: var(--color-surface-sunken);
     color: var(--color-text-faint);
     font-size: var(--text-xs);
+  }
+
+  /* `.outline` rather than `.quiet`: this card also has a `.quiet` text button,
+     and `.tag.quiet` was quietly inheriting its 48px min-height. */
+  .tag.outline {
+    background: none;
+    border: 1px solid var(--color-border);
   }
 
   .block {
@@ -185,7 +270,7 @@
     letter-spacing: 0.15em;
   }
 
-  .join {
+  .row {
     display: flex;
     gap: var(--space-2);
   }
@@ -199,6 +284,11 @@
     border-radius: var(--radius-sm);
     background: var(--color-bg);
     color: var(--color-text);
+    font-size: var(--text-base);
+    font-family: inherit;
+  }
+
+  .code-input {
     font-family: var(--font-mono);
     font-size: var(--text-lg);
     letter-spacing: 0.1em;
@@ -207,6 +297,7 @@
 
   .action {
     flex: none;
+    align-self: flex-start;
     min-height: var(--tap-min);
     padding: 0 var(--space-4);
     border: none;
@@ -255,7 +346,11 @@
     color: var(--color-success);
   }
 
+  .person:active {
+    background: var(--color-surface-sunken);
+  }
+
   button:active:not(:disabled) {
-    transform: scale(0.97);
+    transform: scale(0.99);
   }
 </style>

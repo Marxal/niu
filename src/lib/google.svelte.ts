@@ -45,8 +45,10 @@ import {
   NIU_CALENDAR_DESCRIPTION,
   NIU_CALENDAR_SUMMARY,
 } from './google-event'
-import { members, updateProfile } from './members.svelte'
+import { auth } from './auth.svelte'
+import { household } from './household.svelte'
 import { strings } from './strings'
+import { supabase } from './supabase'
 
 /* -------------------------------------------------------------------------- */
 /* The bit of Google Identity Services we use                                  */
@@ -147,6 +149,17 @@ function wasConnected(): boolean {
 }
 
 class GoogleState {
+  /**
+   * Which Google calendar this account pushes into. Null until it connects, or
+   * until it has been read back.
+   *
+   * It lives on `household_members` rather than on the person, and that
+   * distinction is round 11.2's whole point: a person can be a five-year-old,
+   * and a five-year-old has no Google calendar. This is a fact about an
+   * *account*.
+   */
+  calendarId = $state<string | null>(null)
+
   status = $state<GoogleStatus>(
     googleClientId === '' ? 'unavailable' : wasConnected() ? 'expired' : 'off',
   )
@@ -168,6 +181,33 @@ export const google = new GoogleState()
  * and no part of the UI should ever be able to render a bearer token. */
 let accessToken: string | null = null
 let client: TokenClient | null = null
+
+/** Reads back the calendar this account already made, if there is one. */
+export async function loadCalendarId(): Promise<void> {
+  if (!supabase || !household.id || !auth.userId) return
+
+  const { data } = await supabase
+    .from('household_members')
+    .select('google_calendar_id')
+    .eq('household_id', household.id)
+    .eq('user_id', auth.userId)
+    .maybeSingle()
+
+  const row = data as { google_calendar_id: string | null } | null
+  google.calendarId = row?.google_calendar_id ?? null
+}
+
+async function saveCalendarId(id: string | null): Promise<void> {
+  if (!supabase || !household.id || !auth.userId) return
+
+  await supabase
+    .from('household_members')
+    .update({ google_calendar_id: id })
+    .eq('household_id', household.id)
+    .eq('user_id', auth.userId)
+
+  google.calendarId = id
+}
 
 /** The phone's own zone, sent alongside every wall-clock time. */
 export function deviceTimeZone(): string {
@@ -342,13 +382,14 @@ export async function googleFetch<T>(
 /**
  * The id of this member's "Niu" calendar, making it if there isn't one.
  *
- * Stored on their own membership row so the next device — and the next app
- * launch — finds it without creating a second one. If the stored id turns out
+ * Stored on their own membership row — a fact about the account, not the
+ * person — so the next device and the next app launch find it without making a
+ * second one. If the stored id turns out
  * to be gone (they deleted the calendar in Google), a fresh one is made and the
  * old id replaced, rather than every push failing with a 404 forever.
  */
 export async function ensureCalendar(): Promise<string | null> {
-  const known = members.me?.googleCalendarId ?? null
+  const known = google.calendarId
 
   if (known !== null) {
     const check = await googleFetch<{ id: string }>(`/calendars/${encodeURIComponent(known)}`)
@@ -371,6 +412,6 @@ export async function ensureCalendar(): Promise<string | null> {
     return null
   }
 
-  await updateProfile({ googleCalendarId: made.data.id })
+  await saveCalendarId(made.data.id)
   return made.data.id
 }

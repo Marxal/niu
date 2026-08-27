@@ -80,7 +80,8 @@ export interface CalendarEvent {
   doneBy: string | null
   createdBy: string
   updatedAt: string
-  /** Household member ids marked as going. Empty means everyone (§4.3). */
+  /** Ids from household_people, marked as going. Empty means everyone (§4.3).
+   *  People, not accounts — a child can be on the list (round 11.2). */
   attendees: string[]
   /** One row per person who was asked. Empty until somebody asks. */
   confirmations: Confirmation[]

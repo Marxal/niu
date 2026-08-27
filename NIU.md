@@ -283,6 +283,9 @@ Calendar, Google's own notifications fire on both phones without us building pus
   behind one more tap. Typed quick-add ("Thursday 18:30 dinner") is wanted if it can be
   made reliable; the structured flow is the fallback and must be excellent on its own.
 - **Who's involved:** a row of avatars you tap. None selected is fine and means everyone.
+  Since round 11.2 that row includes **people who have no account** — kids,
+  grandparents — because half a family's plans are about people who do not have a
+  phone. They can be on any event; they are never asked to confirm one.
 - **Recurrence, simplified:** repeats X times per week or month; ends after X times.
   Deleting asks: this one, or all of them? Full RRULE support is not a v1 goal.
   Deferred out of round 11 — it is a genuine third of the calendar, since it means the
@@ -418,7 +421,11 @@ Round 11 built this, with three changes worth knowing:
   timestamps: "the 3rd of September" is the 3rd wherever you read it, and storing it
   as an instant makes it the 2nd for anyone an hour west. A null `start_time` *is*
   "all day" — no boolean beside it that could disagree. `ends_on` is inclusive.
-- `event_attendees` — event_id, user_id, household_id. No rows means everyone.
+- `household_people` — the family, one row each, with a **nullable** `user_id`
+  (round 11.2). A child has no account, so having one is a property rather than a
+  category and there is one table rather than two. `household_members` keeps only
+  the *access* job that RLS reads; this holds the name, colour, emoji and photo.
+- `event_attendees` — event_id, **person_id**, household_id. No rows means everyone.
 - `event_confirmations` — event_id, user_id, household_id, answer, answered_at.
 - `event_sync` / `event_tombstones` — what each member's phone has told Google.
   **There is no `google_event_id`**: it is derived from our uuid, which makes a push
@@ -476,7 +483,10 @@ lands, it lives in **one token file** — no raw hex anywhere in a component.
 - **Last write wins.** If both phones edit the same item in the same second, one wins.
   Fine for two people; the first thing to fix if the household grows.
 - **No purchase history**, only per-item stats (§5).
-- **No photos, no desktop layout** in v1 — explicitly ruled out.
+- **No photos** except one place: a person's own face (round 11.2), stored as a
+  256px square in a private Storage bucket and resized on the phone before it is
+  uploaded. Photographs of *things* — items, dishes — are still ruled out. **No
+  desktop layout** in v1, still.
 - **Supabase free projects pause after 7 days with no database activity.** Daily use
   keeps it awake. Two weeks on holiday and the first launch back takes ~30 seconds to
   wake up. Not a problem, just a thing to recognise rather than debug.
