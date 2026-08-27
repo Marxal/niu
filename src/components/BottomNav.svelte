@@ -1,5 +1,16 @@
 <!--
-  The bottom tab bar — the app's main navigation, and the thing a thumb touches most.
+  The bottom bar — the app's whole navigation now, and the thing a thumb touches most.
+
+  Round 11.1 removed the top header and moved Settings down here. That bought 57
+  pixels of height, which is more than a whole row of the month grid, and it cost
+  nothing: the bar already says which tab you are on, so the title above it was
+  saying it twice. Each screen writes its own heading where it needs one, and the
+  dish library grew a back row of its own.
+
+  Settings is **not** a fourth equal tab. It is a place you visit monthly, and
+  four equal items would shrink the three you use daily from 137px to 103px. It
+  is your own face on the right instead, narrower than a tab, which reads warmer
+  than a gear and is the same avatar the calendar draws beside an event.
 
   Design notes that matter:
    - Each tab is a real <a href="#/…">, not a button. That means the Android back
@@ -12,11 +23,15 @@
 -->
 <script lang="ts">
   import { calendar } from '../lib/calendar.svelte'
-  import { TABS, hrefFor, type RouteId } from '../lib/router'
+  import { members } from '../lib/members.svelte'
+  import { TABS, hrefFor, type RouteId, type TabId } from '../lib/router'
   import { strings } from '../lib/strings'
+  import MemberAvatar from './MemberAvatar.svelte'
   import TabIcon from './TabIcon.svelte'
 
-  let { route }: { route: RouteId } = $props()
+  let { route, backTo }: { route: RouteId; backTo: TabId } = $props()
+
+  let inSettings = $derived(route === 'settings')
 
   /**
    * How many things are waiting on an answer from you.
@@ -60,13 +75,24 @@
       </span>
     </a>
   {/each}
+
+  <a
+    class="you"
+    class:active={inSettings}
+    href={inSettings ? hrefFor(backTo) : hrefFor('settings')}
+    aria-label={inSettings ? strings.header.closeSettings : strings.header.settings}
+    aria-current={inSettings ? 'page' : undefined}
+  >
+    <MemberAvatar member={members.me} size="md" />
+  </a>
 </nav>
 
 <style>
+  /* Three equal tabs and a narrower fourth slot for your face. `auto` on the
+     last column is what keeps the three dominant. */
   .nav {
     display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: 1fr;
+    grid-template-columns: repeat(3, 1fr) auto;
     background: var(--color-surface);
     box-shadow: var(--shadow-nav);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -151,6 +177,26 @@
   }
 
   .tab:active {
+    background: var(--color-surface-sunken);
+  }
+
+  .you {
+    display: grid;
+    place-items: center;
+    min-width: calc(var(--tap-min) + var(--space-2));
+    min-height: var(--nav-height);
+    padding: 0 var(--space-3) 0 var(--space-2);
+    text-decoration: none;
+    /* A hairline rather than a gap: it says "this one is not one of those
+       three" without spending width saying it. */
+    border-left: 1px solid var(--color-border);
+  }
+
+  .you.active {
+    background: var(--color-surface-sunken);
+  }
+
+  .you:active {
     background: var(--color-surface-sunken);
   }
 </style>

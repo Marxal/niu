@@ -21,7 +21,7 @@
  * here is the part that is about *weeks of meals* rather than about days.
  */
 
-import { addDays, dateRange, daysBetween, startOfWeek, weekDays } from './dates'
+import { addDays, dateRange, daysBetween, startOfWeek, weekDaysFrom } from './dates'
 import { strings } from './strings'
 
 /** Which meals a day can have. §4.2: configurable, defaulting to lunch+dinner. */
@@ -117,22 +117,14 @@ export {
 /**
  * The days the *day view* should show — which is not always the whole week.
  *
- * In the week you are actually in, it starts at today. Nobody plans Monday's
- * dinner on Wednesday, and two dead days at the top of the screen are two days
- * of scrolling past before reaching the question you opened the app to answer
- * (Marçal, round 10.1).
- *
- * Any other week shows all seven, and that is the same rule rather than an
- * exception to it: a week you have deliberately stepped back to is one you are
- * looking at on purpose, and a past week with its first days missing would be a
- * week with a hole in it. The week *view* always shows seven, because its job is
- * the shape of the whole week.
+ * In the week you are actually in, it starts at today (Marçal, round 10.1).
+ * The rule moved to dates.ts in round 11.1 when the calendar's week view turned
+ * out to want exactly the same thing; the reasoning is written down there. The
+ * week *view* still always shows seven, because its job is the shape of the
+ * whole week.
  */
 export function planningDays(startKey: string, today: string): string[] {
-  const all = weekDays(startKey)
-  const last = all[6] ?? startKey
-  if (today < startKey || today > last) return all
-  return all.filter((day) => day >= today)
+  return weekDaysFrom(startKey, today)
 }
 
 /**

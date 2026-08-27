@@ -146,7 +146,6 @@
   /* ---- Layout ----------------------------------------------------------- */
   --tap-min: 3rem;        /* 48px. The floor for anything a thumb touches. */
   --nav-height: 4rem;     /* 64px, before safe-area padding is added */
-  --header-height: 3.5rem;
   --content-max: 34rem;   /* keeps it sane if it's ever opened on a tablet */
 
   /* How much of the screen the phone's keyboard is covering, published by

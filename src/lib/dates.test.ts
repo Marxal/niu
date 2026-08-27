@@ -21,6 +21,7 @@ import {
   timeLabel,
   toTime,
   weekDays,
+  weekDaysFrom,
 } from './dates'
 
 describe('day keys', () => {
@@ -102,6 +103,21 @@ describe('weeks', () => {
   it('treats Sunday as the end of its week, not the start', () => {
     // 2026-09-06 is a Sunday; its Monday is six days back.
     expect(startOfWeek('2026-09-06')).toBe('2026-08-31')
+  })
+
+  it('starts the current week at today and shows other weeks whole', () => {
+    // Thursday 3 Sep 2026, in the week beginning Monday 31 Aug.
+    expect(weekDaysFrom('2026-08-31', '2026-09-03')).toEqual([
+      '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06',
+    ])
+    // A week you stepped back to keeps all seven.
+    expect(weekDaysFrom('2026-08-24', '2026-09-03')).toHaveLength(7)
+    // And so does one you stepped forward to.
+    expect(weekDaysFrom('2026-09-07', '2026-09-03')).toHaveLength(7)
+    // Today being the Monday means nothing is dropped.
+    expect(weekDaysFrom('2026-08-31', '2026-08-31')).toHaveLength(7)
+    // Today being the Sunday leaves exactly one.
+    expect(weekDaysFrom('2026-08-31', '2026-09-06')).toEqual(['2026-09-06'])
   })
 
   it('gives seven consecutive days', () => {

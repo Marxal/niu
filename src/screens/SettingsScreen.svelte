@@ -74,6 +74,10 @@
 </script>
 
 <section class="settings">
+  <!-- Its own heading since round 11.1: the top bar that used to name the
+       screen is gone, and Settings is the one place with no other landmark. -->
+  <h1>{strings.header.settings}</h1>
+
   <!-- You, your household and Google come first: they are the three that are
        set up once and then never touched, and burying a first-run step under
        four display preferences is how a first-run step gets missed. -->
@@ -246,6 +250,12 @@
 </section>
 
 <style>
+  .settings h1 {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    letter-spacing: -0.01em;
+  }
+
   .settings {
     display: flex;
     flex-direction: column;

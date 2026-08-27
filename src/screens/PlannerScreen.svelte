@@ -906,6 +906,10 @@
     align-items: center;
     justify-content: center;
     gap: var(--space-2);
+    /* Twice a normal touch target. See the note on ::before below — this is the
+       half that makes the *drop* easier, and the pill only shows where it is. */
+    min-height: calc(var(--tap-min) * 2);
+    padding-top: var(--space-3);
     color: var(--color-need);
     font-size: var(--text-sm);
     font-weight: var(--weight-bold);
@@ -914,12 +918,17 @@
     isolation: isolate;
   }
 
-  /* The pill itself, inset to match where the two buttons sit, so the bin
-     replaces them without anything jumping. */
+  /* The pill itself. It used to be inset to exactly where the two buttons sit,
+     so the swap was invisible — but that made it a 48px target, and 48px is not
+     enough when you are aiming at it with a card held under your own thumb
+     (Marçal, round 11.1). The strip above sets a min-height of twice that; this
+     fills it, so the pill and the area that actually accepts the drop are the
+     same shape, and all the extra height is at the top where the finger is
+     coming from. */
   .trash::before {
     content: '';
     position: absolute;
-    inset: var(--space-5) var(--space-3) var(--space-3);
+    inset: var(--space-3);
     z-index: -1;
     border: 2px dashed var(--color-need-border);
     border-radius: var(--radius-full);

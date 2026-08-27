@@ -11,7 +11,6 @@
      would drag the nav around under the user's thumb.
 -->
 <script lang="ts">
-  import AppHeader from './components/AppHeader.svelte'
   import BottomNav from './components/BottomNav.svelte'
   import CalendarScreen from './screens/CalendarScreen.svelte'
   import DishesScreen from './screens/DishesScreen.svelte'
@@ -20,7 +19,6 @@
   import ShoppingScreen from './screens/ShoppingScreen.svelte'
   import SignInScreen from './screens/SignInScreen.svelte'
   import { TABS, parseRoute, parseSubRoute, type RouteId, type TabId } from './lib/router'
-  import { strings } from './lib/strings'
   import { auth, watchAuth } from './lib/auth.svelte'
   import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
   import { clearDishes, loadDishes, watchDishes } from './lib/dishes.svelte'
@@ -41,18 +39,6 @@
 
   // Where the close button in Settings sends you back to.
   let lastTab = $state<TabId>('shopping')
-
-  const titles: Record<RouteId, string> = {
-    shopping: strings.tabs.shopping.label,
-    meals: strings.tabs.meals.label,
-    calendar: strings.tabs.calendar.label,
-    settings: strings.header.settings,
-  }
-
-  // The library is the one screen whose title isn't its tab's.
-  let title = $derived(
-    route === 'meals' && sub === 'dishes' ? strings.dishes.title : titles[route],
-  )
 
   $effect(() => {
     const sync = () => {
@@ -191,8 +177,6 @@
   <SignInScreen />
 {:else}
   <div class="shell">
-    <AppHeader {route} {title} backTo={lastTab} />
-
     <main id="main">
       <div class="content">
         {#if route === 'shopping'}
@@ -211,14 +195,17 @@
       </div>
     </main>
 
-    <BottomNav {route} />
+    <BottomNav {route} backTo={lastTab} />
   </div>
 {/if}
 
 <style>
+  /* Two rows since round 11.1: the scrolling screen, and the bar. The top
+     header is gone — see BottomNav for why, and note that each screen now owns
+     its own top padding including the status-bar inset. */
   .shell {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) auto;
     height: 100%;
   }
 
@@ -231,6 +218,12 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+  }
+
+  /* The status bar's height, once, at the top of whatever is scrolling. Every
+     screen used to get this from the header sitting above it. */
+  main {
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
   .content {

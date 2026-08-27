@@ -270,7 +270,12 @@ household's events into its own copy; on the phone the result is identical.
 Nice side effect: **reminders come free.** Because every event lands in a real Google
 Calendar, Google's own notifications fire on both phones without us building push.
 
-- **Default view:** month grid.
+- **Default view:** month grid, with a week view beside it (round 11.1). The grid
+  draws each event as a small box with its title in it, and a multi-day event as one
+  unbroken bar across the days it covers; the week view is seven days down the screen,
+  the same shape the meal planner uses. Seven columns and a clock down the side — the
+  way a laptop draws a week — does not survive 412px: a column is 55px, and every event
+  becomes a coloured smudge you have to tap to read.
 - **Event fields:** title, date, start/end time, all-day, multi-day (for holidays),
   who's involved, location, notes, colour/category, reminder, repeat, link.
 - **Adding an event** is where Google is worst and where we earn our keep. Target flow:
@@ -433,9 +438,16 @@ Satisfying motion — things fly into the basket, the empty list celebrates. Cop
 little witty. Accessibility floor is contrast (keyboard focus and reduced-motion come
 along for free).
 
-Navigation: a bottom bar with three tabs plus settings. No "today" dashboard — the app
-opens on the shopping list. When the list is empty, that empty state does the work a
-dashboard would: tonight's dinner, today's events, and a good line of copy.
+Navigation: a bottom bar with three tabs plus settings, **and no top bar at all**
+(round 11.1). The header used to name the screen you were on, which the tab bar
+underneath was already saying, and removing it gave 57px back — more than a whole row
+of the month grid. Settings is not a fourth equal tab, because it is a place you visit
+monthly and four equal items shrink the three you use daily; it is your own avatar in a
+narrower slot on the right. Each screen writes its own heading where it needs one.
+
+No "today" dashboard — the app opens on the shopping list. When the list is empty, that
+empty state does the work a dashboard would: tonight's dinner, today's events, and a
+good line of copy.
 
 **Working method: design in code.** Claude builds, Marçal reacts on his phone, we
 iterate. He'll make the app icon and wordmark himself; a placeholder ships first.
