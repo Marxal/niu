@@ -236,7 +236,8 @@ export const strings = {
     pickTitle: 'What are we having?',
     pickHint: (meal: string, day: string) => `${meal} · ${day}`,
     pickDishes: 'Dishes',
-    pickItems: 'Or just a thing',
+    pickItems: 'Recently bought',
+    pickItemsSearch: 'Or just a thing',
     pickMarkers: 'Or neither',
     pickCookHint: 'On — whatever you pick next gets the cook mark.',
     pickSearch: 'Search dishes and the catalogue…',
@@ -271,8 +272,9 @@ export const strings = {
     undo: 'Undo',
     // What's home
     homeTitle: "What's home",
+    homeInfo: 'What this is',
     homeHint:
-      'What you have bought lately and not put back on the list. Niu counts purchases — it does not know your fridge, so check anything marked.',
+      'What you have bought lately and not put back on the list. Niu counts purchases — it does not know your fridge, so anything under Double-check is a guess from how often you usually buy it. Hold an item to drag it straight onto a day.',
     homeSure: 'Bought this week',
     homeCheck: 'Double-check',
     homeCheckHint: 'Bought a while ago. Might still be there.',
@@ -283,8 +285,15 @@ export const strings = {
     homeAdd: 'Out of it',
     homeAddLong: (name: string) => `${name}: out of it, add to the shopping list`,
     homeAdded: (name: string) => `${name} added to the list.`,
+    // The bin, while a card is being dragged
+    trashDrop: 'Drop here to remove',
+    trashOver: 'Let go to remove',
     // Shopping for the plan
     shopWeek: 'Shop for this week',
+    // The two pinned buttons. Short on purpose: side by side on a 412px phone,
+    // each with a count badge, there is room for a word and not a sentence.
+    shopShort: 'Shop',
+    homeShort: 'At home',
     shopDay: 'Shop for this day',
     shopTitle: 'Shop for the plan',
     shopRange: (from: string, to: string) => `${from} – ${to}`,

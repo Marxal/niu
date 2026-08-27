@@ -18,7 +18,7 @@
   import PlanCard from './PlanCard.svelte'
   import type { Dish } from '../lib/dishes'
   import type { DishTag } from '../lib/dish-tags'
-  import { type DragSlot, drag, slotKey } from '../lib/drag.svelte'
+  import { type DragSlot, carry, drag, slotKey } from '../lib/drag.svelte'
   import {
     MEAL_LABELS,
     type Meal,
@@ -83,7 +83,8 @@
         {@const cell = entriesIn(entries, { date, meal })}
         <div
           class="cell"
-          class:over={drag.active && drag.overKey === slotKey(date, meal)}
+          class:over={(drag.active && drag.overKey === slotKey(date, meal)) ||
+            (carry.active && carry.overKey === slotKey(date, meal))}
           data-slot-date={date}
           data-slot-meal={meal}
         >

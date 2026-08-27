@@ -20,6 +20,19 @@
   margin: 0;
 }
 
+/*
+ * Lists carry a 40px indent by default, which is invisible until a list is used
+ * for rows that are meant to sit flush with everything around them — and then it
+ * shows up as an unexplained left margin nobody put there. Both the shop preview
+ * and "What's home" had one. Reset here rather than in each component, because
+ * it is a gap in the reset rather than a component's own business.
+ */
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
 html,
 body {
   height: 100%;

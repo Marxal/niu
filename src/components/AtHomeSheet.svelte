@@ -22,9 +22,31 @@
 
   Nothing here is ever automatic. Every row is a statement the user can disagree
   with in one tap.
+
+  ## Two things a row does
+
+  **Tap "Out of it"** and it goes on the shopping list.
+
+  **Hold it** and you carry it onto the plan: the sheet gets out of the way
+  immediately — you cannot aim at a week you cannot see — and the item follows
+  your finger until you drop it on a meal.
+
+  "Out of the way" is `hidden`, not unmounted, and that distinction is the whole
+  reason the gesture works. A touch pointer is implicitly captured by the element
+  it started on; remove that element and the browser fires `pointercancel` and
+  the carry dies on the first move. So the sheet goes invisible and inert while
+  the finger is down, and the screen unmounts it afterwards. See drag.svelte.ts.
+
+  ## The explanation moved behind an ⓘ
+
+  Three lines of caveat above the content is a paragraph you read once and then
+  scroll past forever, and it pushed the actual answer below the fold. The
+  caveat still matters — this is a guess and it says so — so it is one tap away
+  rather than deleted.
 -->
 <script lang="ts">
   import GroceryIcon from './GroceryIcon.svelte'
+  import type { CarriedItem } from '../lib/drag.svelte'
   import type { AtHomeItem } from '../lib/plannable'
   import type { CatalogueItem } from '../lib/shopping.svelte'
   import { strings } from '../lib/strings'
@@ -33,7 +55,9 @@
     items,
     itemsById,
     busyId = null,
+    hidden = false,
     onAddToList,
+    onCarry,
     onClose,
   }: {
     /** Already ordered, freshest first — see atHomeItems(). */
@@ -41,21 +65,108 @@
     itemsById: ReadonlyMap<string, CatalogueItem>
     /** The row waiting on a write, so it can't be tapped twice. */
     busyId?: string | null
+    /**
+     * Out of sight but still in the DOM, while something picked up here is being
+     * carried across the plan. Never unmount instead — see the header.
+     */
+    hidden?: boolean
     onAddToList: (itemId: string, name: string) => void
+    /** Held long enough to carry onto the plan. Closes the sheet, then follows. */
+    onCarry: (item: CarriedItem, at: { x: number; y: number }) => void
     onClose: () => void
   } = $props()
 
+  /** Same as the card drag, so one gesture means one thing across the app. */
+  const LONG_PRESS_MS = 380
+  const MOVE_TOLERANCE = 10
+
+  let showInfo = $state(false)
+
   let sure = $derived(items.filter((item) => item.confidence === 'sure'))
   let check = $derived(items.filter((item) => item.confidence === 'check'))
+
+  /**
+   * The long press that starts a carry.
+   *
+   * Kept here rather than reusing `draggable`, because that action is built
+   * around an element that stays put and a slot to drop into. This one's whole
+   * job is to hand over to a window-level gesture and then vanish with its row.
+   */
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let startX = 0
+  let startY = 0
+
+  function cancelPress() {
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
+  }
+
+  function pressStart(event: PointerEvent, entry: AtHomeItem) {
+    const item = itemsById.get(entry.itemId)
+    if (!item) return
+
+    startX = event.clientX
+    startY = event.clientY
+    cancelPress()
+
+    timer = setTimeout(() => {
+      timer = null
+      onCarry(
+        { itemId: item.id, name: item.name, icon: item.icon, emoji: item.emoji },
+        { x: startX, y: startY },
+      )
+    }, LONG_PRESS_MS)
+  }
+
+  function pressMove(event: PointerEvent) {
+    if (timer === null) return
+    // Moved before the press landed: that was the sheet being scrolled.
+    if (
+      Math.abs(event.clientX - startX) > MOVE_TOLERANCE ||
+      Math.abs(event.clientY - startY) > MOVE_TOLERANCE
+    ) {
+      cancelPress()
+    }
+  }
 </script>
 
-<div class="backdrop" role="presentation" onclick={onClose}></div>
+<div class="backdrop" class:hidden role="presentation" onclick={onClose}></div>
 
-<div class="sheet" role="dialog" aria-modal="true" aria-label={strings.plan.homeTitle}>
+<div
+  class="sheet"
+  class:hidden
+  role="dialog"
+  aria-modal="true"
+  aria-label={strings.plan.homeTitle}
+>
   <header>
-    <div>
+    <div class="title">
       <h2>{strings.plan.homeTitle}</h2>
-      <p>{strings.plan.homeHint}</p>
+      <button
+        class="info"
+        class:on={showInfo}
+        aria-expanded={showInfo}
+        aria-label={strings.plan.homeInfo}
+        onclick={() => (showInfo = !showInfo)}
+      >
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.9"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5" />
+          <path d="M12 8h.01" />
+        </svg>
+      </button>
     </div>
     <button class="close" onclick={onClose} aria-label={strings.shopping.close}>
       <svg
@@ -72,6 +183,10 @@
       </svg>
     </button>
   </header>
+
+  {#if showInfo}
+    <p class="explain">{strings.plan.homeHint}</p>
+  {/if}
 
   <div class="scroller">
     {#if items.length === 0}
@@ -99,7 +214,14 @@
   <ul class="list">
     {#each list as entry (entry.itemId)}
       {@const item = itemsById.get(entry.itemId)}
-      <li class="row" class:unsure={entry.confidence === 'check'}>
+      <li
+        class="row"
+        class:unsure={entry.confidence === 'check'}
+        onpointerdown={(event) => pressStart(event, entry)}
+        onpointermove={pressMove}
+        onpointerup={cancelPress}
+        onpointercancel={cancelPress}
+      >
         <span class="glyph">
           <GroceryIcon
             icon={item?.icon ?? null}
@@ -145,12 +267,19 @@
     background: var(--color-overlay);
   }
 
+  /* Invisible and untouchable, but still in the document, so the row that a
+     carry started on stays alive to keep receiving the pointer. */
+  .hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .sheet {
     position: fixed;
     inset: auto 0 0 0;
     z-index: var(--z-sheet);
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     gap: var(--space-3);
     max-height: 82vh;
     max-width: var(--content-max);
@@ -174,9 +303,32 @@
     font-weight: var(--weight-bold);
   }
 
-  header p {
-    margin-top: var(--space-1);
+  .title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  /* Discreet on purpose. It is a footnote you can open, not a warning. */
+  .info {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-full);
+    color: var(--color-text-faint);
+  }
+
+  .info.on {
+    background: var(--color-surface-sunken);
+    color: var(--color-text-muted);
+  }
+
+  .explain {
     max-width: 26rem;
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-sunken);
     color: var(--color-text-muted);
     font-size: var(--text-sm);
   }
@@ -235,9 +387,15 @@
     align-items: center;
     gap: var(--space-3);
     min-height: var(--tap-min);
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-1) var(--space-3);
     border-radius: var(--radius-md);
     background: var(--color-surface-sunken);
+    /* Vertical panning stays the browser's so the sheet still scrolls; the long
+       press that starts a carry needs neither axis, and the callout menu a hold
+       would otherwise raise is what this suppresses. */
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+    user-select: none;
   }
 
   /* The dashed edge is the whole "we are not sure" signal, and it is the same

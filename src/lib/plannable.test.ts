@@ -6,6 +6,7 @@ import {
   MAX_AT_HOME_DAYS,
   UNKNOWN_GAP_DAYS,
   atHomeItems,
+  recentlyBought,
   type Pantry,
   heldAs,
   pantryFrom,
@@ -212,5 +213,55 @@ describe('atHomeItems', () => {
   it('puts the freshest first', () => {
     const home = atHomeItems(stats({ old: [4, 30], fresh: [0, 30] }), new Set(), NOW)
     expect(home.map((h) => h.itemId)).toEqual(['fresh', 'old'])
+  })
+})
+
+describe('recentlyBought', () => {
+  function stats(entries: Record<string, number | null>) {
+    const out: Record<string, BuyingStat> = {}
+    for (const [id, days] of Object.entries(entries)) {
+      out[id] = {
+        timesBought: 2,
+        lastBoughtAt: days === null ? null : daysAgo(days),
+        avgGapDays: null,
+      }
+    }
+    return out
+  }
+
+  it('puts the most recent purchase first', () => {
+    expect(recentlyBought(stats({ old: 20, newest: 0, middle: 5 }))).toEqual([
+      'newest',
+      'middle',
+      'old',
+    ])
+  })
+
+  it('keeps things that are already on the list', () => {
+    // Unlike atHomeItems: planning broccoli for Tuesday is a fine reason to have
+    // broccoli on the list, so nothing is filtered out here.
+    expect(recentlyBought(stats({ a: 1 }))).toEqual(['a'])
+  })
+
+  it('goes back further than the freshness window, because it is not a claim', () => {
+    expect(recentlyBought(stats({ ancient: MAX_AT_HOME_DAYS * 4 }))).toEqual(['ancient'])
+  })
+
+  it('ignores what was never bought, or cannot be read', () => {
+    const odd: Record<string, BuyingStat> = {
+      never: { timesBought: 0, lastBoughtAt: null, avgGapDays: null },
+      broken: { timesBought: 1, lastBoughtAt: 'nope', avgGapDays: null },
+    }
+    expect(recentlyBought(odd)).toEqual([])
+  })
+
+  it('caps the list', () => {
+    const many: Record<string, number | null> = {}
+    for (let i = 0; i < 30; i++) many[`i${i}`] = i
+    expect(recentlyBought(stats(many), 4)).toHaveLength(4)
+  })
+
+  it('breaks a tie on id so the row does not reshuffle between renders', () => {
+    expect(recentlyBought(stats({ b: 3, a: 3 }))).toEqual(['a', 'b'])
   })
 })

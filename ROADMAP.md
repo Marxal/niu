@@ -1414,3 +1414,132 @@ from 600px down.
 ### Next up
 
 Feature round 7: the calendar.
+
+## Round 10.2 — Small adjustments, and the swipe that didn't work
+
+**Branch:** `claude/meal-planner-day-week-views-xn4saf`
+
+Six notes. No migration — all of it is the front end.
+
+### The swipe bug, which was a `touch-action` bug
+
+Round 10.1 shipped swipe-to-remove and it did not work on Marçal's phone: the
+card moved a few pixels and sprang back. It passed every test here, and that is
+the interesting part — **the tests drove it with a mouse, and a mouse never has
+this problem.**
+
+The card left `touch-action` at its default of `auto`, which promises the
+compositor nothing, so the compositor kept the right to claim the gesture as a
+pan. On a real device it does exactly that the moment a sideways drag starts,
+and the page then fires `pointercancel` at the card — which sprang it back,
+mid-swipe.
+
+`touch-action: pan-y` is the fix, and it is a statement of intent rather than a
+workaround: *vertical panning is yours, horizontal is mine.* The compositor
+stops stealing sideways drags, the cancel never happens, and scrolling over a
+card still works natively. As a second guarantee, `pointercancel` no longer
+rewinds a swipe — it ends at the last position the finger was actually seen at,
+so a cancel arriving after a long deliberate swipe still removes the card.
+
+The lesson is recorded in `drag.svelte.ts`: **gestures have to be driven with
+real touch events.** Every gesture assertion in this round uses CDP
+`Input.dispatchTouchEvent` rather than the mouse.
+
+### What else changed
+
+- **A bin, while a card is in the air.** The two pinned buttons become a bin for
+  exactly as long as something is being dragged, and it fills solid red under the
+  finger. A bin that were always there would be a permanently armed delete under
+  your thumb; one that appears only when something is actually being carried
+  cannot be hit by accident, and lands where a thumb already is at the end of a
+  downward drag.
+- **You can still scroll while dragging**, which the bin threatened: it sits in
+  the strip the downward auto-scroll band used to occupy. The band now sits
+  *above* the bin — `edgeScroll()` takes its floor from the bin's own top edge
+  rather than from the bottom of the screen.
+- **The dish editor**: "Cooking" is a heading again like "Part of the meal", and
+  what is inline is each option's own icon and word. The ingredients a dish
+  already has are on the same grid as the ones you are choosing from.
+- **The shop preview is boxes.** The whole row toggles, not the checkbox: a
+  1.6rem target is below this project's tap floor, and aiming at one while
+  walking is precisely what the floor is for. Ticked rows carry a tint as well as
+  a mark, so the shape of what you are buying reads without checking eight boxes
+  one at a time.
+- **"What's home"** lost its three-line caveat to a discreet ⓘ — the caveat still
+  matters, but as a paragraph above the content it was read once and scrolled
+  past forever while pushing the answer below the fold.
+- **Hold an item in "What's home" and drag it straight onto a day.**
+- **"Or just a thing" is now "Recently bought"**, and shows what this household
+  actually bought last rather than a hand-picked guess about households in
+  general. Typing turns it back into ordinary catalogue search, so anything is
+  still reachable.
+- **The two pinned buttons are "Shop" and "At home"**, floating over the content
+  with only a gradient fade behind them — the same way the shopping tab's search
+  field does it. Side by side at 412px with a count badge each, there was room
+  for a word and not a sentence.
+- **Lists no longer carry a 40px indent.** `global.css` reset `margin` but not
+  `padding`, so every `<ul>` in the app had one. It showed up as the unexplained
+  left margin on both the shop preview and "What's home".
+
+### Carrying something out of a sheet
+
+Holding an item in "What's home" had to survive the sheet getting out of the way
+— you cannot aim at a week you cannot see. The first attempt closed the sheet
+and the carry died on the first move.
+
+The reason is worth writing down: **a touch pointer is implicitly captured by the
+element it started on.** Remove that element and the browser releases the capture
+and fires `pointercancel`. Window-level listeners do not save you, because there
+is no longer a path from the detached row up to the window for anything to bubble
+along.
+
+So the sheet is *hidden*, not unmounted — invisible and inert while the finger is
+down, unmounted by `onEnd` once it lifts. That one distinction is the difference
+between the gesture working and not existing.
+
+### How it was checked
+
+Gestures driven with real touch events, and each asserted:
+
+- `touch-action` on a card reads `pan-y`
+- a sideways touch swipe removes the card (this is the case that was broken)
+- the bin is absent at rest, present while dragging, lit while the finger is over
+  it, and deletes on drop
+- the page still scrolls while a card is being dragged, with the finger just
+  above the bin, and the bin does *not* light up there
+- holding a row in "What's home" hides the sheet, carries the item, lights a slot
+  under it, plants it on drop, and leaves nothing stuck to the finger
+
+Rendered in a real Chromium at 412×915 in both themes: the day view with the
+floating dock, the picker with "Recently bought", the shop preview ticked and
+unticked, "What's home" with its ⓘ open and closed, and the dish editor. No
+console errors, nothing scrolls sideways.
+
+211 unit tests, 6 of them new.
+
+### How to test it
+
+No migration this time — just reload.
+
+1. **Swipe a card sideways.** It should actually go now. Try it in both views.
+2. **Hold a card until it lifts.** The two buttons at the bottom turn into a
+   **bin**; drag onto it and it fills red; let go and the card is gone.
+3. **While still holding**, move the finger to just *above* the bin — the week
+   should scroll under it. The bin must not light up while you are there.
+4. **Meals → Dishes → a dish.** "Cooking" is a heading, each option is a glyph
+   and a word side by side, and the ingredients it already has are tiles.
+5. **Shop** (bottom left). Tap anywhere on a row to include or exclude it — the
+   whole box, not the little square. No odd indent on the left any more.
+6. **At home** (bottom right). The explanation is behind the small **ⓘ**.
+   **Hold an item** — the sheet gets out of the way and the item follows your
+   finger. Drop it on any meal.
+7. **Tap + on a meal.** The third group is **Recently bought** now. Type
+   something and it goes back to searching the whole catalogue.
+
+### Deliberately not done
+
+- **A bin for the swipe.** Swiping already removes and already offers Undo; the
+  bin is for the drag, which had no way to delete at all.
+- **Undo on a bin drop.** It uses the same path as a swipe, so it gets the same
+  Undo — nothing extra was needed.
+- **Reordering within one meal**, still.
