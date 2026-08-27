@@ -82,6 +82,14 @@ class ShoppingState {
   /** Icons this household picked by hand, overriding the item's own. */
   iconOverrides = $state<Record<string, string>>({})
   /**
+   * Categories this household moved things into, overriding the seed's.
+   *
+   * Same reason the icons need an override table: most of the catalogue is
+   * shared, with `household_id is null`, and one house deciding halloumi belongs
+   * under Cheese must not move it for everybody. See 0011_planner_tweaks.sql.
+   */
+  categoryOverrides = $state<Record<string, string>>({})
+  /**
    * How many times each catalogue item has been put on the list, ever.
    * This is what makes the picker's first row get better with use — it is the
    * first piece of the learned ordering NIU.md §4.1 asks for.
@@ -99,8 +107,8 @@ class ShoppingState {
   onList = $derived(new Set(this.items.map((item) => item.catalogueItemId)))
 
   /**
-   * The whole catalogue with any hand-picked icon already applied, so no
-   * component has to know overrides exist.
+   * The whole catalogue with any hand-picked icon *and* category already
+   * applied, so no component has to know overrides exist.
    *
    * Hiding is *not* applied here, and that is the point. A hidden item can
    * still be on the list — "it stays on the list if it is already there" — so
@@ -112,8 +120,14 @@ class ShoppingState {
    */
   withIcons = $derived(
     this.catalogue.map((item) => {
-      const chosen = this.iconOverrides[item.id]
-      return chosen ? { ...item, icon: chosen } : item
+      const icon = this.iconOverrides[item.id]
+      const category = this.categoryOverrides[item.id]
+      if (!icon && !category) return item
+      return {
+        ...item,
+        ...(icon ? { icon } : {}),
+        ...(category ? { category } : {}),
+      }
     }),
   )
 
@@ -221,8 +235,15 @@ export async function loadShopping(): Promise<void> {
 
   // RLS already limits the catalogue to the shared seed plus this household's
   // own words, so there is no filter to write here — the database does it.
-  const [catalogueResult, listResult, hiddenResult, usageResult, iconsResult, dishResult] =
-    await Promise.all([
+  const [
+    catalogueResult,
+    listResult,
+    hiddenResult,
+    usageResult,
+    iconsResult,
+    categoriesResult,
+    dishResult,
+  ] = await Promise.all([
     supabase
       .from('catalogue_items')
       .select('id, name, category, icon, emoji, sort_order, suggested_rank, household_id')
@@ -231,6 +252,7 @@ export async function loadShopping(): Promise<void> {
     supabase.from('catalogue_hidden').select('catalogue_item_id'),
     supabase.from('catalogue_usage').select('catalogue_item_id, use_count'),
     supabase.from('catalogue_icons').select('catalogue_item_id, icon'),
+    supabase.from('catalogue_categories').select('catalogue_item_id, category'),
     supabase
       .from('list_item_dishes')
       .select('list_item_id, dish_id')
@@ -277,6 +299,18 @@ export async function loadShopping(): Promise<void> {
       chosen[row.catalogue_item_id] = row.icon
     }
     shopping.iconOverrides = chosen
+  }
+
+  // And again: without these, everything sits in the category the seed gave it.
+  if (!categoriesResult.error && categoriesResult.data) {
+    const moved: Record<string, string> = {}
+    for (const row of categoriesResult.data as {
+      catalogue_item_id: string
+      category: string
+    }[]) {
+      moved[row.catalogue_item_id] = row.category
+    }
+    shopping.categoryOverrides = moved
   }
 }
 
@@ -384,6 +418,19 @@ export function watchShopping(): () => void {
           shopping.items = shopping.items.filter((item) => item.id !== gone)
         }
       },
+    )
+    // A category someone moved on the other phone rearranges this one's grid, so
+    // it re-reads the lot rather than patching — it is a handful of rows and it
+    // happens about twice a year.
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'catalogue_categories',
+        filter: `household_id=eq.${household.id}`,
+      },
+      () => void loadShopping(),
     )
     .subscribe((status) => {
       // The first SUBSCRIBED is the one the initial load already covered.
@@ -670,6 +717,67 @@ export async function setItemIcon(
   }
 }
 
+/**
+ * Moves one item into a different category, for this household only.
+ *
+ * Exactly the same shape as setItemIcon above and for the same reason: the
+ * catalogue is mostly shared, so a household's opinion about where something
+ * belongs is stored beside the row rather than written into it.
+ *
+ * The name is trimmed but otherwise taken as typed. Categories in this app are
+ * names, not rows with ids — so "Cupboard" and "cupboard" would be two, which is
+ * the picker's job to avoid by offering the existing ones first.
+ */
+export async function setItemCategory(
+  catalogueItemId: string,
+  category: string,
+  userId: string,
+): Promise<void> {
+  if (!supabase || !household.id) return
+
+  const name = category.trim()
+  if (name === '') return
+
+  const previous = shopping.categoryOverrides
+  shopping.categoryOverrides = { ...previous, [catalogueItemId]: name }
+
+  const { error } = await supabase.from('catalogue_categories').upsert(
+    {
+      household_id: household.id,
+      catalogue_item_id: catalogueItemId,
+      category: name,
+      set_by: userId,
+    },
+    { onConflict: 'household_id,catalogue_item_id' },
+  )
+
+  if (error) {
+    shopping.categoryOverrides = previous
+    shopping.error = strings.shopping.updateFailed
+  }
+}
+
+/** Drops the override, so the item goes back where the catalogue had it. */
+export async function clearItemCategory(catalogueItemId: string): Promise<void> {
+  if (!supabase || !household.id) return
+
+  const previous = shopping.categoryOverrides
+  const next = { ...previous }
+  delete next[catalogueItemId]
+  shopping.categoryOverrides = next
+
+  const { error } = await supabase
+    .from('catalogue_categories')
+    .delete()
+    .eq('household_id', household.id)
+    .eq('catalogue_item_id', catalogueItemId)
+
+  if (error) {
+    shopping.categoryOverrides = previous
+    shopping.error = strings.shopping.updateFailed
+  }
+}
+
 /** Drops the override, so the item goes back to its own icon. */
 export async function clearItemIcon(catalogueItemId: string): Promise<void> {
   if (!supabase || !household.id) return
@@ -698,6 +806,7 @@ export function clearShopping(): void {
   shopping.itemDishes = {}
   shopping.hidden = new Set()
   shopping.useCounts = {}
+  shopping.categoryOverrides = {}
   shopping.iconOverrides = {}
   shopping.error = null
   shopping.loading = false

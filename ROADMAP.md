@@ -1227,3 +1227,190 @@ opens the sheet rather than being eaten.
 
 Feature round 7: the calendar — events, the month grid, quick add, avatars, and
 the one-way push to a shared Google calendar.
+
+## Round 10.1 — The planner, after using it
+
+**Branch:** `claude/meal-planner-day-week-views-xn4saf`
+
+Nine notes from Marçal after a day with round 10. All nine done.
+
+### What changed
+
+1. **The day view starts at today.** It still thinks in weeks — the week view
+   shows all seven — but planning Monday's dinner on a Wednesday is not a thing
+   anyone does, and two dead days at the top were two screens of scrolling before
+   the question you opened the app to answer. A week you have deliberately
+   stepped back to still shows all seven; see `planningDays()` in `plan.ts`.
+2. **Swipe a card sideways to take it off the plan**, either view, with a bin
+   showing behind it as it goes and an **Undo** in the message afterwards.
+3. **The picker is rebuilt.** Eating out / Leftovers / Cook it across the top,
+   three grids of tiles in the middle, search and New dish pinned to the bottom.
+4. **Two buttons pinned above the nav**: *Shop for this week* and *What's home*.
+   The shop preview is now a list you **tick**, so you can leave out the things
+   you know you have.
+5. **A dish written from the picker lands on the day you were adding to**, with a
+   small arrival flourish. It used to write the dish and drop you back on an
+   empty meal, which looked exactly like the tap had failed.
+6. **The dish editor**: cooking is one inline row, "What it needs" is now
+   **Ingredients** with a one-word hint, the search box **sticks to the top**,
+   and the results are a grid of four.
+7. **A shopping item's category can be changed**, and all four tile-menu options
+   have icons now.
+8. **Dishes reads as a button** rather than a link with a chevron.
+9. **The app icon's logo is more than twice the size it was.**
+
+### Cook it, and what it is not
+
+`meal_entries.to_cook` is a hand-set mark meaning *somebody has to cook this
+tonight*. Three things it is deliberately not:
+
+- **Not `dishes.cook`.** That says a lasagne is a slow one, which is true
+  forever. This is about the evening.
+- **Not a fifth `kind`.** It is orthogonal to what an entry *is* — a plain item
+  can need cooking too, and that broccoli won't roast itself. As a `kind` it
+  would have meant 'dish' and 'dish-to-cook' as separate values, then the same
+  again for items.
+- **Not inferred.** The planner already works out the *opposite* mark — a repeat,
+  from the same dish two nights running — and it would be easy to infer this one
+  as its negation. But then every card in the week would be asserting something
+  about cooking, and the value of this one is that it is a note you left
+  yourself. Marçal's call, and reversible: turning it automatic is a one-line
+  default, and the column still holds the override.
+
+Two ways to set it: the sticky **Cook it** toggle in the picker catches it on the
+way in, and the card's own sheet catches it afterwards.
+
+### "What's home", and the line it does not cross
+
+`NIU.md` §5 defers stock inference — it needs months of data and a wrong answer
+is worse than none. This is the honest half of it and stops well short of that
+line: **it counts purchases, it does not model shelf life.** A fish and a bag of
+rice bought on the same Saturday are treated identically, because nothing here
+knows which is which.
+
+What it does have is each item's own purchase rhythm, learnt since round 7. So
+there are two bands rather than one cut-off:
+
+- **Bought this week** — inside the last five days. Barely a guess.
+- **Double-check** — longer ago than that, but not yet as long ago as this
+  household usually leaves between buying it. Might be there.
+
+One cut-off would have been more confident and less true. And the tap on a
+double-check row — *out of it, add to the list* — is the point rather than a
+convenience: §5 says the correction is the half that eventually teaches the
+shelf-life guess, and this is where those corrections would come from.
+
+### Three gestures on one card
+
+A card now answers to a vertical scroll, a sideways swipe and a long-press drag.
+They are told apart by the first thing the finger does, decided once at the first
+movement past the tolerance and never revisited — which is what stops a drag
+turning into a delete halfway across the screen.
+
+The swipe test asks for movement that is clearly sideways, 1.4× more horizontal
+than vertical, rather than merely more sideways than not. A diagonal flick is far
+more likely to be a scroll than a delete, and deleting is the one outcome here
+that loses something. That is also why the swipe is the only message in the app
+with an **Undo** button: it is the one gesture that removes something, can be
+started by accident, and leaves nothing behind to put back.
+
+### The icon was a unit bug
+
+The maskable icon's logo was at 44% of the tile. The safe zone for a maskable
+icon is a circle whose **diameter** is 80% of the icon's width — so its radius is
+40% of the width. `measureMark()` reports distances as a fraction of the icon's
+**half** width, in which unit that safe radius is 0.40 / 0.50 = **0.80**.
+
+Round 7 wrote `0.38` there, having read "40% radius" and taken it as a fraction of
+the half-width. Out by a factor of two, and the wordmark — whose corners sit at
+0.858 half-widths — was duly scaled to 0.38 / 0.858 = 44%.
+
+It is 0.78 now, which puts the mark at **91%**, and the corner arithmetic still
+clears a circular crop: 0.858 × 0.91 = 0.781. Nothing clips.
+
+### How it was checked
+
+Every migration run in order against a real PostgreSQL 16 on a fresh database,
+then 0011 re-run to confirm it is idempotent — and `add_plan_to_list` confirmed
+to exist exactly once, with three arguments, rather than as two overloads
+PostgREST would have to guess between.
+
+The subset arithmetic: a week wanting spaghetti, tomatoes, butter and broccoli,
+asked for only the tomatoes and the butter, added **2** and tagged both — tomatoes
+carrying *both* Bruschetta and Lasagne. An explicitly empty selection added **0**
+rather than everything, which is the distinction the whole ticking UI rests on.
+A null selection then added the remaining **2**.
+
+Category overrides: writing one worked; writing into the other household's,
+forging `set_by`, and a blank name were each refused. As the second household,
+our categories and plan read as **0 rows**, their `add_plan_to_list` returned
+**0**, and their update and delete against ours changed **0 rows**.
+
+Rendered in a real Chromium at 412×915 in both themes: both planner views, the
+rebuilt picker with the Cook it toggle on, the tickable shop list, What's home,
+the entry sheet, the dish editor, the shopping tile menu and the category picker.
+No console errors, nothing scrolls sideways.
+
+The gestures were driven for real, and each of the five cases asserted:
+
+- a clearly sideways swipe removes the card and offers Undo
+- **Undo puts it back** — which is how a genuine bug was found: the flash sat
+  inside a wrapper with `pointer-events: none`, so the button could not be
+  tapped at all
+- a short sideways nudge springs back and removes nothing
+- a mostly-vertical drag scrolls the page and removes nothing
+- press-and-hold still lifts and moves the card rather than deleting it
+
+Also driven: writing a new dish from the picker, which lands on the right day
+with the arrival animation actually running mid-flight; and the ingredient
+search, sampled at four scroll positions, pinning flush to the sheet's top edge
+from 600px down.
+
+205 unit tests, 14 of them new.
+
+### How to test it
+
+> **Run `supabase/migrations/0011_planner_tweaks.sql`** in the Supabase SQL
+> editor first.
+
+1. **Meals.** The day view starts at **Today**. Step to next week and all seven
+   days are back.
+2. **Swipe a card left or right.** A bin appears behind it, it flies off, and the
+   message offers **Undo**. Try a small nudge — it springs back. Try swiping
+   diagonally down — that should scroll, not delete.
+3. **Tap + on a meal.** Eating out, Leftovers and **Cook it** are across the top;
+   Cook it stays lit and marks whatever you pick next. Everything is tiles now,
+   three across, and the search and **New dish** are pinned at the bottom.
+4. **New dish → give it a name → Add it.** It should appear **on that meal**
+   straight away, with a small bounce.
+5. **Tap a planned card.** There is a "Mark as one to cook" toggle in the sheet
+   too.
+6. **Shop for this week**, bottom left. Untick anything you already have; the
+   button counts down. **All** / **None** are there for a long week.
+7. **What's home**, bottom right. Two groups: bought this week, and
+   double-check. Tap **Out of it** on anything you know you've run out of and it
+   goes on the shopping list.
+8. **Meals → Dishes → open a dish.** Cooking is one row now, ingredients are four
+   across, and scrolling down keeps the search box stuck to the top.
+9. **Shopping → long-press a tile you haven't got on the list.** Four options
+   with icons, including **Change category**.
+10. **The app icon.** Remove Niu from your home screen and add it again — the
+    wordmark should be more than twice the size.
+
+### Deliberately not done
+
+- **Deciding between "What can we make?" and "What's home".** They overlap and
+  you said to keep both for now. One reads the *plan's* ingredients, the other
+  reads *purchases*; after a week of use it should be obvious which is the one
+  you actually open.
+- **Reordering within one meal.** A card can be dragged to another meal but not
+  shuffled above its neighbour.
+- **Making the cook mark automatic.** Recorded above as a one-line change if the
+  manual version turns out to be tedious.
+- **A "hidden" undo for the other destructive actions.** Deleting a dish and
+  hiding a tile still ask first, which is the older pattern and fine; the swipe
+  needed an undo precisely because it doesn't ask.
+
+### Next up
+
+Feature round 7: the calendar.

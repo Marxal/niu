@@ -239,7 +239,12 @@ export function watchDishes(): () => void {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Writes a dish — new or edited — and its ingredient list. True if it stuck.
+ * Writes a dish — new or edited — and its ingredient list.
+ *
+ * Returns the dish's id, or null if nothing stuck. The id matters because of
+ * round 10.1: a dish written from the planner's picker has to be planted on the
+ * meal you were looking at, and the caller cannot look it up by name without
+ * racing the re-read.
  *
  * The ingredients are written as a diff rather than replaced wholesale: see
  * diffIngredients() in dishes.ts for why. An unchanged list therefore costs no
@@ -249,9 +254,9 @@ export async function saveDish(
   draft: DishDraft,
   userId: string,
   existing: Dish | null,
-): Promise<boolean> {
-  if (!supabase || !household.id) return false
-  if (!isSaveable(draft)) return false
+): Promise<string | null> {
+  if (!supabase || !household.id) return null
+  if (!isSaveable(draft)) return null
 
   const fields = {
     name: draft.name.trim(),
@@ -273,7 +278,7 @@ export async function saveDish(
       // one worth a specific message: everything else is "try again".
       dishes.error =
         error?.code === '23505' ? strings.dishes.duplicateName : strings.dishes.saveFailed
-      return false
+      return null
     }
     written = (data as { id: string }).id
   } else {
@@ -281,7 +286,7 @@ export async function saveDish(
     if (error) {
       dishes.error =
         error.code === '23505' ? strings.dishes.duplicateName : strings.dishes.saveFailed
-      return false
+      return null
     }
   }
 
@@ -352,13 +357,13 @@ export async function saveDish(
     if (error) {
       dishes.error = strings.dishes.saveFailed
       await loadDishes()
-      return false
+      return null
     }
   }
 
   dishes.error = null
   await loadDishes()
-  return true
+  return dishId
 }
 
 /* -------------------------------------------------------------------------- */

@@ -7,9 +7,16 @@
   app, tapping "Lasagne" looks exactly like tapping nothing, especially when
   every ingredient was already on the list and so nothing visibly moves.
 
-  Deliberately not a toast library and deliberately not interactive: no buttons,
-  no undo, nothing to dismiss. It is a sentence, it sits above the search field
-  where the thumb already is, and it leaves on its own.
+  Deliberately not a toast library. It is a sentence, it sits above the search
+  field where the thumb already is, and it leaves on its own.
+
+  It grew exactly one button, in round 10.1, and only for the case that earns it:
+  swiping a meal off the plan. Every other message here reports something you can
+  see and undo yourself — a tile greyed out, four things added to a list you are
+  looking at. A swipe is the one gesture that *removes* something, can be done by
+  accident on a scroll, and leaves nothing behind to put back. Nothing else
+  should take this button; if a second thing wants it, that is the moment to ask
+  whether it is really the same kind of message.
 
   role="status" rather than role="alert" — a screen reader should mention it at
   the next pause, not interrupt whatever it was reading.
@@ -18,11 +25,16 @@
   let {
     message,
     tone = 'good',
+    action,
+    onAction,
     onDone,
   }: {
     message: string
     /** 'bad' for a failure — same shape, different colour. */
     tone?: 'good' | 'bad'
+    /** The button's label. Leave both out for the ordinary, wordless message. */
+    action?: string | undefined
+    onAction?: (() => void) | undefined
     onDone: () => void
   } = $props()
 
@@ -35,7 +47,12 @@
   })
 </script>
 
-<div class="flash {tone}" role="status">{message}</div>
+<div class="flash {tone}" class:with-action={action !== undefined} role="status">
+  <span>{message}</span>
+  {#if action && onAction}
+    <button onclick={onAction}>{action}</button>
+  {/if}
+</div>
 
 <style>
   .flash {
@@ -64,6 +81,30 @@
 
   .flash.bad {
     background: var(--color-danger);
+  }
+
+  .flash.with-action {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding-right: var(--space-2);
+    /* The button is a real target, so the pill grows to a tappable height rather
+       than the text's line box. */
+    min-height: var(--tap-min);
+  }
+
+  .flash button {
+    min-height: 2.25rem;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-full);
+    background: rgb(255 255 255 / 0.22);
+    color: inherit;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+  }
+
+  .flash button:active {
+    background: rgb(255 255 255 / 0.34);
   }
 
   @keyframes rise {

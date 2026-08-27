@@ -168,7 +168,12 @@ items, it becomes a bundle in the shopping list too, and it works in **both dire
   answer, and the morning after — when the list is empty and the food is in the fridge —
   the recent purchases are.
 - **Stock → plan.** Later still, once there are months of data: favouring dishes whose
-  ingredients it *infers* are in the house, with shelf-life learning behind it.
+  ingredients it *infers* are in the house, with shelf-life learning behind it. Round
+  10.1's "What's home" is the honest half of this and stops deliberately short of it — it
+  counts purchases and never models shelf life, so a fish and a bag of rice bought the
+  same day are treated identically. Its two bands (bought this week / double-check) come
+  from each item's own purchase rhythm, and the "out of it" correction on a double-check
+  row is exactly the signal §5 says would eventually teach the shelf-life guess.
 
 Cooking instructions are explicitly **not** a feature. If a note is ever needed, it's a
 notes field.
@@ -190,12 +195,17 @@ switcher to week. A month view is still wanted but was deferred out of round 10:
 412px screen it can only be coloured dots, which answers "what did we eat a fortnight
 ago" rather than a daily question.
 
+The day view starts at **today** in the current week (round 10.1) — planning Monday's
+dinner on Wednesday is not a thing anyone does. Other weeks show all seven days, and so
+does the week view always, because its job is the shape of the whole week.
+
 **Adding:** tap a meal, pick from the library sorted by most-planned. The picker leads
 with dishes whose ingredients are already to hand — see "What you have → plan" above.
 
 **Moving:** long-press a card and drag it (Marçal, round 10, choosing this over the
 safer tap-to-lift-tap-to-drop). The week view exists partly for this: seven days on one
-screen means the card only has to travel an inch.
+screen means the card only has to travel an inch. **Removing:** swipe the card sideways,
+with an Undo in the message afterwards (round 10.1).
 
 **A meal can hold a plain shopping item, not only a dish** (Marçal, after round 8; built
 in round 10). "Broccoli" on a Tuesday is a complete thought and should not need a dish
@@ -209,10 +219,22 @@ indefinitely and old weeks stay readable, which is where "what did we have on Tu
 gets answered.
 
 **"Shop for this week"** — one button, turns the week's plan into shopping list entries.
+Since round 10.1 it opens a list you **tick**: half of deciding what to buy is deciding
+what you already have enough of. Beside it sits **"What's home"** — the same question from
+the other end, read off purchases rather than off the plan. The two overlap with "What can
+we make?" on purpose for now; which of them earns its place is a decision for after they
+have been used.
 
 **Markers:** leftovers, eating out. Both are *kinds of entry* rather than dishes you have
 to write first, and neither ever puts anything on the shopping list — which is the point
 of them. A leftovers entry may name the dish it is left over from.
+
+Plus a third, different in kind: **cook it**, a hand-set mark meaning somebody has to cook
+this tonight (round 10.1). Not the dish's own `cook` value, which describes the recipe
+forever; not a fourth marker, because a plain item can need cooking too. Deliberately set
+by hand rather than inferred — the planner already infers the *opposite* mark, the repeat,
+and if both were automatic every card would be asserting something about cooking. The
+value of this one is that it is a note you left yourself.
 
 **Repeats are normal in this household** and must not be discouraged. The app should not
 avoid recent dishes. It should instead learn the *cook-then-repeat* rhythm: the first

@@ -12,6 +12,7 @@ import {
   mealRhythm,
   nextPosition,
   parseKey,
+  planningDays,
   shortDate,
   shortDayName,
   sortEntries,
@@ -29,6 +30,7 @@ function entry(overrides: Partial<PlanEntry> = {}): PlanEntry {
     kind: 'dish',
     dishId: 'lasagne',
     itemId: null,
+    toCook: false,
     note: null,
     createdAt: '2026-08-30T10:00:00.000Z',
     ...overrides,
@@ -112,6 +114,36 @@ describe('weekDays', () => {
       '2026-09-05',
       '2026-09-06',
     ])
+  })
+})
+
+describe('planningDays', () => {
+  it('starts at today in the week you are in', () => {
+    // 2026-08-31 is a Monday; 2026-09-02 is the Wednesday of it.
+    expect(planningDays('2026-08-31', '2026-09-02')).toEqual([
+      '2026-09-02',
+      '2026-09-03',
+      '2026-09-04',
+      '2026-09-05',
+      '2026-09-06',
+    ])
+  })
+
+  it('keeps all seven when today is the Monday', () => {
+    expect(planningDays('2026-08-31', '2026-08-31')).toHaveLength(7)
+  })
+
+  it('keeps only Sunday when today is the Sunday', () => {
+    expect(planningDays('2026-08-31', '2026-09-06')).toEqual(['2026-09-06'])
+  })
+
+  it('shows all seven of a past week', () => {
+    expect(planningDays('2026-08-24', '2026-09-02')).toHaveLength(7)
+    expect(planningDays('2026-08-24', '2026-09-02')[0]).toBe('2026-08-24')
+  })
+
+  it('shows all seven of a future week', () => {
+    expect(planningDays('2026-09-07', '2026-09-02')).toHaveLength(7)
   })
 })
 

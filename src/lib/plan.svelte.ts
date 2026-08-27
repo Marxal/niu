@@ -48,12 +48,13 @@ interface EntryRow {
   kind: string
   dish_id: string | null
   catalogue_item_id: string | null
+  to_cook: boolean
   note: string | null
   created_at: string
 }
 
 const ENTRY_COLUMNS =
-  'id, on_date, meal, position, kind, dish_id, catalogue_item_id, note, created_at'
+  'id, on_date, meal, position, kind, dish_id, catalogue_item_id, to_cook, note, created_at'
 
 /** How far either side of the shown week to fetch. See the header. */
 const WINDOW_BEFORE = 7
@@ -74,6 +75,7 @@ function toEntry(row: EntryRow): PlanEntry {
     kind: isEntryKind(row.kind) ? row.kind : 'dish',
     dishId: row.dish_id,
     itemId: row.catalogue_item_id,
+    toCook: row.to_cook ?? false,
     note: row.note,
     createdAt: row.created_at,
   }
@@ -181,6 +183,12 @@ export type PlanTarget =
   | { kind: 'leftovers'; dishId: string | null }
   | { kind: 'out' }
 
+/** Extras that ride along with whatever is being planned. */
+export interface PlanOptions {
+  /** Mark it "needs cooking" as it goes in. */
+  toCook?: boolean
+}
+
 function targetColumns(target: PlanTarget): {
   kind: EntryKind
   dish_id: string | null
@@ -210,10 +218,12 @@ export async function planEntry(
   slot: Slot,
   target: PlanTarget,
   userId: string,
-): Promise<boolean> {
-  if (!supabase || !household.id) return false
+  options: PlanOptions = {},
+): Promise<string | null> {
+  if (!supabase || !household.id) return null
 
   const columns = targetColumns(target)
+  const toCook = options.toCook ?? false
   const position = nextPosition(plan.entries, slot)
   const temporaryId = `pending:${crypto.randomUUID()}`
 
@@ -228,6 +238,7 @@ export async function planEntry(
       kind: columns.kind,
       dishId: columns.dish_id,
       itemId: columns.catalogue_item_id,
+      toCook,
       note: null,
       createdAt: new Date().toISOString(),
     },
@@ -240,6 +251,7 @@ export async function planEntry(
       on_date: slot.date,
       meal: slot.meal,
       position,
+      to_cook: toCook,
       created_by: userId,
       ...columns,
     })
@@ -249,13 +261,42 @@ export async function planEntry(
   if (error || !data) {
     plan.entries = previous
     plan.error = strings.plan.saveFailed
-    return false
+    return null
   }
 
   const saved = toEntry(data as EntryRow)
   plan.error = null
   plan.entries = plan.entries.map((entry) => (entry.id === temporaryId ? saved : entry))
-  return true
+  return saved.id
+}
+
+/**
+ * Marks a planned meal as one that needs cooking, or unmarks it.
+ *
+ * Deliberately a hand-set flag rather than something worked out from the dish
+ * (Marçal, round 10.1). The planner already infers the opposite mark — a repeat,
+ * from the same dish two nights running — and inferring this one too would leave
+ * every card in the week asserting something about cooking. The value of this
+ * one is that it is a note you left yourself.
+ */
+export async function setToCook(entryId: string, toCook: boolean): Promise<void> {
+  if (!supabase) return
+
+  const entry = plan.byId.get(entryId)
+  if (!entry || entry.toCook === toCook) return
+
+  const previous = plan.entries
+  plan.entries = plan.entries.map((row) => (row.id === entryId ? { ...row, toCook } : row))
+
+  const { error } = await supabase
+    .from('meal_entries')
+    .update({ to_cook: toCook })
+    .eq('id', entryId)
+
+  if (error) {
+    plan.entries = previous
+    plan.error = strings.plan.saveFailed
+  }
 }
 
 /**
@@ -395,12 +436,19 @@ export async function unplanEntry(entryId: string): Promise<void> {
  * afterwards rather than waited for, the same as tapping a dish: the realtime
  * inserts are on their way, but the phone that tapped is the one watching.
  */
-export async function shopForRange(from: string, to: string): Promise<number | null> {
+export async function shopForRange(
+  from: string,
+  to: string,
+  onlyItems?: readonly string[],
+): Promise<number | null> {
   if (!supabase) return null
 
   const { data, error } = await supabase.rpc('add_plan_to_list', {
     from_date: from,
     to_date: to,
+    // Undefined means "everything the plan wants"; an array — even an empty one
+    // — means exactly these. See 0011_planner_tweaks.sql.
+    only_items: onlyItems === undefined ? null : [...onlyItems],
   })
 
   if (error) {

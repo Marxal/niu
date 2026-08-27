@@ -16,14 +16,28 @@
  * an 800+KB PNG that does nothing for them.
  *
  * One wrinkle worth knowing about: the wordmark is wide (roughly 1.6:1), and
- * Android's maskable icons get cropped to a circle by the launcher. Measured
- * against the source, the wordmark's own corners sit at ~85% of the icon's
- * half-width from centre — comfortably past the ~40%-radius "safe zone" a
- * maskable icon needs, which would clip the ends of the n and the u. So the
- * maskable variant alone gets shrunk before the crop, by however much its own
- * artwork's bounding box actually needs — computed from the image, not
- * guessed, so a future redesign at a different scale doesn't reintroduce the
- * clipping quietly.
+ * Android's maskable icons get cropped by the launcher. So the maskable variant
+ * alone gets shrunk before the crop, by however much its own artwork's bounding
+ * box actually needs — computed from the image, not guessed, so a future
+ * redesign at a different scale doesn't reintroduce clipping quietly.
+ *
+ * ## The safe zone, and the unit bug that made the logo tiny
+ *
+ * The maskable spec says the safe zone is a circle whose **diameter is 80% of
+ * the icon's width** — so its radius is 40% of the icon's width.
+ *
+ * `measureMark` below reports distances as a fraction of the icon's **half**
+ * width, because that is the natural unit when you are measuring outwards from
+ * the centre. In those units the safe radius is 0.40 / 0.50 = **0.80**.
+ *
+ * Round 7 wrote 0.38 there, having read "40% radius" and taken it as a fraction
+ * of the half-width rather than of the full width. That is out by a factor of
+ * two, and the effect was exactly what you would expect: the wordmark, whose
+ * corners sit at 0.858 half-widths, was scaled to 0.38 / 0.858 = **44%** of the
+ * icon and floated in the middle of a sea of background. With the right unit it
+ * comes out at 0.78 / 0.858 = **91%**, which is a logo.
+ *
+ * Fixed in round 10.1, after Marçal noticed the home-screen icon looked small.
  */
 
 import { mkdirSync } from 'node:fs'
@@ -35,8 +49,15 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SOURCE = join(ROOT, 'assets', 'brand', 'app-icon-source.png')
 const OUT_DIR = join(ROOT, 'public', 'icons')
 
-/** How much safety margin to leave inside the theoretical 40%-radius limit. */
-const SAFE_RADIUS_FRACTION = 0.38
+/**
+ * The maskable safe radius, as a fraction of the icon's *half* width — which is
+ * the unit measureMark() reports in. See the header for why this is 0.8 and not
+ * 0.4: the spec's "40%" is of the full width.
+ *
+ * A shade under, at 0.78, so the very tips of the mark aren't sitting exactly on
+ * the line a launcher might round differently.
+ */
+const SAFE_RADIUS_FRACTION = 0.78
 
 /**
  * Finds the artwork's own bounding box against its background colour, and how

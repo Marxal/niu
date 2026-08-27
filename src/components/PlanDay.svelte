@@ -37,6 +37,8 @@
     onAdd,
     onOpen,
     onDrop,
+    onSwipeAway,
+    freshId = null,
   }: {
     date: string
     today: string
@@ -50,6 +52,8 @@
     onAdd: (date: string, meal: Meal) => void
     onOpen: (entry: PlanEntry) => void
     onDrop: (id: string, slot: DragSlot) => void
+    onSwipeAway: (id: string) => void
+    freshId?: string | null
   } = $props()
 
   let isToday = $derived(date === today)
@@ -74,6 +78,8 @@
       onAdd={(m) => onAdd(date, m)}
       {onOpen}
       {onDrop}
+      {onSwipeAway}
+      {freshId}
     />
   {/each}
 </article>

@@ -38,6 +38,7 @@
     dish,
     userId,
     seedItemIds = [],
+    onSaved,
     onClose,
   }: {
     /** The dish being edited, or null to write a new one. */
@@ -50,6 +51,15 @@
      * Ignored when editing, which has its own list.
      */
     seedItemIds?: string[]
+    /**
+     * Called with the dish that was just written, before onClose.
+     *
+     * The planner uses it to plant a brand-new dish straight onto the meal its
+     * picker was opened from (Marçal, round 10.1): before this, "+ Add → New
+     * dish → Add it" wrote the dish and then dropped you back on an empty meal,
+     * which looked exactly like the tap having failed.
+     */
+    onSaved?: ((dish: Dish) => void) | undefined
     onClose: () => void
   } = $props()
 
@@ -90,11 +100,21 @@
   async function save() {
     if (!canSave || !userId) return
     saving = true
-    const ok = await saveDish(draft, userId, dish)
+    const savedId = await saveDish(draft, userId, dish)
     saving = false
+
     // A failure leaves the sheet open with the typing still in it, and the
     // reason underneath — closing here would throw the work away.
-    if (ok) onClose()
+    if (!savedId) return
+
+    // Read back from the store rather than reusing the draft: saveDish re-reads,
+    // so this is the row as the database actually holds it, ids and all.
+    const saved = dishes.byId.get(savedId)
+    if (saved && onSaved) {
+      onSaved(saved)
+      return
+    }
+    onClose()
   }
 
   function confirmDelete() {
@@ -202,7 +222,7 @@
       {/if}
     </div>
 
-    <div class="control">
+    <div class="control inline">
       <span class="label">{strings.dishes.cookTitle}</span>
       <div class="segmented" role="group" aria-label={strings.dishes.cookTitle}>
         {#each DISH_COOKS as option (option)}
@@ -379,6 +399,22 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+  }
+
+  /* Label beside its control rather than above it. The cooking row is three
+     short words and there is room on one line — which buys back a whole row of
+     vertical space in a sheet that is mostly under the keyboard (Marçal, round
+     10.1). It wraps back to two rows on a narrow phone rather than squeezing. */
+  .control.inline {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .control.inline .segmented {
+    flex: 1 1 15rem;
   }
 
   .label {

@@ -43,6 +43,8 @@
     onAdd,
     onOpen,
     onDrop,
+    onSwipeAway,
+    freshId = null,
   }: {
     days: string[]
     today: string
@@ -55,6 +57,9 @@
     onAdd: (date: string, meal: Meal) => void
     onOpen: (entry: PlanEntry) => void
     onDrop: (id: string, slot: DragSlot) => void
+    onSwipeAway: (id: string) => void
+    /** The entry this phone just planted, so it can play its arrival once. */
+    freshId?: string | null
   } = $props()
 
   let columns = $derived(`2.75rem repeat(${meals.length}, minmax(0, 1fr))`)
@@ -91,8 +96,10 @@
               rhythm={rhythm.get(entry.id) ?? null}
               size="compact"
               dragging={drag.entryId === entry.id}
+              fresh={entry.id === freshId}
               onclick={() => onOpen(entry)}
               {onDrop}
+              {onSwipeAway}
             />
           {/each}
 
