@@ -11,8 +11,14 @@
   re-add, because it is the same dish on the same night and only the cooking
   changed. A re-add would also count as a second planning of the dish and skew
   the picker's order.
+
+  "Needs cooking" is the other half of the same conversation and the other place
+  to set it — the picker's Cook it toggle catches it on the way in, this catches
+  it after the fact. Any entry can carry it, including a plain item: broccoli
+  does not roast itself.
 -->
 <script lang="ts">
+  import CookMark from './CookMark.svelte'
   import GroceryIcon from './GroceryIcon.svelte'
   import MarkerIcon from './MarkerIcon.svelte'
   import type { Dish } from '../lib/dishes'
@@ -26,6 +32,7 @@
     item = null,
     today,
     onToggleLeftovers,
+    onToggleToCook,
     onShopFor,
     onEditDish,
     onNote,
@@ -37,6 +44,7 @@
     item?: CatalogueItem | null
     today: string
     onToggleLeftovers: () => void
+    onToggleToCook: () => void
     onShopFor: () => void
     onEditDish: (dish: Dish) => void
     onNote: (note: string) => void
@@ -124,6 +132,11 @@
     </label>
 
     <div class="actions">
+      <button class:on={entry.toCook} onclick={onToggleToCook}>
+        <CookMark size={18} />
+        {entry.toCook ? strings.plan.toCookOff : strings.plan.toCookOn}
+      </button>
+
       {#if canToggle}
         <button onclick={onToggleLeftovers}>
           <MarkerIcon kind="leftovers" size={18} />
@@ -319,6 +332,13 @@
 
   .actions button:active {
     background: var(--color-border);
+  }
+
+  /* The one action here that is a *state* rather than a one-shot, so it shows
+     which way it currently is. */
+  .actions button.on {
+    background: var(--color-tab-meals);
+    color: var(--color-accent-ink);
   }
 
   .actions .danger {

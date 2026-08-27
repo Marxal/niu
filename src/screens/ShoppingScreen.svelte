@@ -56,6 +56,7 @@
   import { chooseShop, shops } from '../lib/shops.svelte'
   import { sortByLearnedOrder } from '../lib/shop-order'
   import { dueNow } from '../lib/suggest'
+  import CategoryPickerSheet from '../components/CategoryPickerSheet.svelte'
   import IconPickerSheet from '../components/IconPickerSheet.svelte'
   import TrolleyIcon from '../components/TrolleyIcon.svelte'
   import { FLIP_MS, tileIn, tileOut } from '../lib/motion'
@@ -64,8 +65,10 @@
     addNewWord,
     addToList,
     clearChecked,
+    clearItemCategory,
     clearItemIcon,
     hideCatalogueItem,
+    setItemCategory,
     setItemIcon,
     removeFromList,
     shopping,
@@ -81,6 +84,7 @@
   let tileMenu = $state<PickerItem | null>(null)
   let pendingHide = $state<PickerItem | null>(null)
   let pendingIcon = $state<PickerItem | null>(null)
+  let pendingCategory = $state<PickerItem | null>(null)
   // Filing a tile into a dish: first which tile, then — if they want a new dish
   // rather than an existing one — the editor, seeded with it.
   let pendingDish = $state<PickerItem | null>(null)
@@ -229,6 +233,17 @@
   )
   let categories = $derived(searching ? [] : categoriesInOrder(pickerItems))
 
+  /**
+   * Every category this household's catalogue actually uses, for the "move it
+   * somewhere else" sheet.
+   *
+   * Off the *whole* picker rather than off `categories` above, which is empty
+   * while searching and which hides a category whose items are all on the list
+   * already — neither of which should shrink the list of places you can file
+   * something.
+   */
+  let allCategories = $derived(categoriesInOrder(shopping.picker))
+
   // Offer to create a word only when nothing in the catalogue is an exact match
   // — typing "mil" while "milk" exists shouldn't invite a duplicate.
   let canAddNew = $derived(
@@ -331,6 +346,18 @@
     const item = pendingIcon
     pendingIcon = null
     if (item) void clearItemIcon(item.id)
+  }
+
+  function applyCategory(category: string) {
+    const item = pendingCategory
+    pendingCategory = null
+    if (item && auth.userId) void setItemCategory(item.id, category, auth.userId)
+  }
+
+  function resetCategory() {
+    const item = pendingCategory
+    pendingCategory = null
+    if (item) void clearItemCategory(item.id)
   }
 
   /**
@@ -605,6 +632,21 @@
             tileMenu = null
           }}
         >
+          <svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 11h16v4a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-4Z" />
+            <path d="M3 11h18" />
+            <path d="m9 7 1.5-2M14 7l1.5-2" />
+          </svg>
           {strings.shopping.addToDish}
         </button>
         <button
@@ -614,7 +656,44 @@
             tileMenu = null
           }}
         >
+          <svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="3" />
+            <circle cx="9" cy="10" r="1.6" />
+            <path d="m4 17 5-4 4 3 3-2 4 3" />
+          </svg>
           {strings.shopping.changeIcon}
+        </button>
+        <button
+          class="menu-item"
+          onclick={() => {
+            pendingCategory = tileMenu
+            tileMenu = null
+          }}
+        >
+          <svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 7a2 2 0 0 1 2-2h3.5l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+          </svg>
+          {strings.shopping.changeCategory}
         </button>
         <button
           class="menu-item danger"
@@ -623,10 +702,39 @@
             tileMenu = null
           }}
         >
+          <svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 3l18 18" />
+            <path d="M10.6 5.2A9 9 0 0 1 12 5c5 0 9 5 9 7a11 11 0 0 1-2.2 3.2M6.5 6.7C4.3 8.2 3 10.4 3 12c0 2 4 7 9 7a9.6 9.6 0 0 0 4.2-1" />
+            <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+          </svg>
           {strings.shopping.hideConfirm}
         </button>
       </div>
     </div>
+  {/if}
+
+  {#if pendingCategory}
+    {#key pendingCategory.id}
+      <CategoryPickerSheet
+        itemName={pendingCategory.name}
+        current={pendingCategory.category}
+        categories={allCategories}
+        isOverridden={pendingCategory.id in shopping.categoryOverrides}
+        onPick={applyCategory}
+        onReset={resetCategory}
+        onClose={() => (pendingCategory = null)}
+      />
+    {/key}
   {/if}
 
   {#if pendingIcon}

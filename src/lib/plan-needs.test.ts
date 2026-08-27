@@ -33,6 +33,7 @@ function entry(overrides: Partial<PlanEntry> = {}): PlanEntry {
     kind: 'dish',
     dishId: 'lasagne',
     itemId: null,
+    toCook: false,
     note: null,
     createdAt: '2026-08-30T10:00:00.000Z',
     ...overrides,

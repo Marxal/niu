@@ -34,6 +34,8 @@
     onAdd,
     onOpen,
     onDrop,
+    onSwipeAway,
+    freshId = null,
   }: {
     date: string
     meal: Meal
@@ -46,6 +48,9 @@
     onAdd: (meal: Meal) => void
     onOpen: (entry: PlanEntry) => void
     onDrop: (id: string, slot: DragSlot) => void
+    onSwipeAway: (id: string) => void
+    /** The entry this phone just planted, so it can play its arrival once. */
+    freshId?: string | null
   } = $props()
 
   let key = $derived(slotKey(date, meal))
@@ -70,8 +75,10 @@
         {tags}
         rhythm={rhythm.get(entry.id) ?? null}
         dragging={drag.entryId === entry.id}
+        fresh={entry.id === freshId}
         onclick={() => onOpen(entry)}
         {onDrop}
+        {onSwipeAway}
       />
     {/each}
 

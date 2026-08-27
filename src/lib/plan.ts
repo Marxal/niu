@@ -72,6 +72,14 @@ export interface PlanEntry {
   dishId: string | null
   /** Set for 'item', null otherwise. */
   itemId: string | null
+  /**
+   * Someone has said this one needs cooking (Marçal, round 10.1).
+   *
+   * Not the same thing as the dish's own `cook` — that says a lasagne is a slow
+   * one, which is true forever. This says that *tonight*, somebody has to
+   * actually do it. Set by hand, never inferred; see 0011_planner_tweaks.sql.
+   */
+  toCook: boolean
   note: string | null
   createdAt: string
 }
@@ -159,6 +167,27 @@ export function startOfWeek(key: string): string {
 /** The seven day keys of the week that starts on `startKey`. */
 export function weekDays(startKey: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(startKey, i))
+}
+
+/**
+ * The days the *day view* should show — which is not always the whole week.
+ *
+ * In the week you are actually in, it starts at today. Nobody plans Monday's
+ * dinner on Wednesday, and two dead days at the top of the screen are two days
+ * of scrolling past before reaching the question you opened the app to answer
+ * (Marçal, round 10.1).
+ *
+ * Any other week shows all seven, and that is the same rule rather than an
+ * exception to it: a week you have deliberately stepped back to is one you are
+ * looking at on purpose, and a past week with its first days missing would be a
+ * week with a hole in it. The week *view* always shows seven, because its job is
+ * the shape of the whole week.
+ */
+export function planningDays(startKey: string, today: string): string[] {
+  const all = weekDays(startKey)
+  const last = all[6] ?? startKey
+  if (today < startKey || today > last) return all
+  return all.filter((day) => day >= today)
 }
 
 /* -------------------------------------------------------------------------- */

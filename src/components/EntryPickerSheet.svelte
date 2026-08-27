@@ -1,30 +1,40 @@
 <!--
   "What are we having?" — the sheet a meal's + button opens.
 
-  Four things can go into a meal and all four are offered here, in the order you
-  are likely to want them:
+  ## The shape, and why it is this way round
 
-    1. dishes you have most of already — the shop → plan direction, at the exact
-       moment it is useful
+  Top: the three answers that need no browsing at all — **Eating out**,
+  **Leftovers**, and **Cook it**. The first two plant a card and close the sheet.
+  The third is not a thing you add; it is a *toggle* that stays on while you pick,
+  so whatever you choose next arrives already marked as one somebody has to cook
+  (Marçal, round 10.1).
+
+  Middle, scrolling: three grids of tiles, in the order you are likely to want
+  them.
+
+    1. what you can make from what you already have — the shop → plan direction,
+       at the exact moment it is useful
     2. the rest of the library, what this household plans most first (§4.2)
-    3. a plain catalogue item, because "broccoli on Tuesday" is a complete
+    3. a plain catalogue thing, because "broccoli on Tuesday" is a complete
        thought and shouldn't need a dish written for it first (§4.2)
-    4. leftovers, or eating out
 
-  Group 1 is the round-10 idea and it is worth being precise about what it
-  claims. It does *not* say what is in your cupboards — that is stock inference,
-  and NIU.md §5 defers it for good reasons. It says: of this dish's ingredients,
-  this many are on your shopping list right now or were bought in the last few
-  days. See plannable.ts. Every dish with ingredients carries that count, in
-  every group, so the ordering never has to be taken on trust.
+  Bottom, pinned: the search box and **New dish**. They are last because they are
+  the fallbacks — if what you wanted was on screen you never reach them, and a
+  search field at the top of a sheet invites typing before looking. Pinning them
+  means they are still one thumb-stretch away from wherever you have scrolled to.
 
-  The search box searches both halves at once. Typing "brocc" should find the
-  broccoli whether you were after the vegetable or a dish made of it, and asking
-  the user which of two indexes to look in is asking them to do the work.
+  Tiles rather than rows since round 10.1. A library is something you recognise
+  your way around rather than read — the same argument that made the dish library
+  a grid in round 9 — and three across shows nine dishes in the space six rows
+  took.
+
+  On the coverage numbers: they do *not* claim to know your cupboards. See
+  plannable.ts. Every dish that has ingredients carries its count in every group,
+  so the ordering never has to be taken on trust.
 -->
 <script lang="ts">
   import GroceryIcon from './GroceryIcon.svelte'
-  import ItemTile from './ItemTile.svelte'
+  import CookMark from './CookMark.svelte'
   import MarkerIcon from './MarkerIcon.svelte'
   import TagChip from './TagChip.svelte'
   import { type Dish, filterDishes, sortDishes } from '../lib/dishes'
@@ -32,7 +42,7 @@
   import { type PickerItem, matchesSearch, suggestedPicks } from '../lib/list-view'
   import { MEAL_LABELS, type Meal } from '../lib/plan'
   import { MAKEABLE_FLOOR, type Pantry, scoreDish } from '../lib/plannable'
-  import type { PlanTarget } from '../lib/plan.svelte'
+  import type { PlanOptions, PlanTarget } from '../lib/plan.svelte'
   import { shopping } from '../lib/shopping.svelte'
   import { strings } from '../lib/strings'
 
@@ -52,31 +62,24 @@
     library: Dish[]
     tags: DishTag[]
     pantry: Pantry
-    onPick: (target: PlanTarget) => void
-    onNewDish: () => void
+    onPick: (target: PlanTarget, options: PlanOptions) => void
+    onNewDish: (options: PlanOptions) => void
     onClose: () => void
   } = $props()
 
-  /** Enough to thumb through; past that, type. Same number the ingredient picker uses. */
-  const MAX_ITEMS = 18
+  /** Enough to thumb through; past that, type. */
+  const MAX_ITEMS = 24
 
   let query = $state('')
+  /** Sticky while you pick. See the header. */
+  let toCook = $state(false)
+
   let trimmed = $derived(query.trim())
   let searching = $derived(trimmed !== '')
 
   let matching = $derived(searching ? filterDishes(library, trimmed) : sortDishes(library))
 
-  /**
-   * The library, split by whether the ingredients are to hand.
-   *
-   * Sorted within the first group by how complete it is, and within the second
-   * by how often this household plans it — "most-used" (§4.2), which is
-   * times_planned rather than times_added: planning a dish and shopping for it
-   * are different events (0010_meal_plan.sql).
-   */
-  let scored = $derived(
-    matching.map((dish) => ({ dish, score: scoreDish(dish, pantry) })),
-  )
+  let scored = $derived(matching.map((dish) => ({ dish, score: scoreDish(dish, pantry) })))
 
   let haveMost = $derived(
     scored
@@ -84,6 +87,11 @@
       .sort((a, b) => (b.score?.coverage ?? 0) - (a.score?.coverage ?? 0)),
   )
 
+  /**
+   * The rest of the library, ordered by what this household plans most —
+   * `timesPlanned` rather than `timesAdded`, because planning a dish and shopping
+   * for it are different events (0010_meal_plan.sql).
+   */
   let rest = $derived(
     scored
       .filter((row) => !haveMost.includes(row))
@@ -95,21 +103,24 @@
       ),
   )
 
-  /** Plain catalogue things: what matches, or the usual suspects. */
   let items = $derived.by<PickerItem[]>(() => {
-    if (!searching) return suggestedPicks(shopping.picker, new Set(), 8)
+    if (!searching) return suggestedPicks(shopping.picker, new Set(), 9)
     return shopping.picker
       .filter((item) => matchesSearch(item.name, trimmed))
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .slice(0, MAX_ITEMS)
   })
 
-  let nothing = $derived(searching && haveMost.length === 0 && rest.length === 0 && items.length === 0)
+  let nothing = $derived(
+    searching && haveMost.length === 0 && rest.length === 0 && items.length === 0,
+  )
+
+  let options = $derived<PlanOptions>({ toCook })
 
   function coverage(score: ReturnType<typeof scoreDish>): string {
     if (!score) return ''
     if (score.have === score.total) return strings.plan.haveAll
-    return strings.plan.haveSome(score.have, score.total)
+    return `${score.have}/${score.total}`
   }
 </script>
 
@@ -137,16 +148,24 @@
     </button>
   </header>
 
-  <input
-    type="search"
-    bind:value={query}
-    placeholder={strings.plan.pickSearch}
-    aria-label={strings.plan.pickSearch}
-    autocomplete="off"
-    autocapitalize="none"
-    spellcheck="false"
-    enterkeyhint="search"
-  />
+  <div class="quick">
+    <button onclick={() => onPick({ kind: 'out' }, options)}>
+      <MarkerIcon kind="out" size={18} />
+      {strings.plan.out}
+    </button>
+    <button onclick={() => onPick({ kind: 'leftovers', dishId: null }, options)}>
+      <MarkerIcon kind="leftovers" size={18} />
+      {strings.plan.leftovers}
+    </button>
+    <button class="toggle" class:on={toCook} aria-pressed={toCook} onclick={() => (toCook = !toCook)}>
+      <CookMark size={18} />
+      {strings.plan.toCook}
+    </button>
+  </div>
+
+  {#if toCook}
+    <p class="cook-hint">{strings.plan.pickCookHint}</p>
+  {/if}
 
   <div class="scroller">
     {#if nothing}
@@ -157,9 +176,9 @@
       <section>
         <h3>{strings.plan.makeableTitle}</h3>
         <p class="why">{strings.plan.haveFrom}</p>
-        <div class="rows">
+        <div class="grid">
           {#each haveMost as row (row.dish.id)}
-            {@render dishRow(row.dish, row.score)}
+            {@render dishTile(row.dish, row.score, true)}
           {/each}
         </div>
       </section>
@@ -172,74 +191,76 @@
       {:else if rest.length === 0 && !searching}
         <p class="none">{strings.plan.haveAll}</p>
       {:else}
-        <div class="rows">
+        <div class="grid">
           {#each rest as row (row.dish.id)}
-            {@render dishRow(row.dish, row.score)}
+            {@render dishTile(row.dish, row.score, false)}
           {/each}
         </div>
       {/if}
-      <button class="new" onclick={onNewDish}>
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          aria-hidden="true"
-        >
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        {strings.plan.newDish}
-      </button>
     </section>
 
     <section>
       <h3>{strings.plan.pickItems}</h3>
-      <div class="rows">
+      <div class="grid">
         {#each items as item (item.id)}
-          <ItemTile
-            name={item.name}
-            icon={item.icon}
-            emoji={item.emoji}
-            layout="row"
-            state="pick"
-            onclick={() => onPick({ kind: 'item', itemId: item.id })}
-          />
+          <button
+            class="tile thing"
+            onclick={() => onPick({ kind: 'item', itemId: item.id }, options)}
+          >
+            <span class="glyph">
+              <GroceryIcon icon={item.icon} emoji={item.emoji} name={item.name} size={26} />
+            </span>
+            <span class="name">{item.name}</span>
+          </button>
         {/each}
       </div>
     </section>
+  </div>
 
-    <section>
-      <h3>{strings.plan.pickMarkers}</h3>
-      <div class="markers">
-        <button onclick={() => onPick({ kind: 'leftovers', dishId: null })}>
-          <MarkerIcon kind="leftovers" />
-          {strings.plan.leftovers}
-        </button>
-        <button onclick={() => onPick({ kind: 'out' })}>
-          <MarkerIcon kind="out" />
-          {strings.plan.out}
-        </button>
-      </div>
-    </section>
+  <div class="foot">
+    <input
+      type="search"
+      bind:value={query}
+      placeholder={strings.plan.pickSearch}
+      aria-label={strings.plan.pickSearch}
+      autocomplete="off"
+      autocapitalize="none"
+      spellcheck="false"
+      enterkeyhint="search"
+    />
+    <button class="new" onclick={() => onNewDish(options)}>
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+      {strings.plan.newDish}
+    </button>
   </div>
 </div>
 
-{#snippet dishRow(dish: Dish, score: ReturnType<typeof scoreDish>)}
-  <button class="dish" onclick={() => onPick({ kind: 'dish', dishId: dish.id })}>
-    <span class="glyph"><GroceryIcon icon={dish.icon} name={dish.name} size={24} /></span>
-    <span class="text">
-      <span class="name">{dish.name}</span>
-      {#if score}
-        <span class="score" class:full={score.have === score.total}>{coverage(score)}</span>
-      {/if}
-    </span>
-    <span class="chips">
+{#snippet dishTile(dish: Dish, score: ReturnType<typeof scoreDish>, ready: boolean)}
+  <button
+    class="tile dish"
+    class:ready
+    onclick={() => onPick({ kind: 'dish', dishId: dish.id }, options)}
+  >
+    <span class="glyph"><GroceryIcon icon={dish.icon} name={dish.name} size={26} /></span>
+    <span class="name">{dish.name}</span>
+    <span class="foot-row">
       {#each tagsOf(dish.tagIds, tags) as tag (tag.id)}
         <TagChip {tag} size="dot" />
       {/each}
+      {#if score}
+        <span class="score" class:full={score.have === score.total}>{coverage(score)}</span>
+      {/if}
     </span>
   </button>
 {/snippet}
@@ -257,15 +278,15 @@
     inset: auto 0 0 0;
     z-index: var(--z-sheet);
     display: grid;
-    /* Header and search stay put; only the choices scroll. Half this sheet is
-       under the keyboard as soon as anyone types. */
-    grid-template-rows: auto auto minmax(0, 1fr);
+    /* Header, the three quick answers, the scrolling grids, then the pinned
+       search and New dish. Only the middle row moves. */
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     gap: var(--space-3);
-    max-height: 82vh;
+    max-height: 86vh;
     max-width: var(--content-max);
     margin-inline: auto;
     padding: var(--space-4);
-    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
     background: var(--color-surface);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     box-shadow: var(--shadow-2);
@@ -300,15 +321,41 @@
     color: var(--color-text-muted);
   }
 
-  input {
-    width: 100%;
+  .quick {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .quick button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
     min-height: var(--tap-min);
-    padding: 0 var(--space-4);
+    padding: 0 var(--space-2);
     border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-full);
-    background: var(--color-surface);
-    color: var(--color-text);
-    font-size: var(--text-base);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+  }
+
+  .quick button:active {
+    background: var(--color-surface-sunken);
+  }
+
+  /* The odd one out, and it looks it: the other two do something and close, this
+     one stays on and changes what the next tap means. */
+  .quick .toggle.on {
+    border-color: var(--color-tab-meals);
+    background: var(--color-tab-meals);
+    color: var(--color-accent-ink);
+  }
+
+  .cook-hint {
+    margin-top: calc(var(--space-2) * -1);
+    color: var(--color-tab-meals);
+    font-size: var(--text-xs);
   }
 
   .scroller {
@@ -339,53 +386,68 @@
     font-size: var(--text-xs);
   }
 
-  .rows {
-    display: flex;
-    flex-direction: column;
+  /* Three across, rows sized to the tallest tile in them so a two-line name
+     can't leave its neighbours short — same rule as the shopping grid. */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-2);
+    grid-auto-rows: 1fr;
+    align-items: stretch;
   }
 
-  .dish {
+  .tile {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: var(--space-3);
-    min-height: var(--tap-min);
-    padding: var(--space-2) var(--space-3);
+    gap: var(--space-1);
+    min-height: 5.25rem;
+    padding: var(--space-2) var(--space-1);
     border: 1px solid var(--color-pick-border);
     border-radius: var(--radius-md);
     background: var(--color-pick-soft);
-    text-align: left;
+    color: var(--color-text);
+    text-align: center;
   }
 
-  .dish:active {
-    transform: scale(0.99);
+  .tile:active {
+    transform: scale(0.97);
+  }
+
+  /* Everything you have the ingredients for, marked as such — the tile itself
+     says it, not only the number in the corner. */
+  .tile.ready {
+    border-color: var(--color-pick);
   }
 
   .glyph {
     display: grid;
-    flex: none;
     place-items: center;
     color: var(--color-pick);
   }
 
-  .text {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
+  .name {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: var(--text-xs);
+    line-height: var(--leading-tight);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
-  .name {
-    overflow: hidden;
-    font-size: var(--text-base);
-    font-weight: var(--weight-medium);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .foot-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: auto;
+    padding-top: var(--space-1);
   }
 
   .score {
     color: var(--color-text-muted);
     font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
   }
 
   .score.full {
@@ -393,32 +455,23 @@
     font-weight: var(--weight-bold);
   }
 
-  .chips {
+  .foot {
     display: flex;
-    flex: none;
-    gap: var(--space-1);
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
   }
 
-  .markers {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-2);
-  }
-
-  .markers button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
+  input {
+    width: 100%;
     min-height: var(--tap-min);
+    padding: 0 var(--space-4);
     border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-  }
-
-  .markers button:active {
-    background: var(--color-surface-sunken);
+    border-radius: var(--radius-full);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: var(--text-base);
   }
 
   .new {
@@ -430,7 +483,7 @@
     border-radius: var(--radius-full);
     background: var(--color-tab-meals);
     color: var(--color-accent-ink);
-    font-size: var(--text-sm);
+    font-size: var(--text-base);
     font-weight: var(--weight-bold);
   }
 

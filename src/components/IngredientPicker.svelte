@@ -17,9 +17,16 @@
       words" category, same tile — and then puts it in the dish. Half the things
       a household actually cooks with are words nobody seeded.
 
-  Rows rather than tiles regardless of the view preference: this lives in a
-  sheet, half of which is often covered by the keyboard, and a full-width row is
-  both easier to hit and easier to read a long name on.
+  Round 10.1 changed two things about how it is laid out, both because of the
+  keyboard. The search box **sticks to the top** as you scroll, so hunting
+  through a long category never leaves you without the one control that gets you
+  out of it. And the results are a **grid of four** rather than full-width rows:
+  a dish is eight or ten ingredients, and four across shows a dozen candidates in
+  the strip of sheet the keyboard leaves behind, where rows showed three.
+
+  The chosen ingredients and the browsable categories stay as rows. Those are
+  read rather than scanned — you are checking a list you already made, and the
+  category sections are long enough that four-across would make them a wall.
 
   Nothing here writes to the dish. It hands a new array of catalogue ids to its
   parent, and the parent saves the whole dish in one go.
@@ -158,7 +165,7 @@
     <p class="hint">{strings.dishes.removeIngredient}</p>
   {/if}
 
-  <form onsubmit={submitNew}>
+  <form class="search" onsubmit={submitNew}>
     <input
       type="search"
       bind:value={query}
@@ -181,13 +188,12 @@
       {searching ? strings.shopping.noResults : strings.dishes.ingredientNone}
     </p>
   {:else}
-    <div class="rows results">
+    <div class="results">
       {#each results as item (item.id)}
         <ItemTile
           name={item.name}
           icon={item.icon}
           emoji={item.emoji}
-          layout="row"
           state="pick"
           onclick={() => add(item.id)}
         />
@@ -220,6 +226,44 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+  }
+
+  /*
+    Stuck to the top of the sheet as it scrolls, so the one control that shortens
+    a 500-item catalogue is always in reach.
+
+    The exact mirror of `.actions` in DishSheet.svelte, negative margins and all,
+    and for the same reason that file spells out: the sheet is the scrolling
+    element *and* it has padding, so a plain `top: 0` would stick 16px down and
+    leave a strip of that padding for content to show through as it scrolls past.
+    Pulling out to the sheet's own edges and sticking at -16px puts the opaque
+    background exactly where the gap would be.
+  */
+  .search {
+    position: sticky;
+    top: calc(var(--space-4) * -1);
+    z-index: 1;
+    margin: 0 calc(var(--space-4) * -1);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-surface);
+  }
+
+  /*
+    Four across, rows sized to the tallest tile so a two-line name can't leave
+    its neighbours short — the same rule as the shopping grid.
+
+    It used to be capped at 15rem with its own scrollbar, so that the sheet's
+    buttons stayed reachable past a long result list. That cap is gone: a scroll
+    area inside a scrolling sheet is a bad thing to hand someone on a phone, and
+    the sticky search box above solves the problem the cap was there for — you
+    can always get back to the field that shortens the list.
+  */
+  .results {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-2);
+    grid-auto-rows: 1fr;
+    align-items: stretch;
   }
 
   .head {
@@ -260,14 +304,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
-  }
-
-  /* The catalogue is 400-odd items long. Capped so the buttons at the bottom of
-     the sheet stay reachable rather than being pushed off the end of a list. */
-  .results {
-    max-height: 15rem;
-    overflow-y: auto;
-    overscroll-behavior: contain;
   }
 
   .categories {

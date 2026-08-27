@@ -1,5 +1,6 @@
 /*
- * Picking a planned meal up and putting it somewhere else.
+ * The two gestures a planned meal card understands: hold to move it, swipe to
+ * throw it away.
  *
  * Marçal chose long-press-and-drag over the safer tap-to-lift-tap-to-drop, so
  * this is the real gesture rather than an approximation of it, and the awkward
@@ -35,6 +36,23 @@
  * Pointer events throughout, not touch events: one code path covers a finger, a
  * mouse and a stylus, and `setPointerCapture` means a fast drag that outruns the
  * finger still delivers its move and up events to the card that started it.
+ *
+ * ## Three gestures on one card, and how they stay apart
+ *
+ * A card sits in a vertically scrolling page and answers to all three of:
+ *
+ *   scroll   a finger moving mostly *up or down* — the browser's, untouched
+ *   swipe    a finger moving mostly *sideways* — takes the card away
+ *   drag     a finger that stays still long enough — picks the card up
+ *
+ * They are told apart by the first thing the finger does, and only once: the
+ * gesture is decided at the first movement past MOVE_TOLERANCE (or by the timer
+ * firing before there is any) and never revisited. That is what stops a drag
+ * turning into a swipe halfway across the screen, and it is why the swipe test
+ * asks for movement that is clearly sideways — 1.4× more horizontal than
+ * vertical — rather than merely more sideways than not. A diagonal flick is much
+ * more likely to be a scroll than a delete, and deleting is the one outcome
+ * here that loses something.
  */
 
 import { type Meal, isMeal } from './plan'
@@ -50,6 +68,18 @@ const EDGE = 76
 
 /** Pixels per frame at the edge. About 700/s, which is a brisk but followable scroll. */
 const SCROLL_STEP = 12
+
+/**
+ * How much more horizontal than vertical a movement has to be before it is a
+ * swipe rather than the start of a scroll. See the header.
+ */
+const SWIPE_BIAS = 1.4
+
+/** How far across the card has to end up for the swipe to actually remove it. */
+const SWIPE_AWAY = 96
+
+/** How long the card takes to fly off, or to spring back. Matches motion.ts. */
+const SWIPE_MS = 190
 
 export interface DragSlot {
   date: string
@@ -108,6 +138,11 @@ export interface DraggableOptions {
   id: string
   /** Called with the slot the card was let go over. Never called for a no-move. */
   onDrop: (id: string, slot: DragSlot) => void
+  /**
+   * Called once the card has finished flying off sideways. Leave it out and the
+   * card simply won't swipe — which is what the copy under the finger wants.
+   */
+  onSwipeAway?: ((id: string) => void) | undefined
   /** Set false to make a card inert — used while a sheet is open over the plan. */
   enabled?: boolean
 }
@@ -132,6 +167,29 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
   let frame: number | null = null
   let lastX = 0
   let lastY = 0
+
+  /**
+   * What this touch turned out to be. Decided once, at the first movement past
+   * the tolerance or by the long-press timer, and never revisited.
+   */
+  let gesture: 'undecided' | 'drag' | 'swipe' | 'scroll' = 'undecided'
+
+  function slide(x: number, animated: boolean): void {
+    node.style.transition = animated ? `transform ${SWIPE_MS}ms ease-out, opacity ${SWIPE_MS}ms ease-out` : ''
+    node.style.transform = x === 0 ? '' : `translateX(${x}px)`
+    // Fades as it goes, so the card reads as leaving rather than as sliding to
+    // reveal something. There is nothing underneath but the bin.
+    node.style.opacity = x === 0 ? '' : `${Math.max(0.35, 1 - Math.abs(x) / (SWIPE_AWAY * 2.4))}`
+  }
+
+  function resetSlide(animated: boolean): void {
+    slide(0, animated)
+    if (animated) {
+      window.setTimeout(() => {
+        node.style.transition = ''
+      }, SWIPE_MS)
+    }
+  }
 
   const blockTouch = (event: TouchEvent) => event.preventDefault()
 
@@ -254,6 +312,7 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
 
     pointerId = null
     lifted = false
+    gesture = 'undecided'
     drag.active = false
     drag.entryId = null
     drag.overKey = null
@@ -265,8 +324,46 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
    * and the other then has nothing to do.
    */
   function onWindowEnd(event: PointerEvent): void {
-    if (!lifted || pointerId !== event.pointerId) return
-    drop()
+    if (pointerId !== event.pointerId) return
+    if (gesture === 'swipe') releaseSwipe()
+    else if (lifted) drop()
+  }
+
+  /**
+   * The end of a sideways gesture: far enough across and the card flies off and
+   * is reported gone; short of that it springs back.
+   *
+   * The removal is reported *after* the card has left rather than immediately,
+   * so what you see is the card going and then the row closing, rather than the
+   * row closing under a card that is still visibly mid-flight.
+   */
+  function releaseSwipe(): void {
+    const dx = lastX - startX
+    const id = current.id
+    const away = Math.abs(dx) > SWIPE_AWAY
+
+    window.removeEventListener('touchmove', blockTouch)
+    window.removeEventListener('pointerup', onWindowEnd)
+    window.removeEventListener('pointercancel', onWindowEnd)
+
+    if (pointerId !== null && node.hasPointerCapture?.(pointerId)) {
+      node.releasePointerCapture(pointerId)
+    }
+
+    pointerId = null
+    gesture = 'undecided'
+    swallowClick = true
+
+    if (!away) {
+      resetSlide(true)
+      return
+    }
+
+    const off = dx > 0 ? node.offsetWidth + 40 : -(node.offsetWidth + 40)
+    node.style.transition = `transform ${SWIPE_MS}ms ease-in, opacity ${SWIPE_MS}ms ease-in`
+    node.style.transform = `translateX(${off}px)`
+    node.style.opacity = '0'
+    window.setTimeout(() => current.onSwipeAway?.(id), SWIPE_MS)
   }
 
   /** Works out where the card was let go, tidies up, and reports the move. */
@@ -291,9 +388,14 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
     startY = event.clientY
     lastX = startX
     lastY = startY
+    gesture = 'undecided'
 
     clearTimer()
-    timer = setTimeout(lift, LONG_PRESS_MS)
+    timer = setTimeout(() => {
+      if (gesture !== 'undecided') return
+      gesture = 'drag'
+      lift()
+    }, LONG_PRESS_MS)
   }
 
   function onPointerMove(event: PointerEvent): void {
@@ -302,14 +404,39 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
     lastX = event.clientX
     lastY = event.clientY
 
+    if (gesture === 'swipe') {
+      event.preventDefault()
+      slide(lastX - startX, false)
+      return
+    }
+
     if (!lifted) {
-      // Still deciding. Enough movement and this was a scroll all along.
-      const far =
-        Math.abs(lastX - startX) > MOVE_TOLERANCE || Math.abs(lastY - startY) > MOVE_TOLERANCE
-      if (far) {
-        clearTimer()
-        pointerId = null
+      const dx = lastX - startX
+      const dy = lastY - startY
+      const far = Math.abs(dx) > MOVE_TOLERANCE || Math.abs(dy) > MOVE_TOLERANCE
+      if (!far) return
+
+      clearTimer()
+
+      // Clearly sideways, and this card can be thrown away: a swipe.
+      if (current.onSwipeAway && Math.abs(dx) > Math.abs(dy) * SWIPE_BIAS) {
+        gesture = 'swipe'
+        try {
+          node.setPointerCapture?.(event.pointerId)
+        } catch {
+          // Same story as in lift(): the window listeners below cover it.
+        }
+        window.addEventListener('touchmove', blockTouch, { passive: false })
+        window.addEventListener('pointerup', onWindowEnd)
+        window.addEventListener('pointercancel', onWindowEnd)
+        event.preventDefault()
+        slide(dx, false)
+        return
       }
+
+      // Anything else this far out was the page scrolling all along.
+      gesture = 'scroll'
+      pointerId = null
       return
     }
 
@@ -325,11 +452,18 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
       return
     }
 
-    if (lifted) drop()
+    if (gesture === 'swipe') releaseSwipe()
+    else if (lifted) drop()
     else finish()
   }
 
   function onPointerCancel(): void {
+    if (gesture === 'swipe') {
+      // A cancelled swipe never removes anything: the card comes back.
+      lastX = startX
+      releaseSwipe()
+      return
+    }
     finish()
   }
 
@@ -345,7 +479,7 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
    * builds, which cancels the pointer stream mid-drag.
    */
   function onContextMenu(event: Event): void {
-    if (lifted) event.preventDefault()
+    if (lifted || gesture === 'swipe') event.preventDefault()
   }
 
   node.addEventListener('pointerdown', onPointerDown)
@@ -360,6 +494,8 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
       current = next
     },
     destroy() {
+      window.removeEventListener('pointerup', onWindowEnd)
+      window.removeEventListener('pointercancel', onWindowEnd)
       finish()
       node.removeEventListener('pointerdown', onPointerDown)
       node.removeEventListener('pointermove', onPointerMove)

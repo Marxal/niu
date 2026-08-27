@@ -10,9 +10,18 @@
   answer to "what do we actually need this week", with the dish that wants each
   thing written beside it. Half of shopping is working that out.
 
-  Nothing here writes. It shows what planNeeds() worked out and hands the tap
-  back to the planner, which calls add_plan_to_list() — one round trip, and the
-  database returns the count that gets reported.
+  Since round 10.1 it is a list you *tick* rather than an all-or-nothing button.
+  That is not a small change to what it means: half of deciding what to buy is
+  deciding what you already have enough of, and before this the only way to say
+  "not the tomatoes, we have loads" was to add them anyway and take them off the
+  list afterwards. What survives the ticking is what gets written.
+
+  Everything starts ticked, because the common case is that the plan is right —
+  the ticks are for the exceptions, not a checklist to complete.
+
+  Nothing here writes. It shows what planNeeds() worked out and hands the chosen
+  ids back to the planner, which calls add_plan_to_list() — one round trip, and
+  the database returns the count that gets reported.
 -->
 <script lang="ts">
   import GroceryIcon from './GroceryIcon.svelte'
@@ -36,7 +45,8 @@
     itemsById: ReadonlyMap<string, CatalogueItem>
     rangeLabel: string
     busy?: boolean
-    onAdd: () => void
+    /** The catalogue ids that survived the ticking. */
+    onAdd: (itemIds: string[]) => void
     onClose: () => void
   } = $props()
 
@@ -47,6 +57,32 @@
   ])
 
   let already = $derived(needs.all.length - needs.missing.length)
+
+  /**
+   * Which of the missing things are ticked.
+   *
+   * Seeded from the missing list the first time and then left alone — deriving
+   * it would reset every tick each time the plan re-read itself over realtime,
+   * which on a shared plan is often enough to be maddening. Anything that turns
+   * up later (the other phone planned something while this was open) is treated
+   * as ticked by the same "the plan is probably right" default.
+   */
+  let unticked = $state<Set<string>>(new Set())
+
+  let chosen = $derived(
+    needs.missing.map((need) => need.itemId).filter((id) => !unticked.has(id)),
+  )
+
+  function toggle(itemId: string) {
+    const next = new Set(unticked)
+    if (next.has(itemId)) next.delete(itemId)
+    else next.add(itemId)
+    unticked = next
+  }
+
+  function setAll(on: boolean) {
+    unticked = on ? new Set() : new Set(needs.missing.map((need) => need.itemId))
+  }
 </script>
 
 <div class="backdrop" role="presentation" onclick={onClose}></div>
@@ -85,12 +121,59 @@
     {:else}
       {#if needs.missing.length === 0}
         <p class="none">{strings.plan.shopNothingNeeded}</p>
+      {:else if needs.missing.length > 1}
+        <div class="bulk">
+          <button onclick={() => setAll(true)}>{strings.plan.shopAll}</button>
+          <button onclick={() => setAll(false)}>{strings.plan.shopNone}</button>
+        </div>
       {/if}
 
       <ul class="rows">
         {#each rows as row (row.need.itemId)}
           {@const item = itemsById.get(row.need.itemId)}
+          {@const ticked = !row.on && !unticked.has(row.need.itemId)}
           <li class="row" class:on={row.on}>
+            {#if row.on}
+              <span class="box done" aria-hidden="true">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="m5 13 4 4L19 7" />
+                </svg>
+              </span>
+            {:else}
+              <button
+                class="box"
+                class:ticked
+                role="checkbox"
+                aria-checked={ticked}
+                aria-label={item?.name ?? ''}
+                onclick={() => toggle(row.need.itemId)}
+              >
+                {#if ticked}
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m5 13 4 4L19 7" />
+                  </svg>
+                {/if}
+              </button>
+            {/if}
             <span class="glyph">
               <GroceryIcon
                 icon={item?.icon ?? null}
@@ -107,22 +190,6 @@
                   : strings.plan.shopForNobody}
               </span>
             </span>
-            {#if row.on}
-              <svg
-                class="tick"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="m5 13 4 4L19 7" />
-              </svg>
-            {/if}
           </li>
         {/each}
       </ul>
@@ -134,8 +201,8 @@
   </div>
 
   {#if needs.missing.length > 0}
-    <button class="go" onclick={onAdd} disabled={busy}>
-      {strings.plan.shopAdd(needs.missing.length)}
+    <button class="go" onclick={() => onAdd(chosen)} disabled={busy || chosen.length === 0}>
+      {chosen.length === 0 ? strings.plan.shopNoneChosen : strings.plan.shopAdd(chosen.length)}
     </button>
   {/if}
 </div>
@@ -253,9 +320,45 @@
     white-space: nowrap;
   }
 
-  .tick {
+  .bulk {
+    display: flex;
+    gap: var(--space-2);
+    padding: 0 var(--space-2) var(--space-1);
+  }
+
+  .bulk button {
+    min-height: 2rem;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-sunken);
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+  }
+
+  .box {
+    display: grid;
     flex: none;
-    color: var(--color-success);
+    place-items: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    border: 2px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    color: transparent;
+  }
+
+  .box.ticked {
+    border-color: var(--color-pick);
+    background: var(--color-pick);
+    color: var(--color-accent-ink);
+  }
+
+  /* Already on the list: the same box, filled, but not a control — there is
+     nothing to decide about something you have already got. */
+  .box.done {
+    border-color: var(--color-border);
+    background: var(--color-border);
+    color: var(--color-text-muted);
   }
 
   .already,

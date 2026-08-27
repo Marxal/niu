@@ -166,3 +166,92 @@ export function scoreDish(dish: Dish, pantry: Pantry): Makeable | null {
   const [ranked] = rankMakeable([dish], pantry, 0)
   return ranked ?? null
 }
+
+/* -------------------------------------------------------------------------- */
+/* What's home                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How sure the app is that something is still in the house.
+ *
+ *   sure    bought in the last few days. Barely a guess.
+ *   check   bought longer ago than that, but not yet as long ago as this
+ *           household usually leaves between buying it. Might be there, might
+ *           not — hence the words "double-check" on screen rather than a claim.
+ *
+ * Two levels and no more. A percentage would imply a model that does not exist,
+ * and the honest answer here has exactly two shades: *we just bought this* and
+ * *we bought this a while ago and you'd know better than we would*.
+ */
+export type AtHome = 'sure' | 'check'
+
+/**
+ * How long something can be "possibly still here" when nothing is known about
+ * how often it gets bought. Ten days: past a weekly shop, short of a fortnight.
+ */
+export const UNKNOWN_GAP_DAYS = 10
+
+/** The far edge. Nothing is claimed to be at home after this, whatever its gap. */
+export const MAX_AT_HOME_DAYS = 21
+
+export interface AtHomeItem {
+  itemId: string
+  confidence: AtHome
+  /** Whole days since it was last bought. */
+  daysAgo: number
+}
+
+/**
+ * What the household has probably got in, from what it has bought.
+ *
+ * This is the nearest thing in the app to §5's deferred stock inference, and it
+ * is deliberately the dumb half of it: **it counts purchases, it does not model
+ * shelf life.** A fish and a bag of rice bought on the same day are treated the
+ * same, because the app has no idea which is which and inventing a difference
+ * would be inventing data. What it does have is per-item purchase rhythm from
+ * round 7, which is a real signal about *this* household: something you buy
+ * every three weeks is plausibly still around after ten days, and something you
+ * buy every Saturday is not.
+ *
+ * That is why there is a "double-check" band at all. The alternative — one
+ * cut-off, everything either home or not — would be more confident and less
+ * true, and the correction the user makes on a wrong one is the thing §5 says
+ * actually teaches the shelf-life guess later.
+ *
+ * Anything on the shopping list is left out. Putting it back on the list is a
+ * statement that you have run out, and it is the most recent thing the household
+ * has said on the subject — more recent than the purchase.
+ */
+export function atHomeItems(
+  stats: Readonly<Record<string, BuyingStat>>,
+  onList: ReadonlySet<string>,
+  now: Date = new Date(),
+  freshDays: number = FRESH_DAYS,
+): AtHomeItem[] {
+  const out: AtHomeItem[] = []
+
+  for (const [itemId, stat] of Object.entries(stats)) {
+    if (onList.has(itemId)) continue
+    if (!stat.lastBoughtAt) continue
+
+    const bought = Date.parse(stat.lastBoughtAt)
+    if (Number.isNaN(bought)) continue
+
+    const daysAgo = Math.floor((now.getTime() - bought) / 86_400_000)
+    // A clock that disagrees with the server by a few hours can put a purchase
+    // in the future. Treat it as today rather than as a negative age.
+    const age = Math.max(0, daysAgo)
+
+    if (age <= freshDays) {
+      out.push({ itemId, confidence: 'sure', daysAgo: age })
+      continue
+    }
+
+    const gap = Math.min(stat.avgGapDays ?? UNKNOWN_GAP_DAYS, MAX_AT_HOME_DAYS)
+    if (age < gap) out.push({ itemId, confidence: 'check', daysAgo: age })
+  }
+
+  // Freshest first, then by id so two things bought in the same shop keep a
+  // stable order between renders rather than swapping places.
+  return out.sort((a, b) => a.daysAgo - b.daysAgo || a.itemId.localeCompare(b.itemId))
+}

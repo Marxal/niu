@@ -13,12 +13,17 @@
   tap away in the header, because the library is the raw material and the plan is
   the thing you actually open the tab for.
 
-  ## Tap to act, hold to move
+  ## Tap to act, hold to move, swipe to remove
 
   One rule that decides most of the interaction. A long press is the drag
-  (drag.svelte.ts), so a tap opens the card's sheet instead. The copy that
-  follows the finger is rendered here, at the root of the screen, because a
-  `position: fixed` element inside a day card would be clipped by the scroller.
+  (drag.svelte.ts), so a tap opens the card's sheet instead, and a clearly
+  sideways swipe throws the card away. The copy that follows the finger is
+  rendered here, at the root of the screen, because a `position: fixed` element
+  inside a day card would be clipped by the scroller.
+
+  A swipe is the one gesture that removes something and can be started by
+  accident, so it is the one message in the app that offers an Undo — which
+  re-plans the card rather than resurrecting it, because the row is gone.
 
   ## Both directions
 
@@ -31,6 +36,7 @@
   know what is in the cupboards — that is stock inference, and §5 defers it.
 -->
 <script lang="ts">
+  import AtHomeSheet from '../components/AtHomeSheet.svelte'
   import DishSheet from '../components/DishSheet.svelte'
   import EntryPickerSheet from '../components/EntryPickerSheet.svelte'
   import Flash from '../components/Flash.svelte'
@@ -55,6 +61,7 @@
     dayName,
     entriesBetween,
     mealRhythm,
+    planningDays,
     shortDate,
     startOfWeek,
     todayKey,
@@ -63,17 +70,19 @@
   } from '../lib/plan'
   import { planNeeds } from '../lib/plan-needs'
   import {
+    type PlanOptions,
     type PlanTarget,
     moveEntry,
     plan,
     planEntry,
     setEntryKind,
     setEntryNote,
+    setToCook,
     shopForRange,
     showWeek,
     unplanEntry,
   } from '../lib/plan.svelte'
-  import { pantryFrom, rankMakeable } from '../lib/plannable'
+  import { atHomeItems, pantryFrom, rankMakeable } from '../lib/plannable'
   import { hrefFor } from '../lib/router'
   import { addToList, shopping } from '../lib/shopping.svelte'
   import { strings } from '../lib/strings'
@@ -90,15 +99,43 @@
   let today = $derived(todayKey())
 
   let days = $derived(weekDays(plan.weekStart))
+  /**
+   * What the *day* view lists. In the week you are in it starts at today —
+   * planning Monday's dinner on Wednesday is not a thing anyone does, and the
+   * dead days were two screens of scrolling before the question you opened the
+   * app to answer (Marçal, round 10.1). The week view always shows all seven.
+   */
+  let openDays = $derived(planningDays(plan.weekStart, today))
   let weekEnd = $derived(addDays(plan.weekStart, 6))
 
   let picking = $state<{ date: string; meal: Meal } | null>(null)
   let opened = $state<PlanEntry | null>(null)
   let shopping_sheet = $state(false)
   let makeable_sheet = $state(false)
+  let home_sheet = $state(false)
   let editingDish = $state<Dish | 'new' | null>(null)
   let busy = $state(false)
-  let flash = $state<{ text: string; tone: 'good' | 'bad' } | null>(null)
+  let homeBusyId = $state<string | null>(null)
+
+  /**
+   * Where a dish written from the picker should land, and how.
+   *
+   * Held across the dish editor because the whole point of round 10.1's fix is
+   * that "+ Add → New dish → Add it" plants the dish on the day you were looking
+   * at. Before, it wrote the dish and dropped you back on an empty meal, which
+   * looked like the tap had failed.
+   */
+  let pendingSlot = $state<{ date: string; meal: Meal; options: PlanOptions } | null>(null)
+
+  /** The card this phone just planted, so it can play its arrival once. */
+  let freshId = $state<string | null>(null)
+
+  let flash = $state<{
+    text: string
+    tone: 'good' | 'bad'
+    action?: string
+    onAction?: () => void
+  } | null>(null)
 
   let thisWeek = $derived(plan.weekStart === startOfWeek(today))
 
@@ -123,6 +160,8 @@
 
   let makeable = $derived(rankMakeable(dishes.all, pantry))
 
+  let atHome = $derived(atHomeItems(learning.stats, shopping.onList, new Date()))
+
   let needs = $derived(
     planNeeds(plan.entries, plan.weekStart, weekEnd, dishes.byId, shopping.onList),
   )
@@ -133,15 +172,101 @@
     showWeek(addDays(plan.weekStart, weeks * 7))
   }
 
+  /** Plays the arrival flourish on a newly planted card, once. */
+  function markFresh(id: string | null) {
+    if (!id) return
+    freshId = id
+    window.setTimeout(() => {
+      if (freshId === id) freshId = null
+    }, 600)
+  }
+
   async function onDrop(id: string, slot: DragSlot) {
     await moveEntry(id, slot)
   }
 
-  async function pick(target: PlanTarget) {
+  async function pick(target: PlanTarget, options: PlanOptions) {
     const slot = picking
     if (!slot || !auth.userId) return
     picking = null
-    await planEntry(slot, target, auth.userId)
+    markFresh(await planEntry(slot, target, auth.userId, options))
+  }
+
+  /**
+   * A dish written from the picker goes straight onto the meal it was opened
+   * from. `pendingSlot` is cleared either way, so cancelling the editor doesn't
+   * leave a slot armed to catch the *next* dish written from the library.
+   */
+  async function dishWritten(dish: Dish) {
+    const target = pendingSlot
+    pendingSlot = null
+    editingDish = null
+    if (!target || !auth.userId) return
+
+    markFresh(
+      await planEntry(
+        { date: target.date, meal: target.meal },
+        { kind: 'dish', dishId: dish.id },
+        auth.userId,
+        target.options,
+      ),
+    )
+  }
+
+  /**
+   * Swiped off the plan. The Undo re-plans it rather than restoring the row —
+   * the row is deleted, and a new one with the same contents is what "put it
+   * back" means here. It loses the entry's position within its meal, which is
+   * the one thing a bag doesn't much care about.
+   */
+  async function swipeAway(entryId: string) {
+    const entry = plan.byId.get(entryId)
+    if (!entry) return
+
+    const name =
+      entry.kind === 'out'
+        ? strings.plan.out
+        : entry.kind === 'item'
+          ? (shopping.byId.get(entry.itemId ?? '')?.name ?? strings.plan.empty)
+          : (dishes.byId.get(entry.dishId ?? '')?.name ?? strings.plan.leftovers)
+
+    await unplanEntry(entryId)
+
+    flash = {
+      text: strings.plan.removed(name),
+      tone: 'good',
+      action: strings.plan.undo,
+      onAction: async () => {
+        flash = null
+        if (!auth.userId) return
+        const target: PlanTarget =
+          entry.kind === 'dish' && entry.dishId
+            ? { kind: 'dish', dishId: entry.dishId }
+            : entry.kind === 'item' && entry.itemId
+              ? { kind: 'item', itemId: entry.itemId }
+              : entry.kind === 'leftovers'
+                ? { kind: 'leftovers', dishId: entry.dishId }
+                : { kind: 'out' }
+
+        markFresh(
+          await planEntry(
+            { date: entry.date, meal: entry.meal },
+            target,
+            auth.userId,
+            { toCook: entry.toCook },
+          ),
+        )
+      },
+    }
+  }
+
+  /** "Out of it" on a What's home row: straight onto the shopping list. */
+  async function outOfIt(itemId: string, name: string) {
+    if (!auth.userId) return
+    homeBusyId = itemId
+    await addToList(itemId, auth.userId)
+    homeBusyId = null
+    flash = { text: strings.plan.homeAdded(name), tone: 'good' }
   }
 
   async function planFromMakeable(dishId: string, meal: Meal) {
@@ -150,8 +275,9 @@
     // the Monday of it — "plan it" should never land somewhere off screen.
     const date = thisWeek ? today : plan.weekStart
     makeable_sheet = false
-    const ok = await planEntry({ date, meal }, { kind: 'dish', dishId }, auth.userId)
-    if (ok) {
+    const id = await planEntry({ date, meal }, { kind: 'dish', dishId }, auth.userId)
+    if (id) {
+      markFresh(id)
       flash = { text: strings.plan.makeablePlanned, tone: 'good' }
     }
   }
@@ -182,9 +308,9 @@
     else flash = { text: strings.plan.shopAdded(added), tone: 'good' }
   }
 
-  async function shopForWeek() {
+  async function shopForWeek(itemIds: string[]) {
     busy = true
-    const added = await shopForRange(plan.weekStart, weekEnd)
+    const added = await shopForRange(plan.weekStart, weekEnd, itemIds)
     busy = false
     shopping_sheet = false
 
@@ -220,6 +346,19 @@
       </div>
 
       <a class="library" href={hrefFor('meals') + '/dishes'}>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.9"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 6h16M4 12h16M4 18h10" />
+        </svg>
         {strings.plan.dishesLink}
         <svg
           width="16"
@@ -304,7 +443,7 @@
 
     {#if view === 'days'}
       <div class="days">
-        {#each days as date (date)}
+        {#each openDays as date (date)}
           <PlanDay
             {date}
             {today}
@@ -317,6 +456,8 @@
             onAdd={(d, meal) => (picking = { date: d, meal })}
             onOpen={(entry) => (opened = entry)}
             {onDrop}
+            onSwipeAway={swipeAway}
+            {freshId}
           />
         {/each}
       </div>
@@ -333,13 +474,20 @@
         onAdd={(d, meal) => (picking = { date: d, meal })}
         onOpen={(entry) => (opened = entry)}
         {onDrop}
+        onSwipeAway={swipeAway}
+        {freshId}
       />
     {/if}
 
+  </div>
+
+  <!-- Pinned, because both questions are asked *while* looking at the week
+       rather than after scrolling to the end of it. -->
+  <div class="dock">
     <button class="shop" onclick={() => (shopping_sheet = true)}>
       <svg
-        width="20"
-        height="20"
+        width="19"
+        height="19"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -352,9 +500,30 @@
         <circle cx="10" cy="20" r="1" />
         <circle cx="17" cy="20" r="1" />
       </svg>
-      {strings.plan.shopWeek}
+      <span class="label">{strings.plan.shopWeek}</span>
       {#if needs.missing.length > 0}
         <span class="count">{needs.missing.length}</span>
+      {/if}
+    </button>
+
+    <button class="home" onclick={() => (home_sheet = true)}>
+      <svg
+        width="19"
+        height="19"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 11 12 4l8 7" />
+        <path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9" />
+      </svg>
+      <span class="label">{strings.plan.homeTitle}</span>
+      {#if atHome.length > 0}
+        <span class="count">{atHome.length}</span>
       {/if}
     </button>
   </div>
@@ -387,7 +556,8 @@
       tags={dishes.tags}
       {pantry}
       onPick={pick}
-      onNewDish={() => {
+      onNewDish={(options) => {
+        pendingSlot = { date: slot.date, meal: slot.meal, options }
         picking = null
         editingDish = 'new'
       }}
@@ -403,6 +573,10 @@
       item={entry.itemId ? (shopping.byId.get(entry.itemId) ?? null) : null}
       {today}
       onToggleLeftovers={toggleLeftovers}
+      onToggleToCook={() => {
+        opened = null
+        void setToCook(entry.id, !entry.toCook)
+      }}
       onShopFor={shopForEntry}
       onEditDish={(dish) => {
         opened = null
@@ -438,6 +612,16 @@
     />
   {/if}
 
+  {#if home_sheet}
+    <AtHomeSheet
+      items={atHome}
+      itemsById={shopping.byId}
+      busyId={homeBusyId}
+      onAddToList={outOfIt}
+      onClose={() => (home_sheet = false)}
+    />
+  {/if}
+
   {#if editingDish}
     <!-- Keyed so opening a different dish mounts a fresh sheet: the draft fields
          inside snapshot their dish once and never re-sync. -->
@@ -445,16 +629,27 @@
       <DishSheet
         dish={editingDish === 'new' ? null : editingDish}
         userId={auth.userId}
-        onClose={() => (editingDish = null)}
+        onSaved={dishWritten}
+        onClose={() => {
+          editingDish = null
+          pendingSlot = null
+        }}
       />
     {/key}
   {/if}
 
   {#if flash}
     {@const shown = flash}
-    <div class="flash-slot">
-      <Flash message={shown.text} tone={shown.tone} onDone={() => (flash = null)} />
-    </div>
+    <!-- No wrapper: Flash positions itself, and a fixed wrapper here was both
+         redundant and — with pointer-events: none on it — the reason the Undo
+         button could not be tapped. -->
+    <Flash
+      message={shown.text}
+      tone={shown.tone}
+      action={shown.action}
+      onAction={shown.onAction}
+      onDone={() => (flash = null)}
+    />
   {/if}
 {/if}
 
@@ -463,7 +658,10 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    padding: var(--space-3) var(--space-3) var(--space-8);
+    padding: var(--space-3) var(--space-3);
+    /* Clear of the pinned dock — its own height plus its padding — so the last
+       day of the week can still be scrolled fully into view. */
+    padding-bottom: calc(var(--tap-min) + var(--space-6));
   }
 
   .bar {
@@ -496,16 +694,25 @@
     box-shadow: var(--shadow-1);
   }
 
+  /* A button, not a link with a chevron (Marçal, round 10.1): it sits beside the
+     Days/Week switch and has to read as the third control in that row rather
+     than as a caption that happens to be tappable. */
   .library {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
-    min-height: var(--tap-min);
-    padding-left: var(--space-2);
-    color: var(--color-tab-meals);
+    gap: var(--space-2);
+    min-height: 2.5rem;
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-full);
+    background: var(--color-tab-meals);
+    color: var(--color-accent-ink);
     font-size: var(--text-sm);
     font-weight: var(--weight-bold);
     text-decoration: none;
+  }
+
+  .library:active {
+    transform: scale(0.98);
   }
 
   .weeks {
@@ -543,23 +750,57 @@
     font-size: var(--text-xs);
   }
 
-  .makeable,
-  .shop {
+  .makeable {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: var(--space-2);
     min-height: var(--tap-min);
+    border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-full);
-    font-size: var(--text-base);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
     font-weight: var(--weight-bold);
   }
 
-  /* Quieter than the shopping button: it is an offer, not the main move. */
-  .makeable {
-    border: 1px solid var(--color-border-strong);
-    color: var(--color-text-muted);
+  /*
+    The two questions you ask while looking at the week, pinned above the nav so
+    neither needs scrolling to. Side by side and equal width because they are
+    genuinely a pair — one is "what do we need", the other "what have we got" —
+    even though only the first writes anything.
+  */
+  .dock {
+    position: fixed;
+    right: 0;
+    bottom: var(--nav-height);
+    left: 0;
+    z-index: var(--z-nav);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+    max-width: var(--content-max);
+    margin-inline: auto;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .dock button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--tap-min);
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-full);
     font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+  }
+
+  .dock .label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .shop {
@@ -568,15 +809,24 @@
     box-shadow: var(--shadow-1);
   }
 
-  .shop:active,
+  /* Outlined rather than filled: it tells you something, it doesn't change
+     anything, and two solid buttons side by side would both shout. */
+  .home {
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  .dock button:active,
   .makeable:active {
     transform: scale(0.99);
   }
 
   .count {
     display: grid;
-    min-width: 1.5rem;
-    height: 1.5rem;
+    flex: none;
+    min-width: 1.4rem;
+    height: 1.4rem;
     padding: 0 var(--space-1);
     place-items: center;
     border-radius: var(--radius-full);
@@ -584,7 +834,8 @@
     font-size: var(--text-xs);
   }
 
-  .makeable .count {
+  .makeable .count,
+  .home .count {
     background: var(--color-surface-sunken);
   }
 
@@ -613,12 +864,4 @@
     text-align: center;
   }
 
-  .flash-slot {
-    position: fixed;
-    inset: auto var(--space-4) calc(var(--nav-height) + var(--space-4));
-    z-index: var(--z-toast);
-    display: grid;
-    justify-items: center;
-    pointer-events: none;
-  }
 </style>

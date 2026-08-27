@@ -3,6 +3,9 @@ import type { Dish } from './dishes'
 import {
   EMPTY_PANTRY,
   FRESH_DAYS,
+  MAX_AT_HOME_DAYS,
+  UNKNOWN_GAP_DAYS,
+  atHomeItems,
   type Pantry,
   heldAs,
   pantryFrom,
@@ -144,5 +147,70 @@ describe('scoreDish', () => {
 
   it('says nothing rather than "0 of 0" for a dish that is just a name', () => {
     expect(scoreDish(dish('Eating out', []), pantry([]))).toBe(null)
+  })
+})
+
+describe('atHomeItems', () => {
+  function stats(entries: Record<string, [number, number | null]>) {
+    const out: Record<string, BuyingStat> = {}
+    for (const [id, [days, gap]] of Object.entries(entries)) {
+      out[id] = { timesBought: 3, lastBoughtAt: daysAgo(days), avgGapDays: gap }
+    }
+    return out
+  }
+
+  it('is sure about anything bought in the last few days', () => {
+    const home = atHomeItems(stats({ milk: [1, 7] }), new Set(), NOW)
+    expect(home).toEqual([{ itemId: 'milk', confidence: 'sure', daysAgo: 1 }])
+  })
+
+  it('double-checks something bought longer ago than that but inside its own rhythm', () => {
+    // Bought 9 days ago, and this household buys it about every three weeks.
+    const home = atHomeItems(stats({ rice: [9, 21] }), new Set(), NOW)
+    expect(home[0]?.confidence).toBe('check')
+  })
+
+  it('says nothing about something already overdue by its own rhythm', () => {
+    // Bought 9 days ago and bought weekly: it is gone, and the suggestions strip
+    // is already saying so.
+    expect(atHomeItems(stats({ milk: [9, 7] }), new Set(), NOW)).toEqual([])
+  })
+
+  it('falls back to a default rhythm when it has never learnt one', () => {
+    expect(atHomeItems(stats({ a: [FRESH_DAYS + 1, null] }), new Set(), NOW)[0]?.confidence).toBe(
+      'check',
+    )
+    expect(atHomeItems(stats({ a: [UNKNOWN_GAP_DAYS, null] }), new Set(), NOW)).toEqual([])
+  })
+
+  it('never claims anything past the far edge, however long the rhythm', () => {
+    expect(atHomeItems(stats({ salt: [MAX_AT_HOME_DAYS, 200] }), new Set(), NOW)).toEqual([])
+    expect(atHomeItems(stats({ salt: [MAX_AT_HOME_DAYS - 1, 200] }), new Set(), NOW)).toHaveLength(1)
+  })
+
+  it('leaves out anything back on the shopping list', () => {
+    // Putting it back on the list says you have run out, and that is the most
+    // recent thing anyone in the house has said about it.
+    expect(atHomeItems(stats({ milk: [1, 7] }), new Set(['milk']), NOW)).toEqual([])
+  })
+
+  it('ignores what it has never seen bought, or cannot read', () => {
+    const odd: Record<string, BuyingStat> = {
+      never: { timesBought: 0, lastBoughtAt: null, avgGapDays: null },
+      broken: { timesBought: 2, lastBoughtAt: 'not a date', avgGapDays: 7 },
+    }
+    expect(atHomeItems(odd, new Set(), NOW)).toEqual([])
+  })
+
+  it('treats a purchase from a clock running fast as today', () => {
+    const future = { x: { timesBought: 1, lastBoughtAt: daysAgo(-1), avgGapDays: null } }
+    expect(atHomeItems(future, new Set(), NOW)).toEqual([
+      { itemId: 'x', confidence: 'sure', daysAgo: 0 },
+    ])
+  })
+
+  it('puts the freshest first', () => {
+    const home = atHomeItems(stats({ old: [4, 30], fresh: [0, 30] }), new Set(), NOW)
+    expect(home.map((h) => h.itemId)).toEqual(['fresh', 'old'])
   })
 })
