@@ -39,6 +39,17 @@ export interface Dish {
   /** How many times its tile has been tapped onto the shopping list. */
   timesAdded: number
   lastAddedAt: string | null
+  /**
+   * How many times it has been planned into a meal, and when last.
+   *
+   * Deliberately separate from timesAdded, which counts taps on the shopping
+   * side. Planning a dish and shopping for it are different events: the planner
+   * orders its picker by this one, the Dishes category orders its tiles by the
+   * other, and merging them would make both mean less. Leftovers don't count —
+   * see the trigger in 0010_meal_plan.sql.
+   */
+  timesPlanned: number
+  lastPlannedAt: string | null
 }
 
 /** The editable half of a dish, as the sheet holds it before saving. */

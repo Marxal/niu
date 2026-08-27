@@ -49,6 +49,8 @@ interface DishRow {
   cook: string
   times_added: number
   last_added_at: string | null
+  times_planned: number
+  last_planned_at: string | null
 }
 
 interface DishItemRow {
@@ -73,7 +75,8 @@ interface TagLinkRow {
  * round 8 wrote there, but 0009 carried it into tags and nothing reads it any
  * more — same treatment as list_items.unit in round 6.
  */
-const DISH_COLUMNS = 'id, name, icon, cook, times_added, last_added_at'
+const DISH_COLUMNS =
+  'id, name, icon, cook, times_added, last_added_at, times_planned, last_planned_at'
 
 /**
  * A row plus what hangs off it. The enum columns are checked rather than
@@ -91,6 +94,8 @@ function toDish(row: DishRow, itemIds: string[], tagIds: string[]): Dish {
     itemIds,
     timesAdded: row.times_added,
     lastAddedAt: row.last_added_at,
+    timesPlanned: row.times_planned ?? 0,
+    lastPlannedAt: row.last_planned_at,
   }
 }
 

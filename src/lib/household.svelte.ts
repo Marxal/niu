@@ -12,14 +12,36 @@
  * depends on it yet.
  */
 
+import { DEFAULT_MEALS, type Meal, MEALS, isMeal } from './plan'
 import { strings } from './strings'
 import { supabase } from './supabase'
 
 class HouseholdState {
   id = $state<string | null>(null)
   name = $state<string | null>(null)
+  /**
+   * Which meals a day has in the planner (NIU.md §4.2, "configurable,
+   * defaulting to lunch and dinner").
+   *
+   * Household-level rather than device-level, unlike everything in
+   * prefs.svelte.ts: both phones look at the same plan, and a day with three
+   * meals on one and two on the other is a plan with a hole in it.
+   */
+  meals = $state<Meal[]>([...DEFAULT_MEALS])
   loading = $state(false)
   error = $state<string | null>(null)
+}
+
+/**
+ * The stored array, cleaned up: only real meals, always in the order meals
+ * happen, never empty. A row written by a newer version of the app — or with the
+ * column somehow blanked — falls back to the default rather than rendering a day
+ * with nothing on it.
+ */
+function toMeals(value: unknown): Meal[] {
+  if (!Array.isArray(value)) return [...DEFAULT_MEALS]
+  const kept = MEALS.filter((meal) => value.some((v) => isMeal(v) && v === meal))
+  return kept.length > 0 ? kept : [...DEFAULT_MEALS]
 }
 
 export const household = new HouseholdState()
@@ -43,7 +65,7 @@ export async function loadHousehold(): Promise<void> {
   // successful read here is also a check that the policies are doing their job.
   const { data, error } = await supabase
     .from('households')
-    .select('id, name')
+    .select('id, name, planner_meals')
     .eq('id', id)
     .maybeSingle()
 
@@ -56,12 +78,14 @@ export async function loadHousehold(): Promise<void> {
 
   household.id = data.id
   household.name = data.name
+  household.meals = toMeals((data as { planner_meals?: unknown }).planner_meals)
 }
 
 /** Clears household state on sign-out so nothing leaks into the next session. */
 export function clearHousehold(): void {
   household.id = null
   household.name = null
+  household.meals = [...DEFAULT_MEALS]
   household.error = null
   household.loading = false
 }

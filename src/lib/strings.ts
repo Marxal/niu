@@ -138,7 +138,6 @@ export const strings = {
     emptyBlurb: 'Add the things you actually cook. Even just a name is useful — the ingredients can come later.',
     new: 'New dish',
     edit: 'Edit dish',
-    plannerNote: 'The weekly planner comes next. These are the dishes it will be built from.',
     // The category the dishes appear as, in the shopping catalogue
     categoryName: 'Dishes',
     // The editor
@@ -201,6 +200,82 @@ export const strings = {
     duplicateName: 'There is already a dish with that name.',
   },
 
+  plan: {
+    // The planner, on the Meals tab
+    title: 'Plan',
+    dishesLink: 'Dishes',
+    dishesBack: 'Back to the plan',
+    viewDay: 'Days',
+    viewWeek: 'Week',
+    previousWeek: 'The week before',
+    nextWeek: 'The week after',
+    thisWeek: 'Back to this week',
+    // A meal with nothing in it
+    addTo: (meal: string) => `Add to ${meal.toLowerCase()}`,
+    empty: 'Nothing yet',
+    mealBreakfast: 'Breakfast',
+    mealLunch: 'Lunch',
+    mealDinner: 'Dinner',
+    // What a card can be
+    leftovers: 'Leftovers',
+    leftoversOf: (dish: string) => `${dish}, again`,
+    out: 'Eating out',
+    again: 'Again',
+    againTitle: 'The same thing as the night before — no extra shopping',
+    // Picking something to plan
+    pickTitle: 'What are we having?',
+    pickHint: (meal: string, day: string) => `${meal} · ${day}`,
+    pickDishes: 'Dishes',
+    pickItems: 'Or just a thing',
+    pickMarkers: 'Or neither',
+    pickSearch: 'Search dishes and the catalogue…',
+    pickNone: 'Nothing matches that.',
+    pickEmptyLibrary: 'No dishes yet. You can plan a plain thing instead, or write a dish first.',
+    newDish: 'New dish',
+    // The coverage note beside a dish while picking
+    haveAll: 'you have it all',
+    haveSome: (have: number, total: number) => `${have} of ${total}`,
+    haveFrom: 'on your list or just bought',
+    // What can we make
+    makeableTitle: 'What can we make?',
+    makeableHint:
+      'Dishes you have most of — from what is on the list now and what you bought in the last few days.',
+    makeableNone:
+      'Nothing yet. Put a few things on the shopping list, or finish a shop, and this fills up.',
+    makeableMissing: (n: number) => (n === 1 ? 'needs 1 more thing' : `needs ${n} more things`),
+    makeablePlan: 'Plan it',
+    makeablePlanned: 'Planned',
+    // The entry sheet
+    entryTitle: 'This meal',
+    entryMarkLeftovers: 'Mark as leftovers',
+    entryMarkCooked: 'Mark as cooked fresh',
+    entryShopFor: 'Add what it needs to the list',
+    entryOpenDish: 'Edit this dish',
+    entryNote: 'Note',
+    entryNotePlaceholder: "At Mum's, the good sauce…",
+    entryRemove: 'Take it off the plan',
+    entryMove: 'Hold a card to drag it to another day.',
+    // Shopping for the plan
+    shopWeek: 'Shop for this week',
+    shopDay: 'Shop for this day',
+    shopTitle: 'Shop for the plan',
+    shopRange: (from: string, to: string) => `${from} – ${to}`,
+    shopNothingPlanned: 'Nothing is planned for these days yet.',
+    shopNothingNeeded: 'Everything the plan needs is already on the list.',
+    shopSilentOnly:
+      'Nothing to buy for these days — it is all leftovers, eating out, or dishes with no ingredients yet.',
+    shopAlready: (n: number) => (n === 1 ? '1 already on the list' : `${n} already on the list`),
+    shopAdd: (n: number) => (n === 1 ? 'Add 1 thing' : `Add ${n} things`),
+    shopAdded: (n: number) => (n === 1 ? 'One thing added.' : `${n} things added.`),
+    shopAddedNone: 'It was all on the list already.',
+    shopFor: (dishes: string) => `for ${dishes}`,
+    shopForNobody: 'planned on its own',
+    // Errors
+    loadFailed: "Couldn't load the plan just now. Pull down to try again.",
+    saveFailed: "Couldn't save that just now. Try again in a moment.",
+    shopFailed: "Couldn't add those to the list just now. Try again in a moment.",
+  },
+
   shops: {
     title: 'Shops',
     hint: 'Each shop learns its own order as you tick things off. Pick the one you’re in.',
@@ -238,6 +313,10 @@ export const strings = {
     viewGrid4: 'Grid of 4',
     viewGrid3: 'Grid of 3',
     viewList: 'List',
+    // The one setting on this screen that isn't per-device — see below.
+    mealsTitle: 'Meals in a day',
+    mealsHint:
+      'Which meals the planner gives each day. This one is shared: it changes on both phones, because you both look at the same plan.',
   },
 
   theme: {

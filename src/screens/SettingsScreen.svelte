@@ -11,6 +11,8 @@
 <script lang="ts">
   import { auth, signOut } from '../lib/auth.svelte'
   import { household } from '../lib/household.svelte'
+  import { MEALS, MEAL_LABELS, type Meal } from '../lib/plan'
+  import { setHouseholdMeals } from '../lib/plan.svelte'
   import { install, promptInstall } from '../lib/install.svelte'
   import { setTheme, theme, type ThemeChoice } from '../lib/theme.svelte'
   import ShopsCard from '../components/ShopsCard.svelte'
@@ -24,6 +26,23 @@
     type ViewMode,
   } from '../lib/prefs.svelte'
   import { strings } from '../lib/strings'
+
+  /**
+   * Turns a meal on or off for the household.
+   *
+   * The last one cannot be turned off: a day with no meals is a planner with
+   * nothing to plan into. The button goes disabled rather than failing on tap.
+   *
+   * MEALS order is kept rather than the tap order, so breakfast is always drawn
+   * before dinner however they were switched on.
+   */
+  function toggleMeal(meal: Meal) {
+    const on = household.meals.includes(meal)
+    if (on && household.meals.length === 1) return
+
+    const next = MEALS.filter((m) => (m === meal ? !on : household.meals.includes(m)))
+    void setHouseholdMeals(next)
+  }
 
   const choices: { id: ThemeChoice; label: string }[] = [
     { id: 'system', label: strings.theme.system },
@@ -133,6 +152,29 @@
             onclick={() => setViewMode(mode.id)}
           >
             {mode.label}
+          </button>
+        {/each}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row stack">
+      <div class="text">
+        <h2>{strings.prefs.mealsTitle}</h2>
+        <p>{strings.prefs.mealsHint}</p>
+      </div>
+      <div class="segmented" role="group" aria-label={strings.prefs.mealsTitle}>
+        {#each MEALS as meal (meal)}
+          {@const on = household.meals.includes(meal)}
+          <button
+            class="segment"
+            class:on
+            aria-pressed={on}
+            disabled={on && household.meals.length === 1}
+            onclick={() => toggleMeal(meal)}
+          >
+            {MEAL_LABELS[meal]}
           </button>
         {/each}
       </div>

@@ -10,6 +10,12 @@
  *
  * Anything unrecognised falls back to Shopping rather than erroring — that's the
  * "fail soft" rule applied to routing.
+ *
+ * Since round 10 a route can have one sub-segment: `#/meals` is the planner and
+ * `#/meals/dishes` is the dish library behind it. It is a second segment rather
+ * than a fourth tab because the library is the raw material for the plan, not a
+ * peer of it — and because going back from it should return you to the plan,
+ * which the hash history does for free.
  */
 
 import { strings } from './strings'
@@ -39,20 +45,36 @@ function isRoute(value: string): value is RouteId {
   return (KNOWN_ROUTES as readonly string[]).includes(value)
 }
 
+/** The segments of a hash, lowercased and stripped of slashes and queries. */
+function segments(hash: string): string[] {
+  return hash
+    .replace(/^#/, '')
+    .replace(/[?#].*$/, '')
+    .replace(/^\/+|\/+$/g, '')
+    .toLowerCase()
+    .split('/')
+    .filter((part) => part !== '')
+}
+
 /**
  * Turn a `location.hash` into a route id.
  * Accepts '', '#', '#/meals', '#meals', '#/meals/', '#/Meals?x=1'.
  */
 export function parseRoute(hash: string): RouteId {
-  const cleaned = hash
-    .replace(/^#/, '')
-    .replace(/[?#].*$/, '')
-    .replace(/^\/+|\/+$/g, '')
-    .toLowerCase()
-
-  // Only the first segment matters for now; deeper paths arrive in later rounds.
-  const first = cleaned.split('/')[0] ?? ''
+  const first = segments(hash)[0] ?? ''
   return isRoute(first) ? first : DEFAULT_ROUTE
+}
+
+/**
+ * The bit after the route, or null. `#/meals/dishes` → 'dishes'.
+ *
+ * Unvalidated on purpose: a screen knows which sub-routes it has and any other
+ * value should read as "none of them", which is what a plain string comparison
+ * at the call site does. Validating here would mean this file holding a list of
+ * every screen's internals.
+ */
+export function parseSubRoute(hash: string): string | null {
+  return segments(hash)[1] ?? null
 }
 
 /** The href to put on a link or nav button for a route. */

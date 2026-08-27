@@ -1053,3 +1053,177 @@ Feature round 6: the meal planner — days, slots, and a week that fills the
 shopping list. `NIU.md` §4.2 now carries the two things this round settled that
 it will need: a slot can hold a plain shopping item as well as a dish, and a
 dish's parts are a set rather than one value.
+
+## Round 10 — The meal planner
+
+**Branch:** `claude/meal-planner-day-week-views-xn4saf`
+
+Feature round 6 in `NIU.md` §10, and the round the Meals tab stops being a
+cupboard and starts being a plan. Both directions between the plan and the
+shopping list are here, which was Marçal's stated objective: *"so it can go both
+ways."*
+
+### What changed
+
+- **The Meals tab is the planner.** Two views of one week: **Days**, a vertical
+  scroll of day cards, and **Week**, all seven days on one screen. The dish
+  library moved one tap behind it, to `#/meals/dishes`.
+- **A meal holds anything.** A dish, a plain catalogue thing ("broccoli on
+  Tuesday"), leftovers, or a night out.
+- **Long-press a card and drag it** to another day or meal, in either view.
+- **Shop for this week** previews everything the week needs — with the dish that
+  wants each thing beside it — then writes it all in one call.
+- **What can we make?** ranks your dishes by how much of each you already have,
+  and the same "4 of 5" appears beside every dish while you are picking one.
+- **Cook, then repeat** is drawn rather than asked for. Plan lasagne two nights
+  running and the second reads as a repeat.
+- **Which meals a day has** is in Settings — breakfast, lunch, dinner.
+
+### The one decision the whole schema rests on
+
+**A meal is a bag, not a set of slots.** `NIU.md` §4.2 asked for fixed slots
+defaulting to protein / carbs / vegetables. But round 9 had already turned those
+exact three words into *dish tags* — free-form, household-owned, several per
+dish, precisely because a lasagne is protein *and* carbs. Building slots as well
+would have been two systems for one idea, and would have forced every lasagne to
+pick one home.
+
+So a meal holds any number of entries in the order you put them there, each
+carrying its colour from its dish's tags. "A protein, a carb and a vegetable" is
+now something you can *see* in a row of three coloured cards rather than a shape
+you are made to fill. Marçal's call, and `NIU.md` §4.2 now says so.
+
+### Shop → plan, without waiting for months of data
+
+§5 files "what can we make" under stock inference and defers it, warning it needs
+months of history. That turned out to be true of the *inference* and not of the
+question. Two things were already in the app:
+
+- what is on the shopping list right now, and
+- `item_stats.last_bought_at`, written by `record_shop()` since round 7.
+
+So `plannable.ts` answers a smaller question honestly — *how many of this dish's
+ingredients are on your list or were bought in the last few days* — and can say
+something useful on day one. It never claims to know what is in the cupboard;
+the sheet's own subtitle says exactly what it is counting.
+
+Both halves are needed, and that is not obvious. On shopping day the list is the
+answer. The morning after, the list is empty and the food is in the fridge —
+which is exactly when someone opens the planner. Either half alone has a hole
+where the feature is meant to be useful.
+
+### The drag, and the bug a real one found
+
+Marçal chose long-press-and-drag over the safer tap-to-lift-tap-to-drop, so it is
+the real gesture. Four things make that work on a phone, all in
+`src/lib/drag.svelte.ts`: a long press that cancels the moment the finger moves
+(so the page never starts scrolling), a non-passive `touchmove` that keeps it
+that way, a fixed-position copy that follows the finger while the original stays
+put, and auto-scroll near the edges that re-tests the drop target every frame —
+because during it the finger is still and the *page* is moving.
+
+Driving it in a real Chromium found a bug that no amount of reading would have.
+Pointer capture was being taken on the first move *after* the lift. A quick
+flick's first move event is already a hundred pixels away, so it never lands on
+the card, capture is never taken, and every later move and the pointerup go
+somewhere else. The card sat still, no target lit up, and — worst — `finish()`
+never ran, leaving a ghost stuck to the finger and the page unscrollable until
+reload.
+
+Capture is taken at the moment of lifting now, where the pointer is by definition
+still on the card. Window-level `pointerup`/`pointercancel` listeners are the
+second, independent guarantee that a drag always ends.
+
+### How it was checked
+
+Every migration run in order against a real PostgreSQL 16 on a fresh database,
+then 0010 re-run to confirm it is idempotent.
+
+The shape constraint first: a `dish` entry with no dish, an `item` entry pointing
+at a dish, an `out` entry carrying one, a made-up meal and a made-up kind were
+all refused — **0 rows**. A bare `leftovers` entry with no dish was accepted, as
+it must be; a bare `item` was not. The trigger counted the cook and not the
+leftovers: Lasagne `times_planned` **1** across a dish entry and a leftovers
+entry of itself.
+
+Then the arithmetic. A week of five entries — a lasagne, its leftovers, a
+bruschetta, a planned broccoli and a night out — with tomatoes already on the
+list by hand. `add_plan_to_list()` added **3**, not 4, and tagged: tomatoes with
+*both* Bruschetta and Lasagne including the ones already there, spaghetti with
+Lasagne, butter with Bruschetta, broccoli with nobody, which is right — nobody's
+dish asked for it. Called again: **0** added, 4 rows, 4 tags, nothing changed. A
+backwards range and a null one both returned 0. Deleting Lasagne took both its
+entries off the week and left the other four standing.
+
+As the second household, every crossing attempt failed: forging `created_by`,
+planning the first household's dish, writing into their week — all refused by
+policy. Their `add_plan_to_list()` returned **0** and touched neither list;
+their `update` and `delete` against the first household's plan changed **0 rows**;
+they read **0** of its entries.
+
+The screens were rendered in a real Chromium at 412×915 in both themes: both
+views, the picker with its "what can we make" group, the shop preview, the
+makeable sheet, and the entry sheet. No console errors, and nothing scrolls
+sideways in either view. A real drag was driven end to end — press, hold, carry
+to another day, release — and asserted on: the target highlights, the entry
+lands on the new day, the drag state is fully cleaned up, and a short tap still
+opens the sheet rather than being eaten.
+
+191 unit tests, 58 of them new.
+
+### How to test it
+
+> **Run `supabase/migrations/0010_meal_plan.sql`** in the Supabase SQL editor
+> first. Nothing you already have changes — it adds the plan's own table and two
+> columns.
+
+1. **Meals tab.** It opens on the plan now, this week, days first. Your dishes
+   are one tap away under **Dishes**, top right.
+2. **Tap + under a dinner.** The sheet offers your dishes, then plain things from
+   the catalogue, then **Leftovers** / **Eating out**. Pick a dish.
+3. Put the **same dish on the next night too**. The second one should draw
+   quieter, dashed, with a small round-again mark — that is the cook-then-repeat
+   rhythm, worked out rather than asked for.
+4. **Press and hold a card for about half a second.** It should lift, buzz, and
+   follow your finger; every meal it passes over lights up green. Drop it on
+   another day. Drag near the top or bottom of the screen and the plan scrolls
+   itself.
+5. **Switch to Week.** All seven days at once — this is the easier place to drag
+   something from Monday to Friday.
+6. **Tap a card** (a short tap, not a hold). Mark it as leftovers, add what it
+   needs to the list, write a note, edit the dish, or take it off.
+7. **Shop for this week**, at the bottom. It should list everything the week
+   needs with the dish that wants each thing, tick the ones already on your list,
+   and offer to add the rest. Tap it, then check the **Shopping** tab: the new
+   things are there, each wearing the mark of the dish that asked for it.
+8. **What can we make?** Put a few things on the shopping list first, or finish a
+   shop. Dishes you have most of come up with "you have it all" or "2 of 3 —
+   minced beef". Tap one and pick a meal to drop it into.
+9. **Settings → Meals in a day.** Turn breakfast on; every day grows a third
+   meal. You cannot turn the last one off.
+10. **Both phones:** plan something on one and watch it appear on the other's
+    week without a reload.
+
+### Deliberately not done
+
+- **The month view.** §4.2 wants one. On a 412px screen thirty days of meal names
+  can only be coloured dots, and that answers "what did we eat a fortnight ago"
+  rather than a daily question. Worth building, worth building on its own.
+- **Auto-suggest a week.** With no planning history it could only rank by
+  times-added — which is the picker you already have. `times_planned` starts
+  recording now, so it has something to learn from by the time it is built.
+- **Reordering within one meal.** A card can be dragged to another meal but not
+  shuffled above its neighbour. Two or three cards in a meal read fine in any
+  order; worth revisiting if a meal ever holds five.
+- **Undo on a drop.** A wrong drop is fixed by dragging it back, which is one
+  gesture and is already learned. An undo bar would be a second way to do the
+  same thing.
+- **The planner in the empty-list state.** §8 wants "tonight's dinner" on the
+  empty shopping list. The data is all here now; the empty state is a separate
+  screen and a separate decision.
+- **`dishes.slot`** is still an unread column, as round 9 left it.
+
+### Next up
+
+Feature round 7: the calendar — events, the month grid, quick add, avatars, and
+the one-way push to a shared Google calendar.
