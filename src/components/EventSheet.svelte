@@ -16,6 +16,21 @@
   "different and faster than an event", and the way to be faster is to ask less,
   not to ask the same things in a smaller font.
 
+  **A time is optional** (round 12). Round 11 opened every event at 18:00;
+  Marçal's note after using it was *"start is set to 18 by default, can we find
+  a way or a flow where start time is not required?"* — and the answer was
+  already in the data model, where a null start time simply *is* all day. So a
+  new event and a new reminder both open with a day and no hour, and the same
+  one chip that used to say "All day" now says "Add a time" when there isn't
+  one. Same single tap, opposite default, and 18:00 is still what that tap
+  fills in.
+
+  **Repeating** is set here too, and only when writing a new one: ten Sunday
+  gym sessions are ten real rows (recurrence.ts explains why), so the rule is
+  something the sheet *makes* rather than something an existing event carries
+  around. Editing an occurrence shows what series it belongs to and no longer
+  offers to change the rhythm.
+
   Two decisions worth knowing about:
 
   - **The draft is snapshotted on mount**, like PlanEntrySheet's note field. If
@@ -32,14 +47,26 @@
     type CalendarEvent,
     type EventDraft,
     type EventKind,
+    DEFAULT_START_TIME,
     canSave,
     confirmState,
     draftFrom,
+    isSeries,
     needsReconfirming,
     newDraft,
   } from '../lib/calendar'
   import { EVENT_COLOURS } from '../lib/calendar'
-  import { addDays, longDate, shortDayName } from '../lib/dates'
+  import type { EditScope } from '../lib/calendar.svelte'
+  import { addDays, longDate, shortDate, shortDayName } from '../lib/dates'
+  import {
+    MAX_OCCURRENCES,
+    MIN_REPEAT_COUNT,
+    REPEAT_KINDS,
+    type RepeatKind,
+    clampCount,
+    isNoChange,
+    lastOccurrence,
+  } from '../lib/recurrence'
   import { tagStyle, type TagColour } from '../lib/dish-tags'
   import { people, personName } from '../lib/people.svelte'
   import { auth } from '../lib/auth.svelte'
@@ -62,8 +89,8 @@
     kind?: EventKind
     /** The day the sheet was opened from. Only read when `event` is null. */
     day: string
-    onsave: (draft: EventDraft, reask: boolean) => void
-    onremove: () => void
+    onsave: (draft: EventDraft, reask: boolean, scope: EditScope) => void
+    onremove: (scope: EditScope) => void
     onask: () => void
     onunask: () => void
     onclose: () => void
@@ -76,7 +103,15 @@
   const original: EventDraft = event ? draftFrom(event) : newDraft(kind, day)
 
   let more = $state(false)
-  let confirmingRemove = $state(false)
+  /**
+   * The question in the footer: which occurrences does this apply to, or — for
+   * a one-off — are you sure you want it gone.
+   *
+   * It replaces the footer rather than opening a second sheet on top of the
+   * first, because a sheet over a sheet on a 412px screen is two backdrops and
+   * a lost thread. Null means the footer is doing its ordinary job.
+   */
+  let asking = $state<'save' | 'remove' | null>(null)
   let titleField = $state<HTMLInputElement | null>(null)
 
   /**
@@ -110,11 +145,57 @@
     return editing ? strings.calendar.editEvent : strings.calendar.newEvent
   })
 
-  /** All day is the absence of a start time, not a column of its own. */
-  function setAllDay(allDay: boolean) {
-    draft.startTime = allDay ? null : '18:00'
-    if (allDay) draft.endTime = null
+  /**
+   * Series facts about the event being edited. Null when writing a new one or
+   * editing a one-off, which is what the whole footer question hangs off.
+   *
+   * The rule has to be there as well as the id — 0014's check constraint ties
+   * the two together, so a row with one and not the other cannot exist, and
+   * inventing a rhythm to display would be worse than showing nothing.
+   */
+  let series = $derived.by(() => {
+    if (event === null || !isSeries(event)) return null
+    const rule = event.seriesRule
+    // 0014 ties the id and the rule together, so a real row always has both.
+    // Narrowing here rather than inventing a rhythm to put on the screen.
+    if (rule === null) return null
+    return { rule, index: event.seriesIndex, count: event.seriesCount }
+  })
+
+  /** Whether Save would actually write anything different. */
+  let unchanged = $derived(editing && isNoChange(original, draft))
+
+  /**
+   * All day is the absence of a start time, not a column of its own — so this
+   * one chip is both "make it all day" and, read the other way, "give it a
+   * time". See the header for why round 12 turned the default around.
+   */
+  function toggleTime() {
+    if (draft.startTime === null) {
+      draft.startTime = DEFAULT_START_TIME
+      return
+    }
+    draft.startTime = null
+    draft.endTime = null
   }
+
+  function setRepeat(repeat: RepeatKind) {
+    draft.repeat = repeat
+  }
+
+  function nudgeCount(by: number) {
+    draft.repeatCount = clampCount(draft.repeatCount + by)
+  }
+
+  /** "10 times · last one Sun 8 Nov" — the sentence the chips add up to. */
+  let repeatSummary = $derived.by(() => {
+    if (draft.repeat === 'none') return null
+    const last = lastOccurrence(draft.startsOn, draft.repeat, draft.repeatCount)
+    return strings.calendar.repeatSummary(
+      draft.repeatCount,
+      `${shortDayName(last)} ${shortDate(last)}`,
+    )
+  })
 
   function setMultiDay(on: boolean) {
     draft.endsOn = on ? addDays(draft.startsOn, 1) : draft.startsOn
@@ -137,9 +218,30 @@
     draft.colour = colour
   }
 
+  /**
+   * Save, or first ask which occurrences it applies to.
+   *
+   * The question is skipped in the two cases where it has only one answer: a
+   * one-off, and an edit that changed nothing — where Save is a Cancel and
+   * asking "all ten?" about nothing would be a question with no stakes.
+   */
   function save() {
     if (!canSave(draft)) return
-    onsave(draft, willReask)
+    if (series !== null && !unchanged) {
+      asking = 'save'
+      return
+    }
+    onsave(draft, willReask, 'one')
+  }
+
+  function saveWith(scope: EditScope) {
+    asking = null
+    onsave(draft, willReask, scope)
+  }
+
+  function removeWith(scope: EditScope) {
+    asking = null
+    onremove(scope)
   }
 
   /**
@@ -191,13 +293,16 @@
       <span class="label">{strings.calendar.whenLabel}</span>
       <div class="when">
         <input class="input day" type="date" bind:value={draft.startsOn} onchange={onStartDayChange} />
-        <button
-          class="chip"
-          class:on={draft.startTime === null}
-          aria-pressed={draft.startTime === null}
-          onclick={() => setAllDay(draft.startTime !== null)}
-        >
-          {strings.calendar.allDayLabel}
+        <!-- One chip, two readings. With no time it offers one; with a time it
+             offers to take it away again, which is what "all day" is. -->
+        <button class="chip" class:add={draft.startTime === null} onclick={toggleTime}>
+          {#if draft.startTime === null}
+            <!-- Decorative: the words are the label, and a screen reader
+                 reading "plus Add a time" is a worse label than "Add a time". -->
+            <span aria-hidden="true">＋</span> {strings.calendar.addTimeLabel}
+          {:else}
+            {strings.calendar.allDayLabel}
+          {/if}
         </button>
       </div>
 
@@ -225,10 +330,62 @@
         </div>
       {/if}
 
-      {#if isReminder}
-        <p class="hint">{strings.calendar.reminderHint}</p>
+      {#if draft.startTime === null}
+        <p class="hint">
+          {isReminder ? strings.calendar.reminderHint : strings.calendar.noTimeHint}
+        </p>
       {/if}
     </div>
+
+    <!-- Repeating is set when a thing is written, not afterwards: ten Sunday
+         sessions are ten real rows, so the rule makes them rather than living
+         on them. Editing one shows which series it is in instead. -->
+    {#if editing}
+      {#if series}
+        <p class="series-note">
+          {strings.calendar.seriesNote(
+            strings.calendar.repeatNames[series.rule],
+            series.index + 1,
+            series.count,
+          )}
+        </p>
+      {/if}
+    {:else}
+      <div class="field">
+        <span class="label">{strings.calendar.repeatLabel}</span>
+        <div class="repeats">
+          {#each REPEAT_KINDS as repeat (repeat)}
+            <button
+              class="chip"
+              class:on={draft.repeat === repeat}
+              aria-pressed={draft.repeat === repeat}
+              onclick={() => setRepeat(repeat)}
+            >
+              {strings.calendar.repeatNames[repeat]}
+            </button>
+          {/each}
+        </div>
+
+        {#if draft.repeat !== 'none'}
+          <div class="count">
+            <button
+              class="step"
+              aria-label={strings.calendar.fewerTimes}
+              disabled={draft.repeatCount <= MIN_REPEAT_COUNT}
+              onclick={() => nudgeCount(-1)}>−</button
+            >
+            <span class="count-value">{draft.repeatCount}</span>
+            <button
+              class="step"
+              aria-label={strings.calendar.moreTimes}
+              disabled={draft.repeatCount >= MAX_OCCURRENCES}
+              onclick={() => nudgeCount(1)}>+</button
+            >
+            <span class="count-note">{repeatSummary}</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
 
 
     {#if people.list.length > 1}
@@ -344,27 +501,53 @@
     {/if}
 
     {#if editing}
-      {#if confirmingRemove}
-        <div class="remove-row">
-          <span>{strings.calendar.removeConfirm}</span>
-          <button class="danger" onclick={onremove}>{strings.calendar.remove}</button>
-          <button class="text-button" onclick={() => (confirmingRemove = false)}>
-            {strings.calendar.cancel}
-          </button>
-        </div>
-      {:else}
-        <button class="text-button danger-text" onclick={() => (confirmingRemove = true)}>
-          {strings.calendar.remove}
-        </button>
-      {/if}
+      <!-- The confirmation happens in the footer, where the thumb already is,
+           and where a series can ask the extra question it needs. -->
+      <button class="text-button danger-text" onclick={() => (asking = 'remove')}>
+        {strings.calendar.remove}
+      </button>
     {/if}
   </div>
 
-  <footer class="foot">
-    <span class="day-note">{shortDayName(draft.startsOn)} {longDate(draft.startsOn)}</span>
-    <button class="save" disabled={!canSave(draft)} onclick={save}>
-      {editing ? strings.calendar.save : strings.calendar.saveAdd}
-    </button>
+  <footer class="foot" class:asking>
+    {#if asking !== null}
+      {@const remove = asking === 'remove'}
+      <p class="scope-q">
+        {#if series}
+          {remove
+            ? strings.calendar.removeWhich(series.count)
+            : strings.calendar.saveWhich(series.count)}
+        {:else}
+          {strings.calendar.removeConfirm}
+        {/if}
+      </p>
+      <div class="scope-actions">
+        <button
+          class="scope"
+          class:danger={remove}
+          onclick={() => (remove ? removeWith('one') : saveWith('one'))}
+        >
+          {series ? strings.calendar.justThisOne : strings.calendar.remove}
+        </button>
+        {#if series}
+          <button
+            class="scope"
+            class:danger={remove}
+            onclick={() => (remove ? removeWith('series') : saveWith('series'))}
+          >
+            {strings.calendar.allOfThem(series.count)}
+          </button>
+        {/if}
+        <button class="text-button" onclick={() => (asking = null)}>
+          {strings.calendar.cancel}
+        </button>
+      </div>
+    {:else}
+      <span class="day-note">{shortDayName(draft.startsOn)} {longDate(draft.startsOn)}</span>
+      <button class="save" disabled={!canSave(draft)} onclick={save}>
+        {editing ? strings.calendar.save : strings.calendar.saveAdd}
+      </button>
+    {/if}
   </footer>
 </div>
 
@@ -536,6 +719,65 @@
     color: var(--color-accent-ink);
   }
 
+  /* "Add a time" is an offer, not a state, so it is dashed like the other
+     things in this app that are a way in rather than a setting. */
+  .chip.add {
+    border-style: dashed;
+  }
+
+  .repeats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .count {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .step {
+    width: var(--tap-min);
+    height: var(--tap-min);
+    flex: none;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-full);
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: var(--text-lg);
+    line-height: 1;
+  }
+
+  .step:disabled {
+    opacity: 0.35;
+  }
+
+  .count-value {
+    min-width: 1.5rem;
+    text-align: center;
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .count-note {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-faint);
+  }
+
+  /* Which series this one belongs to. A statement, not a control — the rhythm
+     is fixed once the rows exist. */
+  .series-note {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-sunken);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+  }
+
   .faces {
     display: flex;
     flex-wrap: wrap;
@@ -642,24 +884,6 @@
     color: var(--color-danger);
   }
 
-  .remove-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--color-text-muted);
-  }
-
-  .danger {
-    min-height: var(--tap-min);
-    padding: 0 var(--space-4);
-    border: none;
-    border-radius: var(--radius-full);
-    background: var(--color-danger);
-    color: var(--color-accent-ink);
-    font-weight: var(--weight-medium);
-  }
-
   .foot {
     display: flex;
     align-items: center;
@@ -668,6 +892,49 @@
     padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--color-border);
     background: var(--color-surface);
+  }
+
+  /* The question takes the footer over rather than opening a second sheet. Two
+     lines, because "Just this one / All 10" beside a sentence does not fit on
+     one at 412px. */
+  .foot.asking {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .scope-q {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--color-text-muted);
+  }
+
+  .scope-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .scope {
+    flex: 1;
+    min-width: 0;
+    min-height: var(--tap-min);
+    padding: 0 var(--space-3);
+    border: none;
+    border-radius: var(--radius-full);
+    background: var(--color-tab-calendar);
+    color: var(--color-accent-ink);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+  }
+
+  .scope.danger {
+    background: var(--color-danger);
+  }
+
+  .scope-actions .text-button {
+    flex: none;
+    align-self: center;
   }
 
   .day-note {

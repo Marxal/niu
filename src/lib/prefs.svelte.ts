@@ -45,6 +45,16 @@ interface StoredPrefs {
    * reorder the other person's list mid-aisle. Null means "the main one".
    */
   shopId: string | null
+  /**
+   * Whether the calendar writes the ISO week number down the side of the month
+   * and beside the week.
+   *
+   * On by default, because this household lives between two countries that both
+   * count in weeks — "vecka 36" is how a Swedish school year is written down —
+   * and a number you do not need is easier to ignore than one you cannot find.
+   * Off is one tap away in Settings for anybody who does not think that way.
+   */
+  weekNumbers: boolean
 }
 
 const DEFAULTS: StoredPrefs = {
@@ -52,6 +62,7 @@ const DEFAULTS: StoredPrefs = {
   viewMode: 'grid-4',
   sortMode: 'shop-order',
   shopId: null,
+  weekNumbers: true,
 }
 
 function isIconStyle(v: unknown): v is IconStyle {
@@ -88,6 +99,9 @@ function read(): StoredPrefs {
       viewMode: isViewMode(obj.viewMode) ? obj.viewMode : DEFAULTS.viewMode,
       sortMode: isSortMode(obj.sortMode) ? obj.sortMode : DEFAULTS.sortMode,
       shopId: typeof obj.shopId === 'string' ? obj.shopId : DEFAULTS.shopId,
+      // Anything but an explicit false is on, so a phone storing prefs from
+      // before this existed keeps the default rather than silently opting out.
+      weekNumbers: obj.weekNumbers !== false,
     }
   } catch {
     // Unreadable, unparseable, or storage refused. Defaults are always valid.
@@ -100,6 +114,7 @@ class PrefsState {
   viewMode = $state<ViewMode>(DEFAULTS.viewMode)
   sortMode = $state<SortMode>(DEFAULTS.sortMode)
   shopId = $state<string | null>(DEFAULTS.shopId)
+  weekNumbers = $state<boolean>(DEFAULTS.weekNumbers)
 }
 
 export const prefs = new PrefsState()
@@ -113,6 +128,7 @@ function save(): void {
         viewMode: prefs.viewMode,
         sortMode: prefs.sortMode,
         shopId: prefs.shopId,
+        weekNumbers: prefs.weekNumbers,
       }),
     )
   } catch {
@@ -127,6 +143,7 @@ export function loadPrefs(): void {
   prefs.viewMode = stored.viewMode
   prefs.sortMode = stored.sortMode
   prefs.shopId = stored.shopId
+  prefs.weekNumbers = stored.weekNumbers
 }
 
 export function setIconStyle(style: IconStyle): void {
@@ -147,5 +164,10 @@ export function setSortMode(mode: SortMode): void {
 /** Null means "whichever shop is the main one". */
 export function setShopId(shopId: string | null): void {
   prefs.shopId = shopId
+  save()
+}
+
+export function setWeekNumbers(on: boolean): void {
+  prefs.weekNumbers = on
   save()
 }

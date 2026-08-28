@@ -349,6 +349,10 @@ export const strings = {
     iconsHint:
       'Emoji uses your phone’s own. Inked is a drawn set that looks the same on every phone. Both fall back to a line icon where an item has no picture.',
     iconsCredit: 'Inked icons by OpenMoji — CC BY-SA 4.0',
+    weeksTitle: 'Week numbers',
+    weeksHint: 'The ISO week down the side of the calendar. This phone only.',
+    weeksOn: 'Show',
+    weeksOff: 'Hide',
     viewTitle: 'List view',
     viewGrid4: 'Grid of 4',
     viewGrid3: 'Grid of 3',
@@ -470,6 +474,8 @@ export const strings = {
     endOptional: 'Ends (optional)',
     clearEnd: 'No end time',
     allDayLabel: 'All day',
+    addTimeLabel: 'Add a time',
+    noTimeHint: 'All day, unless you add a time.',
     moreDays: 'More than one day',
     whoLabel: 'Who goes',
     whoForLabel: "Who's it for",
@@ -486,6 +492,30 @@ export const strings = {
     remove: 'Remove',
     removeConfirm: 'Remove this?',
     close: 'Close',
+
+    // Repeating (§4.3, round 12). The names are the chips; the summary is the
+    // sentence under them that turns four taps into a plain statement.
+    repeatLabel: 'Repeats',
+    repeatNames: {
+      none: 'Once',
+      daily: 'Daily',
+      weekly: 'Weekly',
+      fortnightly: 'Every 2 weeks',
+      monthly: 'Monthly',
+    } as const,
+    repeatSummary: (times: number, last: string) => `${times} times · last one ${last}`,
+    fewerTimes: 'One time fewer',
+    moreTimes: 'One time more',
+    seriesNote: (rhythm: string, index: number, count: number) =>
+      `${rhythm} · number ${index} of ${count}`,
+    // The question §4.3 asks on an edit and a delete alike.
+    saveWhich: (count: number) => `Change this one, or all ${count}?`,
+    removeWhich: (count: number) => `Remove this one, or all ${count}?`,
+    justThisOne: 'Just this one',
+    allOfThem: (count: number) => `All ${count}`,
+
+    // Week numbers down the side of the month (round 12)
+    weekAbbrev: 'w',
 
     // Confirmation
     askTitle: 'Confirmation',

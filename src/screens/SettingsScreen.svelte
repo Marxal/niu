@@ -21,6 +21,7 @@
   import {
     prefs,
     setIconStyle,
+    setWeekNumbers,
     setSortMode,
     setViewMode,
     type IconStyle,
@@ -167,6 +168,31 @@
             {mode.label}
           </button>
         {/each}
+      </div>
+    </div>
+
+    <div class="row stack">
+      <div class="text">
+        <h2>{strings.prefs.weeksTitle}</h2>
+        <p>{strings.prefs.weeksHint}</p>
+      </div>
+      <div class="segmented" role="group" aria-label={strings.prefs.weeksTitle}>
+        <button
+          class="segment"
+          class:on={prefs.weekNumbers}
+          aria-pressed={prefs.weekNumbers}
+          onclick={() => setWeekNumbers(true)}
+        >
+          {strings.prefs.weeksOn}
+        </button>
+        <button
+          class="segment"
+          class:on={!prefs.weekNumbers}
+          aria-pressed={!prefs.weekNumbers}
+          onclick={() => setWeekNumbers(false)}
+        >
+          {strings.prefs.weeksOff}
+        </button>
       </div>
     </div>
   </div>

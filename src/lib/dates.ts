@@ -131,6 +131,36 @@ export function weekDaysFrom(startKey: string, today: string): string[] {
   return all.filter((day) => day >= today)
 }
 
+/**
+ * The ISO-8601 week number a day falls in — the "v.36" a Swedish calendar puts
+ * down the side of every month.
+ *
+ * ISO because it is the numbering both countries this household lives between
+ * actually use, and because it is the only definition that agrees with
+ * startOfWeek above: weeks run Monday to Sunday, and week 1 is the one holding
+ * the first Thursday of the year.
+ *
+ * That Thursday is the whole algorithm. A week belongs to whichever year owns
+ * its Thursday, so 1 January 2027 — a Friday — is week 53 of 2026, and 30
+ * December 2024 — a Monday — is already week 1 of 2025. Counting from January
+ * the 1st instead gets both of those wrong, which is the bug this function
+ * exists to not have.
+ */
+export function isoWeek(key: string): number {
+  const date = parseKey(key)
+  // The Thursday of this day's week. Monday-based offset, as in startOfWeek.
+  const offset = (date.getDay() + 6) % 7
+  const thursday = new Date(date.getFullYear(), date.getMonth(), date.getDate() - offset + 3)
+
+  // The 4th of January is always in week 1, by definition; the Thursday of
+  // *its* week is therefore week 1's Thursday.
+  const jan4 = new Date(thursday.getFullYear(), 0, 4)
+  const jan4Offset = (jan4.getDay() + 6) % 7
+  const firstThursday = new Date(jan4.getFullYear(), 0, 4 - jan4Offset + 3)
+
+  return 1 + Math.round((thursday.getTime() - firstThursday.getTime()) / (7 * 86_400_000))
+}
+
 /* -------------------------------------------------------------------------- */
 /* Months                                                                      */
 /* -------------------------------------------------------------------------- */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CalendarEvent } from './calendar'
 import { weekDays } from './dates'
-import { layOutGrid, layOutWeek, showsTime } from './grid-layout'
+import { MAX_DOTS, layOutGrid, layOutWeek, showsTime } from './grid-layout'
 
 /** Monday 31 Aug 2026 to Sunday 6 Sep. */
 const WEEK = weekDays('2026-08-31')
@@ -25,6 +25,10 @@ function ev(over: Partial<CalendarEvent> = {}): CalendarEvent {
     updatedAt: '2026-01-01T00:00:00Z',
     attendees: [],
     confirmations: [],
+    seriesId: null,
+    seriesIndex: 0,
+    seriesCount: 1,
+    seriesRule: null,
     ...over,
     endsOn: over.endsOn ?? startsOn,
   }
@@ -89,20 +93,11 @@ describe('lanes', () => {
     expect(layout.lanes).toBe(1)
   })
 
-  it('stacks two events on the same day', () => {
-    const layout = layOutWeek(WEEK, [
-      ev({ id: 'a', startsOn: '2026-09-01', startTime: '09:00' }),
-      ev({ id: 'b', startsOn: '2026-09-01', startTime: '11:00' }),
-    ])
-    expect(layout.lanes).toBe(2)
-    expect(new Set(layout.segments.map((s) => s.lane))).toEqual(new Set([0, 1]))
-  })
-
   it('keeps a long bar on one lane the whole way across', () => {
     // The reason longest-first exists: a bar that changes lane mid-week reads
-    // as two different events.
+    // as two different events. Two multi-day ones, so neither turns into a dot.
     const layout = layOutWeek(WEEK, [
-      ev({ id: 'short', startsOn: '2026-09-01' }),
+      ev({ id: 'short', startsOn: '2026-09-01', endsOn: '2026-09-02' }),
       ev({ id: 'trip', startsOn: '2026-08-31', endsOn: '2026-09-04' }),
     ])
     const trip = layout.segments.find((s) => s.event.id === 'trip')
@@ -139,22 +134,95 @@ describe('lanes', () => {
   })
 })
 
-describe('overflow', () => {
-  it('counts what did not fit, per day', () => {
+describe('a box, a bar or a dot', () => {
+  it('gives the only thing on a day its title', () => {
+    const layout = layOutWeek(WEEK, [ev({ id: 'a', startsOn: '2026-09-01' })])
+    expect(layout.segments).toHaveLength(1)
+    expect(layout.dots[1]).toHaveLength(0)
+  })
+
+  it('turns two things on one day into dots', () => {
+    // Marçal's rule: "one event show the text, more than one event show dots."
+    const layout = layOutWeek(WEEK, [
+      ev({ id: 'a', startsOn: '2026-09-01', startTime: '09:00' }),
+      ev({ id: 'b', startsOn: '2026-09-01', startTime: '11:00' }),
+    ])
+    expect(layout.segments).toHaveLength(0)
+    expect(layout.dots[1]?.map((e) => e.id)).toEqual(['a', 'b'])
+    // No boxes, so the week costs no lanes at all.
+    expect(layout.lanes).toBe(0)
+  })
+
+  it('decides day by day, not week by week', () => {
+    const layout = layOutWeek(WEEK, [
+      ev({ id: 'a', startsOn: '2026-09-01', startTime: '09:00' }),
+      ev({ id: 'b', startsOn: '2026-09-01', startTime: '11:00' }),
+      ev({ id: 'quiet', startsOn: '2026-09-03' }),
+    ])
+    expect(layout.segments.map((s) => s.event.id)).toEqual(['quiet'])
+    expect(layout.dots[1]).toHaveLength(2)
+    expect(layout.dots[3]).toHaveLength(0)
+  })
+
+  it('keeps a multi-day event as one bar even on a busy day', () => {
+    // Five dots on five days say five things happened. A holiday is one thing
+    // lasting five days, and a bar is the only shape that says so.
+    const layout = layOutWeek(WEEK, [
+      ev({ id: 'trip', startsOn: '2026-08-31', endsOn: '2026-09-04' }),
+      ev({ id: 'birthday', startsOn: '2026-09-02' }),
+    ])
+    const trip = layout.segments.find((s) => s.event.id === 'trip')
+    expect(trip?.span).toBe(5)
+    // Wednesday is column 2, and it now has two things on it — so the birthday
+    // is the one that becomes a dot.
+    expect(layout.dots[2]?.map((e) => e.id)).toEqual(['birthday'])
+    expect(layout.segments).toHaveLength(1)
+  })
+
+  it('sorts the dots the way the day reads', () => {
+    const layout = layOutWeek(WEEK, [
+      ev({ id: 'late', startsOn: '2026-09-01', startTime: '18:00' }),
+      ev({ id: 'early', startsOn: '2026-09-01', startTime: '08:00' }),
+      ev({ id: 'allday', startsOn: '2026-09-01', startTime: null }),
+    ])
+    // All-day first, then the clock — the same order as the list underneath.
+    expect(layout.dots[1]?.map((e) => e.id)).toEqual(['allday', 'early', 'late'])
+  })
+
+  it('always has a lane for a box, because a box means a quiet day', () => {
+    // Two bars fill every lane across the whole week, so the third does not
+    // fit and is counted. The single day underneath them is never a box —
+    // three things cover Friday, so its own event is a dot. That pairing is
+    // the invariant: a box only happens where nothing else is drawn.
     const layout = layOutWeek(
       WEEK,
       [
-        ev({ id: 'a', startsOn: '2026-09-01', startTime: '08:00' }),
-        ev({ id: 'b', startsOn: '2026-09-01', startTime: '09:00' }),
-        ev({ id: 'c', startsOn: '2026-09-01', startTime: '10:00' }),
-        ev({ id: 'd', startsOn: '2026-09-01', startTime: '11:00' }),
-        ev({ id: 'e', startsOn: '2026-09-01', startTime: '12:00' }),
+        ev({ id: 'x', startsOn: '2026-08-31', endsOn: '2026-09-06' }),
+        ev({ id: 'y', startsOn: '2026-08-31', endsOn: '2026-09-06' }),
+        ev({ id: 'z', startsOn: '2026-09-04', endsOn: '2026-09-05' }),
+        ev({ id: 'fri', startsOn: '2026-09-04' }),
       ],
       2,
     )
-    expect(layout.segments).toHaveLength(2)
-    // Tuesday is column 1. Three did not fit.
-    expect(layout.overflow[1]).toBe(3)
+    expect(layout.dots[4]?.map((e) => e.id)).toEqual(['fri'])
+    expect(layout.overflow[4]).toBe(1)
+    expect(layout.segments.map((s) => s.event.id).sort()).toEqual(['x', 'y'])
+  })
+})
+
+describe('overflow', () => {
+  it('counts the dots that did not fit, per day', () => {
+    // Six single-day events on Tuesday. All six are dots — the day has more
+    // than one thing on it — and only MAX_DOTS of them are drawn.
+    const layout = layOutWeek(
+      WEEK,
+      Array.from({ length: 6 }, (_, i) =>
+        ev({ id: `e${i}`, startsOn: '2026-09-01', startTime: `0${i + 4}:00` }),
+      ),
+    )
+    expect(layout.segments).toHaveLength(0)
+    expect(layout.dots[1]).toHaveLength(MAX_DOTS)
+    expect(layout.overflow[1]).toBe(6 - MAX_DOTS)
     expect(layout.overflow[0]).toBe(0)
   })
 

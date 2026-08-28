@@ -271,26 +271,41 @@ Nice side effect: **reminders come free.** Because every event lands in a real G
 Calendar, Google's own notifications fire on both phones without us building push.
 
 - **Default view:** month grid, with a week view beside it (round 11.1). The grid
-  draws each event as a small box with its title in it, and a multi-day event as one
-  unbroken bar across the days it covers; the week view is seven days down the screen,
-  the same shape the meal planner uses. Seven columns and a clock down the side — the
-  way a laptop draws a week — does not survive 412px: a column is 55px, and every event
-  becomes a coloured smudge you have to tap to read.
+  draws **one** event on a day as a small box with its title in it, **more than one**
+  as a dot each (round 12 — three titled boxes on one day was unreadable at 412px),
+  and a multi-day event as one unbroken bar across the days it covers whatever else
+  is on those days, because five dots cannot say "one thing, five days". The week
+  view is seven days down the screen, the same shape the meal planner uses. Seven
+  columns and a clock down the side — the way a laptop draws a week — does not
+  survive 412px: a column is 55px, and every event becomes a coloured smudge you
+  have to tap to read. Both views step by a sideways **swipe** as well as the
+  arrows, and both can show the **ISO week number**, on by default and switchable
+  off per device.
 - **Event fields:** title, date, start/end time, all-day, multi-day (for holidays),
   who's involved, location, notes, colour/category, reminder, repeat, link.
 - **Adding an event** is where Google is worst and where we earn our keep. Target flow:
   tap a day → type a title → set a time → tap avatars → done, with everything else
-  behind one more tap. Typed quick-add ("Thursday 18:30 dinner") is wanted if it can be
+  behind one more tap. **A time is optional** (round 12): a new event and a new
+  reminder both open with a day and no hour, and one chip adds 18:00 when you want
+  one. A null start time already *is* all day (§7), so an event with no time is a
+  complete thought rather than a half-filled form. Typed quick-add ("Thursday 18:30 dinner") is wanted if it can be
   made reliable; the structured flow is the fallback and must be excellent on its own.
 - **Who's involved:** a row of avatars you tap. None selected is fine and means everyone.
   Since round 11.2 that row includes **people who have no account** — kids,
   grandparents — because half a family's plans are about people who do not have a
   phone. They can be on any event; they are never asked to confirm one.
-- **Recurrence, simplified:** repeats X times per week or month; ends after X times.
-  Deleting asks: this one, or all of them? Full RRULE support is not a v1 goal.
-  Deferred out of round 11 — it is a genuine third of the calendar, since it means the
-  recurrence, the "this one or all of them?" question on every edit *and* delete, and
-  the same again as RRULE on the Google side.
+- **Recurrence, simplified** (round 12, as specified). Repeats daily, weekly,
+  every two weeks or monthly; ends after X times, default ten. Editing *and*
+  deleting ask: this one, or all of them? Full RRULE support is still not a goal,
+  and the reason it turned out to be a third of a round rather than a whole one is
+  the shape chosen: **a series is ten ordinary rows sharing a `series_id`**, not
+  one row carrying a rule. Everything already built then works on it untouched —
+  the grid, RLS, attendees, confirmations, and a Google push that sends ten
+  ordinary events with no RRULE on that side either. The price is that a series is
+  finite (capped at 60), which is exactly what "ends after X times" already meant.
+  "All of them" applies the *change*, not the result: a field you touched is
+  copied everywhere, a day you moved shifts everything by the same number of days,
+  and anything you left alone stays as it was on each occurrence.
 - **Colour:** categories have colours *and* people have colours, and the two must be
   visually distinguishable — e.g. category as the event's fill, person as an avatar ring.
   Round 11 shipped exactly that shape, minus the names: an event carries one of the
@@ -432,7 +447,11 @@ Round 11 built this, with three changes worth knowing:
   idempotent and a deletion possible after the row is gone.
 - `household_members` also grew display_name, colour, avatar, email; `households` grew
   a join_code.
-- Still to come: `repeat_rule` (recurrence, deferred) and named `event_categories`.
+- Recurrence (round 12) is four columns on `events` and no new table: `series_id`
+  (null for a one-off), `series_index`, `series_count` and `series_rule`. There is
+  no expansion step anywhere, because there is nothing to expand — the rows are
+  the series.
+- Still to come: named `event_categories`.
 
 ---
 
@@ -513,7 +532,7 @@ in the repo; this is the shape.
 | 4 | **Order and learning** — shop order, per-item stats, the suggestions strip, multiple shops | The list starts sorting itself sensibly |
 | 5 | **Dishes** — dish objects, the dishes category in the catalogue, tap-a-dish-adds-its-items | Bundles working from the shopping side |
 | 6 | **Meal planner** — day/week views, meals, plan-to-list *and* list-to-plan, repeat and leftover markers, dragging | A planned week that fills the shopping list (round 10). Month view and auto-suggest-a-week deferred |
-| 7 | **Calendar** — events, reminders, month grid, avatars, confirmations, one-way push to Google | Shared family events on both phones (round 11). Quick-add and recurrence deferred |
+| 7 | **Calendar** — events, reminders, month grid, avatars, confirmations, one-way push to Google | Shared family events on both phones (round 11). Recurrence, dots, swiping and an optional start time followed in round 12; quick-add still deferred |
 | 7.1 | **Push notifications** — service worker, VAPID, one Supabase function | The confirmation request buzzes the other phone |
 | 8+ | Stock inference, offline, export, icon upgrades | As they earn their place |
 

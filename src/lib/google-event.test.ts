@@ -32,6 +32,10 @@ function event(over: Partial<CalendarEvent> = {}): CalendarEvent {
     updatedAt: '2026-09-01T10:00:00Z',
     attendees: [],
     confirmations: [],
+    seriesId: null,
+    seriesIndex: 0,
+    seriesCount: 1,
+    seriesRule: null,
     ...over,
   }
 }
