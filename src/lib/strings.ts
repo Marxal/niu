@@ -94,9 +94,40 @@ export const strings = {
     dueTitle: 'You usually need…',
     dueHint: 'Going by how often you buy these. Tap to add.',
     searchResults: 'Matches',
+    // Fill the list — the magic button beside the search field (round 15)
+    magicTitle: 'Fill the list',
+    magicOpen: 'Fill the list from what you usually buy',
+    magicSubtitle: 'From how often you buy things',
+    magicDue: 'Due about now',
+    magicUsual: 'You usually get these too',
+    magicUsualHint: 'Not due yet, but you buy them most weeks.',
+    magicNone: "Nothing looks due. You are on top of it.",
+    magicAdd: (n: number) => (n === 1 ? 'Add 1 thing' : `Add ${n} things`),
+    magicNoneChosen: 'Nothing ticked',
+    magicAll: 'All',
+    magicClear: 'None',
+    magicAdded: (n: number) => (n === 1 ? 'One thing added.' : `${n} things added.`),
+    magicFailed: "Couldn't add those just now. Try again in a moment.",
+    /*
+     * What the button says when it can't do anything yet.
+     *
+     * With the number in it, always. "Not enough data" is the sort of message
+     * that makes a button look broken; "after about four more shops" is a thing
+     * you can wait for, and it is true.
+     */
+    magicNotYet: (short: number) =>
+      short === 1
+        ? 'Almost there. One more regular buy and Niu can fill the list for you.'
+        : `Not yet — Niu needs to learn ${short} more of the things you buy regularly. Finish a few shops and this wakes up.`,
     allCategories: 'Everything else',
     // Long-press menu on a catalogue tile
     tileMenuTitle: 'What would you like to do?',
+    editDetails: 'Edit details',
+    editDetailsTitle: 'What would you like to change?',
+    dontSuggest: 'Stop suggesting this',
+    dontSuggestDone: (name: string) => `Niu will stop suggesting ${name}.`,
+    suggestAgain: 'Undo',
+    suggestAgainFull: 'Suggest this again',
     changeIcon: 'Change icon',
     changeCategory: 'Change category',
     categoryTitle: 'Which category?',
@@ -285,6 +316,47 @@ export const strings = {
     homeAdd: 'Out of it',
     homeAddLong: (name: string) => `${name}: out of it, add to the shopping list`,
     homeAdded: (name: string) => `${name} added to the list.`,
+    homeSwipeHint: 'Swipe a row away when you know you have it.',
+    homeDismissed: (name: string) => `${name} put away.`,
+    // Fill the week — the magic button above the plan (round 15)
+    magicTitle: 'Fill the week',
+    magicShort: 'Fill the week',
+    magicSubtitle: 'From the weeks you have already planned',
+    magicNone: 'Nothing to add — the week is already full.',
+    magicApply: (n: number) => (n === 1 ? 'Plan 1 meal' : `Plan ${n} meals`),
+    magicNoneChosen: 'Nothing ticked',
+    magicAll: 'All',
+    magicClear: 'None',
+    magicDone: (n: number) => (n === 1 ? 'One meal planned.' : `${n} meals planned.`),
+    magicFailed: "Couldn't plan those just now. Try again in a moment.",
+    magicKeeps: 'Anything already planned is left alone.',
+    /*
+     * Why one card is there. Short, because it sits under the dish's name on a
+     * 412px row — and specific, because a suggestion you cannot account for is
+     * one you stop trusting. Same argument as the "you usually need…" hint.
+     */
+    magicWhy: (reason: 'usual-day' | 'usual-meal' | 'often' | 'repeat', day: string, meal: string) => {
+      switch (reason) {
+        case 'usual-day':
+          return `usually a ${day}`
+        case 'usual-meal':
+          return `usually ${meal}`
+        case 'repeat':
+          return 'the night after'
+        case 'often':
+          return 'you have this often'
+      }
+    },
+    /** Same rule as the shopping one: never "not enough data" on its own. */
+    magicNotYet: (weeks: number, entries: number) => {
+      if (weeks > 0 && entries > 0) {
+        return `Not yet — Niu needs ${weeks === 1 ? 'one more week' : `${weeks} more weeks`} of plans, and a bit more in them. Keep planning and this wakes up.`
+      }
+      if (weeks > 0) {
+        return `Not yet — plan ${weeks === 1 ? 'one more week' : `${weeks} more weeks`} and Niu will know enough to fill one in for you.`
+      }
+      return `Almost there — a few more meals planned and Niu can fill a week in for you.`
+    },
     // The bin, while a card is being dragged
     trashDrop: 'Drop here to remove',
     trashOver: 'Let go to remove',

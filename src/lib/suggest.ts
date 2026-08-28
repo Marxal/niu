@@ -22,6 +22,9 @@
  *    runs out is too late to be useful in a shop.
  *  - Anything already on the list is left out — it is showing up above, and a
  *    suggestion you have already acted on is clutter.
+ *  - Anything muted is left out. Round 15 gave the household a way to say
+ *    "stop telling me about this", and a rule that only *mostly* honours it
+ *    would be worse than never having offered it.
  *
  * Pure functions, no Svelte and no Supabase: this is the kind of rule that is
  * either right or subtly wrong, and a phone can't tell you which.
@@ -78,11 +81,13 @@ export function dueNow<T extends Suggestable>(
   onList: ReadonlySet<string>,
   now: number,
   limit = 6,
+  muted: ReadonlySet<string> = new Set(),
 ): T[] {
   const scored: { item: T; ratio: number }[] = []
 
   for (const item of catalogue) {
     if (onList.has(item.id)) continue
+    if (muted.has(item.id)) continue
 
     const ratio = overdueRatio(stats[item.id], now)
     if (ratio === null || ratio < DUE_AT) continue

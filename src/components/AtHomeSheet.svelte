@@ -23,9 +23,17 @@
   Nothing here is ever automatic. Every row is a statement the user can disagree
   with in one tap.
 
-  ## Two things a row does
+  ## Three things a row does
 
   **Tap "Out of it"** and it goes on the shopping list.
+
+  **Swipe it away** and it goes, and nothing else happens (round 15). This is
+  the answer the sheet was missing: the other two both *disagree* with a row,
+  and most rows are simply right. Something you bought on Saturday and know
+  perfectly well is in the fridge has nothing to tell you, and reading past six
+  of those to reach the one you were unsure about is why a sheet stops getting
+  opened. The dismissal is per device and expires by itself the next time the
+  thing is bought — see dismissed.svelte.ts.
 
   **Hold it** and you carry it onto the plan: the sheet gets out of the way
   immediately — you cannot aim at a week you cannot see — and the item follows
@@ -50,6 +58,7 @@
   import type { AtHomeItem } from '../lib/plannable'
   import type { CatalogueItem } from '../lib/shopping.svelte'
   import { strings } from '../lib/strings'
+  import { swipeAway } from '../lib/swipe-away'
 
   let {
     items,
@@ -57,6 +66,7 @@
     busyId = null,
     hidden = false,
     onAddToList,
+    onDismiss,
     onCarry,
     onClose,
   }: {
@@ -71,6 +81,8 @@
      */
     hidden?: boolean
     onAddToList: (itemId: string, name: string) => void
+    /** Swiped off the sheet. Nothing goes on any list — see the header. */
+    onDismiss: (entry: AtHomeItem, name: string) => void
     /** Held long enough to carry onto the plan. Closes the sheet, then follows. */
     onCarry: (item: CarriedItem, at: { x: number; y: number }) => void
     onClose: () => void
@@ -208,6 +220,13 @@
       {/if}
     {/if}
   </div>
+
+  <!-- The one line that makes the gesture findable. A swipe nobody knows about
+       is a swipe nobody makes, and this is cheaper than a tutorial. It hides
+       with the list, because there is nothing to swipe off an empty sheet. -->
+  {#if items.length > 0}
+    <p class="swipe-hint">{strings.plan.homeSwipeHint}</p>
+  {/if}
 </div>
 
 {#snippet rows(list: AtHomeItem[])}
@@ -217,6 +236,7 @@
       <li
         class="row"
         class:unsure={entry.confidence === 'check'}
+        use:swipeAway={{ onAway: () => onDismiss(entry, item?.name ?? '') }}
         onpointerdown={(event) => pressStart(event, entry)}
         onpointermove={pressMove}
         onpointerup={cancelPress}
@@ -279,7 +299,10 @@
     inset: auto 0 0 0;
     z-index: var(--z-sheet);
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    /* Header, the optional explanation, the scrolling list, and the swipe
+       hint pinned under it — the hint must not scroll away with the rows it
+       is describing. */
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     gap: var(--space-3);
     max-height: 82vh;
     max-width: var(--content-max);
@@ -380,6 +403,14 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+    /* A row flying off must not widen the sheet on its way out. */
+    overflow: hidden;
+  }
+
+  .swipe-hint {
+    color: var(--color-text-faint);
+    font-size: var(--text-xs);
+    text-align: center;
   }
 
   .row {

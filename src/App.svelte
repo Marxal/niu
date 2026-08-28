@@ -23,7 +23,7 @@
   import { auth, watchAuth } from './lib/auth.svelte'
   import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
   import { clearDishes, loadDishes, watchDishes } from './lib/dishes.svelte'
-  import { clearPlan, loadPlan, plan, watchPlan } from './lib/plan.svelte'
+  import { clearPlan, loadPlan, loadPlanHistory, plan, watchPlan } from './lib/plan.svelte'
   import { clearShopping, loadShopping, watchShopping } from './lib/shopping.svelte'
   import { clearShops, loadShops, shops, watchShops } from './lib/shops.svelte'
   import { clearCalendar, loadInitialWindow, loadTombstones, watchCalendar } from './lib/calendar.svelte'
@@ -33,6 +33,7 @@
   import { clearLearning, loadLearning } from './lib/learning.svelte'
   import { watchKeyboard } from './lib/keyboard'
   import { watchTheme } from './lib/theme.svelte'
+  import { loadDismissed } from './lib/dismissed.svelte'
   import { loadPrefs } from './lib/prefs.svelte'
 
   let route = $state<RouteId>(parseRoute(location.hash))
@@ -65,8 +66,10 @@
   $effect(() => watchKeyboard())
 
   // Display preferences are device-local and don't need watching — read once.
+  // The What's home rows this phone has waved away are the same kind of thing.
   $effect(() => {
     loadPrefs()
+    loadDismissed()
   })
 
   // One subscription for the life of the app. It reports the stored session on
@@ -124,6 +127,9 @@
     if (!household.id || !week) return
 
     void loadPlan()
+    // And the long tail behind it, for Fill the week. Separate because it is
+    // three months of rows that nothing draws — see plan.svelte.ts.
+    void loadPlanHistory()
   })
 
   // One subscription for the plan, independent of which week is shown: the

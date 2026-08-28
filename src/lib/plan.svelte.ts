@@ -83,6 +83,27 @@ function toEntry(row: EntryRow): PlanEntry {
 
 class PlanState {
   entries = $state<PlanEntry[]>([])
+  /**
+   * A long tail of past weeks, for Fill the week to read a pattern off.
+   *
+   * Kept apart from `entries` rather than widening that window, because the two
+   * are wanted at completely different moments. `entries` is redrawn on every
+   * arrow tap and has to stay small; this is fetched once when the planner
+   * opens and then left alone, and nothing draws it — plan-magic.ts only counts
+   * it. Merging them would make every week step re-read three months.
+   */
+  history = $state<PlanEntry[]>([])
+  /**
+   * The week `history` was actually read for.
+   *
+   * Not decoration: two arrow taps in quick succession put two of these
+   * requests in flight, and the network is under no obligation to answer them
+   * in order. Without this check the slower, older answer can land last and
+   * leave the pattern reading a window that is one week out — which would show
+   * up as a Fill the week proposal that is subtly wrong and impossible to
+   * explain.
+   */
+  historyFor = $state<string | null>(null)
   /** The Monday of the week being looked at. Never written to the database. */
   weekStart = $state<string>(startOfWeek(todayKey()))
   loading = $state(false)
@@ -136,6 +157,49 @@ export async function loadPlan(): Promise<void> {
   plan.entries = (data as EntryRow[]).map(toEntry)
 }
 
+/**
+ * How far back Fill the week looks.
+ *
+ * Twelve weeks. Long enough that a fortnightly habit shows up six times and a
+ * weekly one twelve, short enough that what it reads is still how this
+ * household eats *now* — a pattern learnt from last winter is not a fact about
+ * September. It is also a small query: three months of two meals a day is under
+ * two hundred rows.
+ */
+const HISTORY_DAYS = 84
+
+/**
+ * Reads the stretch of past weeks the magic button learns from.
+ *
+ * Fetched once per week-on-screen rather than on every step, and never
+ * blocking: the planner is perfectly usable while this is in flight, and a
+ * failure means the button stays quiet rather than that the screen breaks
+ * (rule 5, fail soft). It re-reads when the plan changes, because a week you
+ * have just filled in is history the moment you step past it.
+ */
+export async function loadPlanHistory(): Promise<void> {
+  if (!supabase || !household.id) return
+
+  const week = plan.weekStart
+  const from = addDays(week, -HISTORY_DAYS)
+
+  const { data, error } = await supabase
+    .from('meal_entries')
+    .select(ENTRY_COLUMNS)
+    .eq('household_id', household.id)
+    .gte('on_date', from)
+    .lt('on_date', week)
+
+  if (error || !data) return
+
+  // The week moved while this was in the air: this answer is about a window
+  // nobody is looking at any more, and a newer request is already on its way.
+  if (plan.weekStart !== week) return
+
+  plan.history = (data as EntryRow[]).map(toEntry)
+  plan.historyFor = week
+}
+
 let channel: RealtimeChannel | null = null
 
 /**
@@ -150,6 +214,29 @@ export function watchPlan(): () => void {
 
   const client = supabase
 
+  /*
+   * One re-read per burst, not one per row.
+   *
+   * Realtime sends a message per row, and since round 15 a single tap can write
+   * a whole week — Fill the week inserts fourteen rows in one statement and
+   * gets fourteen messages back. Undebounced that is twenty-eight round trips
+   * and fourteen redraws for one button, on both phones. A short wait collapses
+   * the burst into one, and costs a quarter of a second on the single-card case
+   * that the optimistic write in planEntry has already drawn anyway.
+   */
+  let pending: ReturnType<typeof setTimeout> | null = null
+
+  const refresh = () => {
+    if (pending !== null) clearTimeout(pending)
+    pending = setTimeout(() => {
+      pending = null
+      void loadPlan()
+      // The pattern is read off history, and a week planned on the other phone
+      // is part of it the moment it is written.
+      void loadPlanHistory()
+    }, 250)
+  }
+
   channel = client
     .channel(`plan:${household.id}`)
     .on(
@@ -160,11 +247,15 @@ export function watchPlan(): () => void {
         table: 'meal_entries',
         filter: `household_id=eq.${household.id}`,
       },
-      () => void loadPlan(),
+      () => refresh(),
     )
     .subscribe()
 
   return () => {
+    if (pending !== null) {
+      clearTimeout(pending)
+      pending = null
+    }
     if (channel) {
       void client.removeChannel(channel)
       channel = null
@@ -268,6 +359,79 @@ export async function planEntry(
   plan.error = null
   plan.entries = plan.entries.map((entry) => (entry.id === temporaryId ? saved : entry))
   return saved.id
+}
+
+/** One card of a proposed week, ready to write. */
+export interface PlanDraft {
+  date: string
+  meal: Meal
+  target: PlanTarget
+}
+
+/**
+ * Writes a whole proposed week in one round trip — what Fill the week does once
+ * its proposal is approved.
+ *
+ * One insert rather than a loop of `planEntry`, and for the same reason
+ * addManyToList exists on the shopping side: fourteen separate writes arrive on
+ * the other phone as fourteen separate realtime messages, so somebody sitting
+ * on the sofa watches the week assemble itself card by card. One statement is
+ * one moment.
+ *
+ * Not optimistic, unlike `planEntry`. A single tap that plants one card has to
+ * feel instant; a button that fills a week is understood to be doing something,
+ * and drawing fourteen temporary cards only to swap every one of them a moment
+ * later is a lot of flicker to buy very little. The rows come back from the
+ * insert and go straight in.
+ *
+ * Positions are worked out from what is already in each meal, so a proposal
+ * dropped into a week that is half full lands after what is there rather than
+ * on top of it.
+ *
+ * Returns how many were planned, or null if the write failed and nothing
+ * changed.
+ */
+export async function planMany(
+  drafts: readonly PlanDraft[],
+  userId: string,
+): Promise<number | null> {
+  if (!supabase || !household.id) return null
+  if (drafts.length === 0) return 0
+
+  // Two cards proposed into the same meal must not both claim the same
+  // position, so the count is kept here rather than re-read per draft.
+  const positions = new Map<string, number>()
+
+  const rows = drafts.map((draft) => {
+    const slot = { date: draft.date, meal: draft.meal }
+    const key = `${draft.date}|${draft.meal}`
+    const position = positions.get(key) ?? nextPosition(plan.entries, slot)
+    positions.set(key, position + 1)
+
+    return {
+      household_id: household.id,
+      on_date: draft.date,
+      meal: draft.meal,
+      position,
+      to_cook: false,
+      created_by: userId,
+      ...targetColumns(draft.target),
+    }
+  })
+
+  const { data, error } = await supabase.from('meal_entries').insert(rows).select(ENTRY_COLUMNS)
+
+  if (error || !data) {
+    plan.error = strings.plan.saveFailed
+    return null
+  }
+
+  const saved = (data as EntryRow[]).map(toEntry)
+  const known = new Set(plan.entries.map((entry) => entry.id))
+  plan.entries = [...plan.entries, ...saved.filter((entry) => !known.has(entry.id))]
+  plan.error = null
+
+  return saved.length
 }
 
 /**
@@ -494,6 +658,8 @@ export async function setHouseholdMeals(meals: readonly Meal[]): Promise<boolean
 /** Clears everything on sign-out so nothing carries into the next account. */
 export function clearPlan(): void {
   plan.entries = []
+  plan.history = []
+  plan.historyFor = null
   plan.weekStart = startOfWeek(todayKey())
   plan.error = null
   plan.loading = false

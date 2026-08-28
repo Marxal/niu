@@ -72,6 +72,21 @@ describe('dueNow', () => {
     expect(dueNow(catalogue, stats, new Set(['milk']), NOW)).toEqual([])
   })
 
+  it('leaves out anything the household has muted', () => {
+    const stats = { milk: stat({ lastBoughtAt: daysAgo(30) }) }
+    expect(dueNow(catalogue, stats, new Set(), NOW, 6, new Set(['milk']))).toEqual([])
+  })
+
+  it('mutes one thing without silencing the rest', () => {
+    const stats = {
+      milk: stat({ lastBoughtAt: daysAgo(30) }),
+      bread: stat({ lastBoughtAt: daysAgo(40) }),
+    }
+    expect(
+      dueNow(catalogue, stats, new Set(), NOW, 6, new Set(['bread'])).map((i) => i.id),
+    ).toEqual(['milk'])
+  })
+
   it('says nothing at all for a household with no history', () => {
     expect(dueNow(catalogue, {}, new Set(), NOW)).toEqual([])
   })

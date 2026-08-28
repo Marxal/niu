@@ -79,6 +79,16 @@ class ShoppingState {
   items = $state<ListItem[]>([])
   /** Catalogue ids this household has removed from their picker for good. */
   hidden = $state<Set<string>>(new Set())
+  /**
+   * Catalogue ids this household has told the app to stop volunteering.
+   *
+   * Separate from `hidden` on purpose, and the difference matters: a hidden
+   * tile is gone from the picker and can only be added by typing its name; a
+   * muted one sits exactly where it always did and is simply never *suggested*.
+   * "I buy milk every week, stop telling me so" must not make milk harder to
+   * buy. Read by the "you usually need…" strip and by Fill the list.
+   */
+  muted = $state<Set<string>>(new Set())
   /** Icons this household picked by hand, overriding the item's own. */
   iconOverrides = $state<Record<string, string>>({})
   /**
@@ -243,6 +253,7 @@ export async function loadShopping(): Promise<void> {
     iconsResult,
     categoriesResult,
     dishResult,
+    mutedResult,
   ] = await Promise.all([
     supabase
       .from('catalogue_items')
@@ -257,6 +268,7 @@ export async function loadShopping(): Promise<void> {
       .from('list_item_dishes')
       .select('list_item_id, dish_id')
       .eq('household_id', household.id),
+    supabase.from('suggestion_mutes').select('catalogue_item_id'),
   ])
 
   shopping.loading = false
@@ -274,6 +286,14 @@ export async function loadShopping(): Promise<void> {
   if (!hiddenResult.error && hiddenResult.data) {
     shopping.hidden = new Set(
       (hiddenResult.data as { catalogue_item_id: string }[]).map((r) => r.catalogue_item_id),
+    )
+  }
+
+  // And soft again: a failed mute query means the strip suggests something
+  // somebody asked it not to, which is a small annoyance rather than a fault.
+  if (!mutedResult.error && mutedResult.data) {
+    shopping.muted = new Set(
+      (mutedResult.data as { catalogue_item_id: string }[]).map((r) => r.catalogue_item_id),
     )
   }
 
@@ -432,6 +452,20 @@ export function watchShopping(): () => void {
       },
       () => void loadShopping(),
     )
+    // And a suggestion one person silenced, for the same reason: a strip still
+    // offering something the other phone was told to stop offering is the two
+    // of them disagreeing about a decision that was made once. A whole re-read
+    // for one row is fine here too — muting happens about as often.
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'suggestion_mutes',
+        filter: `household_id=eq.${household.id}`,
+      },
+      () => void loadShopping(),
+    )
     .subscribe((status) => {
       // The first SUBSCRIBED is the one the initial load already covered.
       if (status !== 'SUBSCRIBED') return
@@ -492,6 +526,64 @@ export async function addToList(catalogueItemId: string, userId: string): Promis
     [catalogueItemId]: (shopping.useCounts[catalogueItemId] ?? 0) + 1,
   }
   void supabase.rpc('record_catalogue_use', { item_id: catalogueItemId })
+}
+
+/**
+ * Puts several catalogue items on the list in one round trip — what Fill the
+ * list writes when its proposal is approved.
+ *
+ * One insert rather than a loop of `addToList`, and the reason is what the
+ * other phone sees: twenty separate inserts arrive as twenty separate realtime
+ * messages and twenty separate re-renders, which is a list visibly filling
+ * itself up one tile at a time on somebody else's screen. One statement is one
+ * moment.
+ *
+ * `ignoreDuplicates` leans on the unique index list_items already has, so
+ * anything that reached the list between the proposal being drawn and being
+ * approved is skipped by the database rather than by a check here that could be
+ * a second out of date. Returns how many rows were actually added, or null if
+ * the write failed and nothing changed.
+ */
+export async function addManyToList(
+  catalogueItemIds: readonly string[],
+  userId: string,
+): Promise<number | null> {
+  if (!supabase || !household.id) return null
+
+  const wanted = [...new Set(catalogueItemIds)].filter((id) => !shopping.onList.has(id))
+  if (wanted.length === 0) return 0
+
+  const { data, error } = await supabase
+    .from('list_items')
+    .upsert(
+      wanted.map((catalogueItemId) => ({
+        household_id: household.id,
+        catalogue_item_id: catalogueItemId,
+        added_by: userId,
+      })),
+      { onConflict: 'household_id,catalogue_item_id', ignoreDuplicates: true },
+    )
+    .select(LIST_COLUMNS)
+
+  if (error) {
+    shopping.error = strings.shopping.addFailed
+    return null
+  }
+
+  const rows = ((data ?? []) as ListRow[]).map(toListItem)
+  const known = new Set(shopping.items.map((item) => item.id))
+  shopping.items = [...shopping.items, ...rows.filter((row) => !known.has(row.id))]
+
+  // The counts move the picker's "often bought" order, so they are bumped
+  // locally first and told to the server afterwards, one call per item. A
+  // failed count is never surfaced — the things are on the list, which is what
+  // the button was for.
+  const counts = { ...shopping.useCounts }
+  for (const id of wanted) counts[id] = (counts[id] ?? 0) + 1
+  shopping.useCounts = counts
+  for (const id of wanted) void supabase.rpc('record_catalogue_use', { item_id: id })
+
+  return rows.length
 }
 
 /** Ticks an item off, or puts it back. Records who, for the future shop-order learning. */
@@ -685,6 +777,57 @@ export async function hideCatalogueItem(catalogueItemId: string, userId: string)
 }
 
 /**
+ * Stops the app volunteering an item, without touching where it lives.
+ *
+ * The quiet half of "you usually need…". §5 promises suggestions and never
+ * auto-adds, and this is the other end of that promise: the household gets to
+ * say no to being asked. A mute is not a hide — the tile stays in its category,
+ * search still finds it, and putting it on the list is the same tap it always
+ * was. All that changes is that the app stops bringing it up.
+ *
+ * Optimistic, because the tile has to leave the strip under the thumb that
+ * asked it to.
+ */
+export async function muteSuggestion(catalogueItemId: string, userId: string): Promise<void> {
+  if (!supabase || !household.id) return
+
+  const previous = shopping.muted
+  shopping.muted = new Set([...previous, catalogueItemId])
+
+  const { error } = await supabase.from('suggestion_mutes').insert({
+    household_id: household.id,
+    catalogue_item_id: catalogueItemId,
+    muted_by: userId,
+  })
+
+  if (error) {
+    shopping.muted = previous
+    shopping.error = strings.shopping.updateFailed
+  }
+}
+
+/** Lets it be suggested again. The undo half of the tap above. */
+export async function unmuteSuggestion(catalogueItemId: string): Promise<void> {
+  if (!supabase || !household.id) return
+
+  const previous = shopping.muted
+  const next = new Set(previous)
+  next.delete(catalogueItemId)
+  shopping.muted = next
+
+  const { error } = await supabase
+    .from('suggestion_mutes')
+    .delete()
+    .eq('household_id', household.id)
+    .eq('catalogue_item_id', catalogueItemId)
+
+  if (error) {
+    shopping.muted = previous
+    shopping.error = strings.shopping.updateFailed
+  }
+}
+
+/**
  * Records the icon this household wants for an item.
  *
  * An override row rather than an edit to the item, for the same reason hiding
@@ -805,6 +948,7 @@ export function clearShopping(): void {
   shopping.items = []
   shopping.itemDishes = {}
   shopping.hidden = new Set()
+  shopping.muted = new Set()
   shopping.useCounts = {}
   shopping.categoryOverrides = {}
   shopping.iconOverrides = {}

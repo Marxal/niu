@@ -105,6 +105,17 @@ export function startOfWeek(key: string): string {
   return addDays(key, -offset)
 }
 
+/**
+ * Which day of the week a date is, Monday-first: 0 for Monday, 6 for Sunday.
+ *
+ * Monday-first for the same reason `startOfWeek` is, and returned as a number
+ * rather than a name because the things that need it are counting — "how often
+ * is this a Tuesday" is a bucket, not a label.
+ */
+export function weekdayIndex(key: string): number {
+  return (parseKey(key).getDay() + 6) % 7
+}
+
 /** The seven day keys of the week that starts on `startKey`. */
 export function weekDays(startKey: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(startKey, i))

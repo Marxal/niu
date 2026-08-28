@@ -29,6 +29,8 @@
   import Flash from '../components/Flash.svelte'
   import ItemDetailSheet from '../components/ItemDetailSheet.svelte'
   import ItemTile from '../components/ItemTile.svelte'
+  import MagicIcon from '../components/MagicIcon.svelte'
+  import MagicListSheet from '../components/MagicListSheet.svelte'
   import Placeholder from '../components/Placeholder.svelte'
   import { auth } from '../lib/auth.svelte'
   import { isConfigured } from '../lib/config'
@@ -53,6 +55,7 @@
   import { dishBadges, dishPicks, filterDishes } from '../lib/dishes'
   import { addDishToList, addItemToDish, dishes } from '../lib/dishes.svelte'
   import { learning, loadLearning } from '../lib/learning.svelte'
+  import { listReadiness, proposeShop } from '../lib/list-magic'
   import { chooseShop, shops } from '../lib/shops.svelte'
   import { sortByLearnedOrder } from '../lib/shop-order'
   import { dueNow } from '../lib/suggest'
@@ -62,6 +65,7 @@
   import { FLIP_MS, tileIn, tileOut } from '../lib/motion'
   import { prefs } from '../lib/prefs.svelte'
   import {
+    addManyToList,
     addNewWord,
     addToList,
     clearChecked,
@@ -70,9 +74,11 @@
     hideCatalogueItem,
     setItemCategory,
     setItemIcon,
+    muteSuggestion,
     removeFromList,
     shopping,
     toggleChecked,
+    unmuteSuggestion,
     updateItem,
   } from '../lib/shopping.svelte'
   import { setNavHidden } from '../lib/shell.svelte'
@@ -81,8 +87,16 @@
   let openItemId = $state<string | null>(null)
   let query = $state('')
   let openCategories = $state<Set<string>>(new Set())
-  // The long-press menu, and the two things it can lead to.
+  // The long-press menu, and the things it can lead to.
   let tileMenu = $state<PickerItem | null>(null)
+  /*
+   * Where the menu was opened from. The menu is one component with one job —
+   * "what would you like to do with this tile?" — but two of its items only
+   * make sense in one place each: silencing a suggestion is meaningless on a
+   * tile that was never suggested, and "remove for good" would be an alarming
+   * thing to offer beside it in the strip.
+   */
+  let tileMenuFrom = $state<'picker' | 'due' | 'list'>('picker')
   let pendingHide = $state<PickerItem | null>(null)
   let pendingIcon = $state<PickerItem | null>(null)
   let pendingCategory = $state<PickerItem | null>(null)
@@ -90,9 +104,18 @@
   // rather than an existing one — the editor, seeded with it.
   let pendingDish = $state<PickerItem | null>(null)
   let newDishFrom = $state<PickerItem | null>(null)
+  let magicSheet = $state(false)
+  let magicBusy = $state(false)
   let celebrating = $state(false)
   // What just happened after tapping a dish. See Flash.svelte for why it exists.
-  let flash = $state<{ text: string; tone: 'good' | 'bad' } | null>(null)
+  // The optional action is the Undo behind muting a suggestion — the one thing
+  // this screen does that leaves nothing on screen to reverse it with.
+  let flash = $state<{
+    text: string
+    tone: 'good' | 'bad'
+    action?: string
+    onAction?: () => void
+  } | null>(null)
 
   let layout = $derived(prefs.viewMode === 'list' ? ('row' as const) : ('tile' as const))
 
@@ -242,7 +265,36 @@
   // first. `Date.now()` is read here rather than inside the rule so the rule
   // stays testable at a fixed moment.
   let due = $derived(
-    searching ? [] : dueNow(pickerItems, learning.stats, shopping.onList, Date.now()),
+    searching
+      ? []
+      : dueNow(pickerItems, learning.stats, shopping.onList, Date.now(), 6, shopping.muted),
+  )
+
+  /*
+   * Fill the list: whether it can say anything, and what it would say.
+   *
+   * Both worked out as the button is drawn rather than when it is tapped —
+   * they are arithmetic over numbers already in memory, so the sheet opens with
+   * nothing to wait for and the button can look right before it is pressed.
+   * `Date.now()` is read here rather than inside the rules, so the rules stay
+   * testable at a fixed moment.
+   */
+  let magicReady = $derived(listReadiness(learning.stats, Date.now()))
+
+  /*
+   * Hidden tiles are passed in alongside the muted ones. They are different
+   * decisions — one takes a tile out of the picker, the other only stops the
+   * app volunteering it — but both mean "don't offer us this", and proposeShop
+   * reads its stats straight off `learning.stats`, which is keyed by catalogue
+   * id and knows nothing about either. Without this a tile someone removed for
+   * good would come back the moment it looked due.
+   */
+  let magicSilenced = $derived(new Set([...shopping.muted, ...shopping.hidden]))
+
+  let magicList = $derived(
+    magicReady.ready
+      ? proposeShop(learning.stats, shopping.onList, magicSilenced, Date.now())
+      : [],
   )
   let categories = $derived(searching ? [] : categoriesInOrder(pickerItems))
 
@@ -301,6 +353,58 @@
     else flash = { text: strings.dishes.flashAdded(added), tone: 'good' }
   }
 
+  /**
+   * The magic button.
+   *
+   * A real button even when it cannot do anything yet, and tapping it says why
+   * (Marçal: *"if there's not enough data, the tool can just be inactive, just
+   * inform the user"*). Greying it out would leave someone tapping a dead
+   * control with no idea what would bring it to life.
+   */
+  function openMagic() {
+    if (!magicReady.ready) {
+      flash = { text: strings.shopping.magicNotYet(magicReady.short), tone: 'good' }
+      return
+    }
+    magicSheet = true
+  }
+
+  /** Writes the shop that survived the ticking, in one round trip. */
+  async function applyMagic(itemIds: string[]) {
+    if (!auth.userId) return
+
+    magicBusy = true
+    const added = await addManyToList(itemIds, auth.userId)
+    magicBusy = false
+    magicSheet = false
+
+    if (added === null) flash = { text: strings.shopping.magicFailed, tone: 'bad' }
+    else flash = { text: strings.shopping.magicAdded(added), tone: 'good' }
+  }
+
+  /**
+   * "Stop suggesting this", off the long press on a due tile.
+   *
+   * The Undo is the important half. This is the one action in the strip that
+   * is not obviously reversible — the tile leaves and there is nowhere obvious
+   * to get it back from — so the way back is offered at the moment it happens
+   * rather than buried in a settings screen nobody would think to look in.
+   */
+  function stopSuggesting(item: PickerItem) {
+    if (!auth.userId) return
+    void muteSuggestion(item.id, auth.userId)
+
+    flash = {
+      text: strings.shopping.dontSuggestDone(item.name),
+      tone: 'good',
+      action: strings.shopping.suggestAgain,
+      onAction: () => {
+        flash = null
+        void unmuteSuggestion(item.id)
+      },
+    }
+  }
+
   function submitNew(event: Event) {
     event.preventDefault()
     if (!canAddNew || !auth.userId) return
@@ -325,10 +429,38 @@
     if (item && auth.userId) void hideCatalogueItem(item.id, auth.userId)
   }
 
-  function choosePick(item: PickerItem) {
-    // Long press opens a menu rather than one action, because there are two
-    // things you might want and neither should happen by accident.
+  function choosePick(item: PickerItem, from: 'picker' | 'due' | 'list' = 'picker') {
+    // Long press opens a menu rather than one action, because there are several
+    // things you might want and none should happen by accident.
+    tileMenuFrom = from
     tileMenu = item
+  }
+
+  /**
+   * The same menu, opened from an item already on the list (Marçal, round 15).
+   *
+   * Everything on it — the icon, the category, which dish wants it — is a
+   * property of the *catalogue* item, not of the list row, so the row has to be
+   * resolved back to its tile first. `shopping.picker` is the copy with this
+   * household's overrides already applied; the fallback covers the one case it
+   * misses, an item hidden from the picker that is still on the list.
+   */
+  function editListItem(item: DisplayItem) {
+    const tile =
+      pickerItems.find((pick) => pick.id === item.catalogueItemId) ??
+      ({
+        id: item.catalogueItemId,
+        name: item.name,
+        category: item.category,
+        icon: item.icon,
+        emoji: item.emoji,
+        sortOrder: item.sortOrder,
+        suggestedRank: null,
+        useCount: 0,
+      } satisfies PickerItem)
+
+    openItemId = null
+    choosePick(tile, 'list')
   }
 
   /**
@@ -486,7 +618,12 @@
     {/if}
 
     <!-- 4. What looks due. Silent until the app has something to go on. -->
-    <SuggestionStrip items={due} {layout} onAdd={handleAdd} />
+    <SuggestionStrip
+      items={due}
+      {layout}
+      onAdd={handleAdd}
+      onHold={(item) => choosePick(item, 'due')}
+    />
 
     <!-- 5. The tiles worth tapping first. While a search is running these fold
          away entirely and the matches appear in the dock, right above the
@@ -613,6 +750,27 @@
     {/if}
 
     <form class="search" onsubmit={submitNew}>
+      <!--
+        Fill the list, beside the field (Marçal, round 15).
+
+        Here rather than up the page with the other sections, because it is the
+        other half of the same question the field asks: *what goes on this
+        list?* One you answer by typing, one you answer by letting the app
+        remember. Both belong under the thumb.
+
+        Not `disabled` when it cannot do anything — see the planner's twin for
+        why. It is drawn quiet and it answers when tapped.
+      -->
+      <button
+        type="button"
+        class="magic"
+        class:ready={magicReady.ready}
+        aria-disabled={!magicReady.ready}
+        aria-label={strings.shopping.magicOpen}
+        onclick={openMagic}
+      >
+        <MagicIcon size={22} />
+      </button>
       <input
         type="search"
         bind:value={query}
@@ -629,6 +787,16 @@
     </form>
   </div>
 
+  {#if magicSheet}
+    <MagicListSheet
+      proposed={magicList}
+      itemsById={catalogueById}
+      busy={magicBusy}
+      onAdd={(ids) => void applyMagic(ids)}
+      onClose={() => (magicSheet = false)}
+    />
+  {/if}
+
   {#if celebrating}
     <ShoppingDone onDone={() => (celebrating = false)} />
   {/if}
@@ -638,7 +806,13 @@
          rather than inheriting the first one's remaining time. -->
     {@const shown = flash}
     {#key shown}
-      <Flash message={shown.text} tone={shown.tone} onDone={() => (flash = null)} />
+      <Flash
+        message={shown.text}
+        tone={shown.tone}
+        action={shown.action}
+        onAction={shown.onAction}
+        onDone={() => (flash = null)}
+      />
     {/key}
   {/if}
 
@@ -649,6 +823,7 @@
       <ItemDetailSheet
         item={openItem}
         onChange={(changes) => void updateItem(openItem.id, changes)}
+        onEdit={() => editListItem(openItem)}
         onRemove={() => {
           void removeFromList(openItem.id)
           openItemId = null
@@ -733,6 +908,70 @@
           </svg>
           {strings.shopping.changeCategory}
         </button>
+        <!--
+          Muting, and its way back. Offered where it makes sense: on a tile the
+          strip is currently suggesting, and — wherever it is opened from — on
+          one that is already muted, so there is always a route back without
+          hunting through Settings for it.
+        -->
+        {#if shopping.muted.has(tileMenu.id)}
+          <button
+            class="menu-item"
+            onclick={() => {
+              const item = tileMenu
+              tileMenu = null
+              if (item) void unmuteSuggestion(item.id)
+            }}
+          >
+            <svg
+              width="19"
+              height="19"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 3a9 9 0 0 1 9 9" />
+              <path d="M4 13.5a8 8 0 0 1 16 0" />
+              <path d="M6 13.5v4M18 13.5v4" />
+            </svg>
+            {strings.shopping.suggestAgainFull}
+          </button>
+        {:else if tileMenuFrom === 'due'}
+          <button
+            class="menu-item"
+            onclick={() => {
+              const item = tileMenu
+              tileMenu = null
+              if (item) stopSuggesting(item)
+            }}
+          >
+            <svg
+              width="19"
+              height="19"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 3l18 18" />
+              <path d="M4 13.5a8 8 0 0 1 11-7.4M20 13.5a8 8 0 0 0-2-5.3" />
+              <path d="M6 13.5v4M18 13.5v4" />
+            </svg>
+            {strings.shopping.dontSuggest}
+          </button>
+        {/if}
+
+        <!-- Removing for good is not offered from the list: the tile is on the
+             list *because* somebody wants it, and taking it out of the
+             catalogue in the same breath is not the question being asked. -->
+        {#if tileMenuFrom !== 'list'}
         <button
           class="menu-item danger"
           onclick={() => {
@@ -757,6 +996,7 @@
           </svg>
           {strings.shopping.hideConfirm}
         </button>
+        {/if}
       </div>
     </div>
   {/if}
@@ -1079,6 +1319,36 @@
 
   .search > * {
     pointer-events: auto;
+  }
+
+  /* Round, the same height as the field, and the same floating treatment: it
+     sits on the page rather than in a bar, so it carries its own shadow. */
+  .magic {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-full);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-2);
+    color: var(--color-text-faint);
+    transition:
+      border-color var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease);
+  }
+
+  /* Wearing the accent is how it says it has something to offer. A colour
+     change rather than an opacity one, so the difference survives a phone held
+     at arm's length in a shop. */
+  .magic.ready {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  .magic:active {
+    transform: scale(0.94);
   }
 
   input {
