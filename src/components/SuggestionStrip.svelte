@@ -13,6 +13,14 @@
   The line underneath says where the guess comes from. That matters more than it
   looks: a suggestion you can't account for is one you stop trusting, and this
   one is only ever "about as long has passed as usually passes".
+
+  **Holding a tile opens the same menu the catalogue's tiles have** (Marçal,
+  round 15), with one extra item on it: *stop suggesting this*. That is the
+  other half of "suggestions, never auto-add" — the app may say it thinks the
+  milk is due, and the household may say it would rather not be told. Without
+  it the only way to silence a wrong guess was to hide the item from the
+  catalogue entirely, which is a much bigger thing to do to something you buy
+  every week.
 -->
 <script lang="ts">
   import ItemTile from './ItemTile.svelte'
@@ -23,10 +31,13 @@
     items,
     layout = 'tile',
     onAdd,
+    onHold,
   }: {
     items: readonly PickerItem[]
     layout?: 'tile' | 'row'
     onAdd: (catalogueItemId: string) => void
+    /** Held down: the screen's tile menu, with "stop suggesting" on it. */
+    onHold: (item: PickerItem) => void
   } = $props()
 </script>
 
@@ -43,6 +54,7 @@
           {layout}
           state="pick"
           onclick={() => onAdd(item.id)}
+          onlongpress={() => onHold(item)}
         />
       {/each}
     </div>

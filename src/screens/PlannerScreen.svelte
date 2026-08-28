@@ -38,6 +38,8 @@
 <script lang="ts">
   import AtHomeSheet from '../components/AtHomeSheet.svelte'
   import DishSheet from '../components/DishSheet.svelte'
+  import MagicIcon from '../components/MagicIcon.svelte'
+  import MagicPlanSheet from '../components/MagicPlanSheet.svelte'
   import EntryPickerSheet from '../components/EntryPickerSheet.svelte'
   import Flash from '../components/Flash.svelte'
   import GroceryIcon from '../components/GroceryIcon.svelte'
@@ -61,6 +63,13 @@
   } from '../lib/drag.svelte'
   import { household } from '../lib/household.svelte'
   import { learning } from '../lib/learning.svelte'
+  import { dismiss, isDismissed, undismiss } from '../lib/dismissed.svelte'
+  import {
+    type ProposedEntry,
+    planReadiness,
+    proposeWeek,
+    readWeekPattern,
+  } from '../lib/plan-magic'
   import {
     type Meal,
     type PlanEntry,
@@ -77,11 +86,13 @@
   } from '../lib/plan'
   import { planNeeds } from '../lib/plan-needs'
   import {
+    type PlanDraft,
     type PlanOptions,
     type PlanTarget,
     moveEntry,
     plan,
     planEntry,
+    planMany,
     setEntryKind,
     setEntryNote,
     setToCook,
@@ -119,6 +130,7 @@
   let opened = $state<PlanEntry | null>(null)
   let shopping_sheet = $state(false)
   let makeable_sheet = $state(false)
+  let magic_sheet = $state(false)
   let home_sheet = $state(false)
   /** The What's home sheet is out of sight but still mounted, mid-carry. */
   let homeCarrying = $state(false)
@@ -169,7 +181,51 @@
 
   let makeable = $derived(rankMakeable(dishes.all, pantry))
 
-  let atHome = $derived(atHomeItems(learning.stats, shopping.onList, new Date()))
+  /*
+   * What Fill the week has to go on. Read off `plan.history` — three months of
+   * past weeks that nothing draws — rather than off `plan.entries`, which is a
+   * month-wide window around whatever week is on screen and would make the
+   * pattern change every time you tapped an arrow.
+   */
+  let pattern = $derived(readWeekPattern(plan.history, plan.weekStart))
+  let magicReady = $derived(planReadiness(pattern))
+
+  /*
+   * The proposal, worked out as the button is drawn rather than when it is
+   * tapped, so the sheet opens with nothing to wait for. It is pure arithmetic
+   * over a few hundred rows.
+   *
+   * `from` is today in the week you are in, and nothing otherwise: the day view
+   * already refuses to show Monday on a Wednesday (§4.2), and proposing meals
+   * into days that are not on screen would be proposing them invisibly.
+   */
+  let proposal = $derived.by<ProposedEntry[]>(() => {
+    if (!magicReady.ready) return []
+    return proposeWeek(pattern, {
+      weekStart: plan.weekStart,
+      meals: household.meals,
+      existing: weekEntries,
+      dishIds: new Set(dishes.all.map((dish) => dish.id)),
+      itemIds: new Set(shopping.picker.map((item) => item.id)),
+      // Spread rather than `from: undefined`: with exactOptionalPropertyTypes
+      // an absent key and an undefined one are different things.
+      ...(thisWeek ? { from: today } : {}),
+    })
+  })
+
+  /*
+   * What's home, minus the rows this phone has already waved away.
+   *
+   * The filter is here rather than inside atHomeItems() because a dismissal is
+   * a fact about the person looking, not about the household — see
+   * dismissed.svelte.ts — and plannable.ts is pure arithmetic over household
+   * data with no business knowing about a phone's local storage.
+   */
+  let atHome = $derived(
+    atHomeItems(learning.stats, shopping.onList, new Date()).filter(
+      (entry) => !isDismissed(entry.itemId, learning.stats[entry.itemId]?.lastBoughtAt ?? null),
+    ),
+  )
 
   let needs = $derived(
     planNeeds(plan.entries, plan.weekStart, weekEnd, dishes.byId, shopping.onList),
@@ -291,6 +347,78 @@
         home_sheet = false
       },
     })
+  }
+
+  /**
+   * The magic button.
+   *
+   * It is a real button even when it cannot do anything, and tapping it says
+   * why and how far off it is (Marçal: *"if there's not enough data, the tool
+   * can just be inactive, just inform the user"*). A control that is greyed out
+   * and silent teaches you nothing; one that answers teaches you what to do to
+   * turn it on.
+   */
+  function openMagic() {
+    if (!magicReady.ready) {
+      flash = {
+        text: strings.plan.magicNotYet(magicReady.weeksShort, magicReady.entriesShort),
+        tone: 'good',
+      }
+      return
+    }
+    magic_sheet = true
+  }
+
+  /**
+   * Writes the week that survived the ticking, in one round trip.
+   *
+   * The first card gets the arrival flourish and the rest do not, on purpose:
+   * fourteen cards each playing their own animation is confetti, and the one
+   * that plays is enough to say "that landed".
+   */
+  async function applyMagic(chosen: ProposedEntry[]) {
+    if (!auth.userId) return
+
+    const drafts: PlanDraft[] = chosen.map((entry) => ({
+      date: entry.date,
+      meal: entry.meal,
+      target:
+        entry.kind === 'dish' && entry.dishId
+          ? { kind: 'dish', dishId: entry.dishId }
+          : entry.kind === 'item' && entry.itemId
+            ? { kind: 'item', itemId: entry.itemId }
+            : entry.kind === 'leftovers'
+              ? { kind: 'leftovers', dishId: entry.dishId }
+              : { kind: 'out' },
+    }))
+
+    busy = true
+    const planned = await planMany(drafts, auth.userId)
+    busy = false
+    magic_sheet = false
+
+    if (planned === null) flash = { text: strings.plan.magicFailed, tone: 'bad' }
+    else flash = { text: strings.plan.magicDone(planned), tone: 'good' }
+  }
+
+  /**
+   * Swiped off the What's home sheet. Nothing goes on any list — that is the
+   * whole point of it, and the Undo is there because a swipe is the one gesture
+   * you can make by accident.
+   */
+  function dismissFromHome(entry: { itemId: string }, name: string) {
+    const stat = learning.stats[entry.itemId]
+    dismiss(entry.itemId, stat?.lastBoughtAt ?? null)
+
+    flash = {
+      text: strings.plan.homeDismissed(name),
+      tone: 'good',
+      action: strings.plan.undo,
+      onAction: () => {
+        flash = null
+        undismiss(entry.itemId)
+      },
+    }
   }
 
   /** "Out of it" on a What's home row: straight onto the shopping list. */
@@ -453,26 +581,51 @@
       <p class="error" role="alert">{plan.error}</p>
     {/if}
 
-    <button class="makeable" onclick={() => (makeable_sheet = true)}>
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.8"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
+    <!-- The two "help me decide" buttons, side by side because they are a pair:
+         one reads the cupboard, the other reads your habits. Neither writes
+         anything on its own — both open a sheet you have to agree with. -->
+    <div class="tools">
+      <button class="tool" onclick={() => (makeable_sheet = true)}>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3Z" />
+          <path d="M10 20h4" />
+        </svg>
+        <span class="tool-label">{strings.plan.makeableTitle}</span>
+        {#if makeable.length > 0}
+          <span class="count">{makeable.length}</span>
+        {/if}
+      </button>
+
+      <!--
+        Not `disabled`, on purpose, even when it cannot do anything. A greyed-out
+        control tells you nothing about why it is off or what would turn it on;
+        this one is drawn quiet and answers when you tap it. `aria-disabled`
+        says the same to a screen reader without taking the button out of the
+        tab order and out of reach of the explanation.
+      -->
+      <button
+        class="tool magic"
+        class:ready={magicReady.ready}
+        aria-disabled={!magicReady.ready}
+        onclick={openMagic}
       >
-        <path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3Z" />
-        <path d="M10 20h4" />
-      </svg>
-      {strings.plan.makeableTitle}
-      {#if makeable.length > 0}
-        <span class="count">{makeable.length}</span>
-      {/if}
-    </button>
+        <MagicIcon size={18} />
+        <span class="tool-label">{strings.plan.magicShort}</span>
+        {#if magicReady.ready && proposal.length > 0}
+          <span class="count">{proposal.length}</span>
+        {/if}
+      </button>
+    </div>
 
     {#if view === 'days'}
       <div class="days">
@@ -692,8 +845,22 @@
       busyId={homeBusyId}
       hidden={homeCarrying}
       onAddToList={outOfIt}
+      onDismiss={dismissFromHome}
       onCarry={carryFromHome}
       onClose={() => (home_sheet = false)}
+    />
+  {/if}
+
+  {#if magic_sheet}
+    <MagicPlanSheet
+      proposed={proposal}
+      dishesById={dishes.byId}
+      itemsById={shopping.byId}
+      {today}
+      rangeLabel={weekName(plan.weekStart, today)}
+      {busy}
+      onApply={(chosen) => void applyMagic(chosen)}
+      onClose={() => (magic_sheet = false)}
     />
   {/if}
 
@@ -825,17 +992,49 @@
     font-size: var(--text-xs);
   }
 
-  .makeable {
+  /* Two equal halves. `min-width: 0` on the children is what lets a long label
+     ellipsis rather than push its neighbour off the row. */
+  .tools {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+
+  .tool {
     display: flex;
+    min-width: 0;
     align-items: center;
     justify-content: center;
     gap: var(--space-2);
     min-height: var(--tap-min);
+    padding: 0 var(--space-2);
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-full);
     color: var(--color-text-muted);
     font-size: var(--text-sm);
     font-weight: var(--weight-bold);
+  }
+
+  .tool svg {
+    flex: none;
+  }
+
+  .tool-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Quiet until it can actually do something, and then it wears the accent.
+     The difference has to be visible at a glance from across the kitchen —
+     which is also why it is a colour change rather than an opacity one. */
+  .magic.ready {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  .magic:not(.ready) {
+    color: var(--color-text-faint);
   }
 
   /*
@@ -969,7 +1168,7 @@
   }
 
   .dock button:active,
-  .makeable:active {
+  .tool:active {
     transform: scale(0.99);
   }
 
@@ -985,7 +1184,7 @@
     font-size: var(--text-xs);
   }
 
-  .makeable .count,
+  .tool .count,
   .home .count {
     background: var(--color-surface-sunken);
   }

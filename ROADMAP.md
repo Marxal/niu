@@ -2684,3 +2684,257 @@ No migration — just reload.
 - **The same dock treatment for the icon and ingredient pickers.** Both already
   put results next to the field; they needed the scroll position fixed, not the
   layout.
+
+---
+
+## Round 15 — The app fills it in for you
+
+**Branch:** `claude/meal-plan-shopping-magic-m29j0d`
+
+Five things. **One migration** — `0015_suggestion_mutes.sql`.
+
+Marçal: *"The app should learn about the patterns on the mealplans… when there's
+enough data it could suggest the meal plan and make it automatically via a magic
+meal plan button. We could do the same with the shopping list."* Plus three
+smaller ones that came in the same breath.
+
+This is the round NIU.md §4.2 has been pointing at since the beginning —
+*"Auto-suggest a week: yes, once there's enough data. The user always
+approves."* Round 10 deliberately didn't build it, because with no planning
+history it could only have ranked by times-added, which is the picker you
+already had. There is history now.
+
+### Fill the week
+
+A second button beside **What can we make?**, above the plan. It reads the last
+twelve weeks of `meal_entries` and proposes a whole week, which you then tick.
+
+**What it learns is three counts per thing, and nothing else** (`plan-magic.ts`):
+
+| | |
+|---|---|
+| **slot** | how often it turned up *on this weekday, at this meal* |
+| **meal** | how often it turned up at this meal on any day |
+| **total** | how often it was planned at all |
+
+Weighted 6 / 2 / 1 and added. That ordering is the whole model, and it is why
+every row on the sheet can say why it is there — "usually a Friday", "usually
+lunch", "you have this often". A suggestion you cannot account for is one you
+stop trusting, which is the same argument the "you usually need…" hint line has
+always made.
+
+**It places the weekday habits first, then fills in around them.** This turned
+out to be the load-bearing decision and a unit test is what found it: a single
+greedy scan down the week hands Friday's tacos to Monday, because Monday is
+simply the first empty meal it meets. A proposal that moves taco night is a
+proposal that gets rejected. So anything seen at least twice on the same weekday
+at the same meal claims that day before anything else is placed.
+
+**Repeats are copied, not avoided.** §4.2 is emphatic that the app must not shy
+away from recent dishes, so there is no freshness penalty anywhere in here. Two
+things follow. Each dish gets a **weekly budget** from its own history — planned
+1.6 times a week on average, it may be proposed twice. And a dish this household
+eats two nights running is *proposed* two nights running, as a **leftovers**
+entry on the second night rather than a second dish entry: that is what the
+second night actually is, and a leftovers entry never puts anything on the
+shopping list, so one lasagne does not read as two shops.
+
+**It fills gaps and never overwrites.** A meal that already holds something is
+not in the proposal at all, and the sheet says so at the bottom.
+
+A nice property that fell out of the budget: it proposes a week **the size of
+the weeks this household actually plans**. Two meals a week for three weeks
+gives you two cards, not a padded fourteen.
+
+### Fill the list
+
+The same idea on the other tab, as a round button **beside the search field** —
+which is where it belongs, because it is the other half of the question the
+field asks: *what goes on this list?* One you answer by typing, one by letting
+the app remember.
+
+It needed no new learning at all; per-item purchase rhythm has been in
+`item_stats` since round 7. What it needed was a second band (`list-magic.ts`):
+
+- **Due about now** — past four-fifths of the usual gap. The *same* bar the
+  suggestions strip uses, so the two can never disagree about a word as strong
+  as "due". Starts ticked.
+- **You usually get these too** — regulars only halfway through their cycle.
+  This is the half a weekly shop is actually made of: the milk you buy every
+  Saturday is four days old when you buy it again and is never "due" on a
+  Saturday morning. Gated twice — four purchases minimum, and a usual gap of ten
+  days or less — because something you buy every two months is never a "usual".
+  Starts **unticked**, deliberately: it is the band most likely to be wrong, and
+  a proposal that starts by agreeing with itself about everything is one nobody
+  reads.
+
+### "Inactive" means it answers, not that it is dead
+
+Marçal: *"If there's not enough data, the tool can just be inactive, just inform
+the user when clicking that once there's enough data that function will be
+available."*
+
+Both buttons are real buttons at all times. They are drawn quiet, and tapping
+one says how far off it is:
+
+> *Not yet — plan two more weeks and Niu will know enough to fill one in for you.*
+
+Never "not enough data" on its own. A greyed-out control teaches you nothing
+about what would turn it on; this one is a thing you can wait for, with a number
+attached. `aria-disabled` says the same to a screen reader without taking the
+button out of reach of the explanation.
+
+The bars: **three weeks and twelve entries** for the week (two weeks cannot tell
+a habit from a coincidence — anything that happened twice looks like a rule),
+and **eight items with a rhythm** for the list (below that the "shop" it
+proposed would be shorter than the strip already above it).
+
+### Swipe a What's home row away
+
+The sheet had two answers to a row and both of them *disagreed* with it — "out
+of it" puts the thing on the list, a long press carries it onto the plan. Most
+rows are simply right, and reading past six things you know are in the fridge to
+reach the one you were unsure about is why a sheet stops getting opened.
+
+So a row now pushes sideways and goes, with an Undo. The dismissal is **per
+device** and it **expires by itself**: it is stored against the item's
+`last_bought_at`, so the next time you buy the thing the row comes back. Nothing
+to clean up, and no way to permanently blind yourself to something by accident.
+
+A dismissal is a fact about the person looking, not about the household — the
+same argument `prefs.svelte.ts` makes about density — so it is `localStorage`
+under `niu.athome.dismissed`, not a table. Muting a *suggestion*, below, is the
+opposite call and is in the database, because "stop offering us this, ever" is
+something you decide together.
+
+The gesture is a new `swipe-away.ts`, and it applies the two lessons this
+project has already paid for: `touch-action: pan-y` on the row (round 10.1
+shipped a swipe that did nothing on a real phone without it), and a
+`pointercancel` that ends the swipe where the finger last was rather than
+rewinding it.
+
+### Editing an item that is already on the list
+
+The icon, the category and which dish wants a thing were only reachable by
+holding its tile down in the picker — so the moment something reached the list
+it became uneditable, exactly when you are most likely to be looking at it and
+thinking *that icon is wrong*.
+
+There is now a small pencil in the corner of the item sheet, beside the close
+button. It opens the same menu the picker's long press does. Deliberately a
+faint icon rather than a fourth big control: the three fields above it are what
+you came here for nine times out of ten.
+
+Removing a tile *for good* is not offered from the list, because the tile is on
+the list precisely because somebody wants it.
+
+### "Stop suggesting this"
+
+The "you usually need…" tiles take a long press now, with the same menu the
+catalogue's tiles have plus one item: **stop suggesting this**.
+
+That is the other half of §5's "suggestions, never auto-add" — the app may say
+it thinks the milk is due, and the household may say it would rather not be
+told. Before this, silencing a wrong guess meant hiding the item from the
+catalogue entirely, which is a much bigger thing to do to something you buy
+every week.
+
+A **mute is not a hide**, and that is the whole point of the new table. The tile
+stays where it is, search still finds it, adding it is the same tap it always
+was; all that stops is the app bringing it up. The way back is offered twice: an
+Undo on the message, and "suggest this again" on the menu of any muted tile,
+wherever it is opened from.
+
+It is household data rather than device data, and realtime, because a
+suggestion one person silenced still sitting on the other person's screen is the
+two phones disagreeing about a decision that was made once.
+
+### Two things found while building, not asked for
+
+- **The realtime handler for the plan is debounced.** Fill the week writes
+  fourteen rows in one statement and gets fourteen messages back; undebounced
+  that was twenty-eight round trips and fourteen redraws for one button, on both
+  phones. 250ms collapses the burst into one re-read.
+- **The history window guards against its own answers arriving out of order.**
+  Two arrow taps put two requests in flight and the network is under no
+  obligation to answer them in order; the older answer landing last would leave
+  the pattern reading a window one week out — a proposal subtly wrong and
+  impossible to explain.
+
+### The database
+
+One table, `suggestion_mutes` — household id, catalogue item id, who and when.
+Same shape and the same reasoning as `catalogue_hidden` in 0004: most of the
+catalogue is a shared seed belonging to no household, so one household silencing
+anchovies must not silence them for everybody. RLS in the same migration, as
+always: read, insert and delete, all `is_household_member`.
+
+Both magic buttons needed **no schema at all**. They read `meal_entries` and
+`item_stats`, which have been there since rounds 10 and 7.
+
+### How it was checked
+
+**474 unit tests, 57 of them new** — 31 for the week pattern and its proposal,
+17 for the shop proposal, 7 for the swipe geometry, and 2 more on the
+suggestions strip for the mute filter. The one that earned its place is *"does
+not let an earlier day steal a weekday habit"*: it failed on the first
+implementation and is the reason the anchor pass exists.
+
+Rendered in a real Chromium at **412×915** in both themes: both magic sheets,
+the What's home sheet and the item sheet with its pencil. No sideways overflow
+on any of them, in either theme, and no console errors.
+
+The swipe was driven with **real CDP touch events**, not a mouse — which is the
+only way to catch the `touch-action` trap that made round 10.1's swipe do
+nothing. A 160px sideways drag dismisses; a 30px nudge, a 120px scroll and a
+90×80 diagonal all correctly do not; and the "Out of it" button inside the row
+is still tappable. Mid-swipe the row follows the finger, fades, and is clipped
+by the sheet rather than widening the page.
+
+### How to test it
+
+**Run `supabase/migrations/0015_suggestion_mutes.sql` first**, in the Supabase
+dashboard under SQL Editor. Do this before opening the app: the shopping tab
+subscribes to the new table, and the list will not sync between phones until it
+exists. Then reload.
+
+1. **Shopping → look beside the search field.** There is a round wand button.
+   Tap it. If Niu doesn't know enough yet it tells you what it is waiting for;
+   if it does, you get **Fill the list** — things due at the top, already
+   ticked, and things you usually get below, not ticked. Untick anything you
+   have, tap **Add**.
+2. **Meals → the row above the week** now has two buttons. **Fill the week** is
+   the new one, and it wears the orange when it has something to offer. Tap it.
+   You should get a week made of your own habits, with a line under each card
+   saying why it is there. Untick a day you have plans for and tap **Plan**.
+3. **Plan something into Thursday dinner first, then tap Fill the week.**
+   Thursday dinner should not appear in the proposal at all.
+4. **Meals → At home → push a row sideways.** It should follow your thumb, fade,
+   and go, with an **Undo** in the message. Scroll the sheet up and down first —
+   that must still scroll rather than throw rows off.
+5. **Buy that thing again and finish the shop.** The row you pushed away comes
+   back on its own.
+6. **Shopping → hold a tile in "You usually need…".** The menu now has **Stop
+   suggesting this** on it. Tap it; the tile leaves. **Undo** in the message
+   puts it back, and so does holding it anywhere in the catalogue and choosing
+   **Suggest this again**.
+7. **Shopping → hold something already on the list.** The detail sheet has a
+   small pencil beside the ✕. Tap it: change its icon, move its category, or
+   file it into a dish — the same three things the picker's long press offers.
+
+### Deliberately not done
+
+- **Shuffling a proposal.** "Give me another week" sounds obvious and is not: it
+  would either re-rank randomly, which makes two phones show two different
+  weeks, or step down the ranking, which is worse the second time by
+  construction. Unticking the two cards you disagree with is the same job in one
+  gesture fewer.
+- **A "things you have muted" screen in Settings.** The undo is offered twice at
+  the moment it happens and on the tile afterwards, which is where anyone would
+  look first. If a household ever mutes enough to lose track, the columns are
+  there to build it from.
+- **Learning shelf life.** Still §5's job, still deferred. Nothing here models
+  how long anything lasts — Fill the list counts purchase rhythm, exactly as the
+  strip does.
+- **Filling more than one week at a time.** The button acts on the week you are
+  looking at, because that is the week you are thinking about.

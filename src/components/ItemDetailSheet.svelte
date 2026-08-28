@@ -21,6 +21,20 @@
   Edits save as you make them rather than behind a Save button: there is nothing
   here that needs confirming, and a Save button you can forget to press loses
   work. Done just closes.
+
+  ## The pencil in the corner
+
+  Round 15 added a second, quieter door out of here (Marçal): the things that
+  belong to the *item* rather than to this shopping trip — its picture, which
+  category it lives in, which dish wants it. Those were only reachable by
+  holding the tile down in the picker below, which meant that the moment
+  something was on the list it became uneditable, exactly when you are most
+  likely to be looking at it and thinking "that icon is wrong".
+
+  It is deliberately a small icon rather than a fourth big control. The three
+  fields above are what you came here for nine times out of ten; this is the
+  tenth. Tapping it hands back to the screen, which opens the same menu the
+  picker's long press does.
 -->
 <script lang="ts">
   import { strings } from '../lib/strings'
@@ -29,6 +43,7 @@
   let {
     item,
     onChange,
+    onEdit,
     onRemove,
     onClose,
   }: {
@@ -39,6 +54,8 @@
       urgent?: boolean
       ifConvenient?: boolean
     }) => void
+    /** The pencil: hands back to the screen for the icon/category/dish menu. */
+    onEdit: () => void
     onRemove: () => void
     onClose: () => void
   } = $props()
@@ -93,6 +110,22 @@
 <div class="sheet" role="dialog" aria-modal="true" aria-label={item.name}>
   <header>
     <h2>{item.name}</h2>
+    <button class="edit" onclick={onEdit} aria-label={strings.shopping.editDetails}>
+      <svg
+        width="19"
+        height="19"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 20h4l10-10a2.4 2.4 0 0 0-3.4-3.4L4.6 16.6 4 20Z" />
+        <path d="m13.5 7.5 3 3" />
+      </svg>
+    </button>
     <button class="close" onclick={onClose} aria-label={strings.shopping.close}>
       <svg
         width="24"
@@ -221,17 +254,37 @@
   header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
+    gap: var(--space-1);
   }
 
   h2 {
+    /* Takes the slack, so the two icons stay pinned to the right whatever
+       length the name is. */
+    flex: 1;
+    min-width: 0;
     font-size: var(--text-lg);
     font-weight: var(--weight-bold);
   }
 
+  /* Faint on purpose: it is the door you take one time in ten. */
+  .edit {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    border-radius: var(--radius-full);
+    color: var(--color-text-faint);
+  }
+
+  .edit:active {
+    background: var(--color-surface-sunken);
+    color: var(--color-text-muted);
+  }
+
   .close {
     display: grid;
+    flex: none;
     place-items: center;
     width: var(--tap-min);
     height: var(--tap-min);

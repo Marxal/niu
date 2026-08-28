@@ -10,13 +10,18 @@
   Deliberately not a toast library. It is a sentence, it sits above the search
   field where the thumb already is, and it leaves on its own.
 
-  It grew exactly one button, in round 10.1, and only for the case that earns it:
-  swiping a meal off the plan. Every other message here reports something you can
-  see and undo yourself — a tile greyed out, four things added to a list you are
-  looking at. A swipe is the one gesture that *removes* something, can be done by
-  accident on a scroll, and leaves nothing behind to put back. Nothing else
-  should take this button; if a second thing wants it, that is the moment to ask
-  whether it is really the same kind of message.
+  It grew a button in round 10.1, for swiping a meal off the plan, and that note
+  said to ask hard before a second thing took it. Round 15 asked, and two more
+  qualified — which is what made the rule sayable rather than a list:
+
+  **The button is for a message about something that is now gone, where nothing
+  on screen is left to undo it with.** Swiping a card off the plan, swiping a
+  row off What's home, and muting a suggestion are all that: the thing leaves,
+  and there is no obvious place to get it back from. Every other message here
+  reports something you can see and reverse yourself — a tile greyed out, four
+  things added to a list you are looking at — and those stay wordless.
+
+  A message that fails that test does not get a button.
 
   role="status" rather than role="alert" — a screen reader should mention it at
   the next pause, not interrupt whatever it was reading.
