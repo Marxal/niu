@@ -138,6 +138,14 @@ describe('what an edit changed', () => {
     expect(isNoChange(before, { ...before, location: '   ' })).toBe(true)
   })
 
+  it('does not count the confirmation switch as an edit', () => {
+    // What this buys: flipping "ask her to confirm" on one gym session must not
+    // set off "change this one, or all 10?" — a confirmation is about one
+    // evening, so there is nothing to apply to the other nine.
+    expect(isNoChange(before, { ...before, askConfirm: !before.askConfirm })).toBe(true)
+    expect(draftChanges(before, { ...before, askConfirm: true })).toEqual(new Set())
+  })
+
   it('treats attendees as a set, not a list', () => {
     const withTwo = { ...before, attendees: ['a', 'b'] }
     expect(isNoChange(withTwo, { ...withTwo, attendees: ['b', 'a'] })).toBe(true)

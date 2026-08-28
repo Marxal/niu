@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type CalendarEvent,
   type EventDraft,
+  DEFAULT_END_TIME,
   DEFAULT_START_TIME,
   awaitingMe,
   canSave,
@@ -233,13 +234,28 @@ describe('confirmation', () => {
 })
 
 describe('drafts', () => {
-  it('starts an event and a reminder alike, with no time at all', () => {
-    // Round 12: a time is something you add, not something you clear. Round 11
-    // opened an event at 18:00 and made you press "All day" to say otherwise.
-    expect(newDraft('event', '2026-09-03').startTime).toBe(null)
-    expect(newDraft('reminder', '2026-09-03').startTime).toBe(null)
-    // 18:00 has not gone anywhere — it is what "Add a time" fills in.
-    expect(DEFAULT_START_TIME).toBe('18:00')
+  it('opens an event at midday and a reminder with no time at all', () => {
+    // Round 13, after round 12 opened both with no time: an event is timed
+    // again now that there is an All-day switch in plain sight above it, and
+    // midday to one is the least wrong guess. A reminder is still about a day.
+    const event = newDraft('event', '2026-09-03')
+    expect(event.startTime).toBe(DEFAULT_START_TIME)
+    expect(event.endTime).toBe(DEFAULT_END_TIME)
+    expect(DEFAULT_START_TIME).toBe('12:00')
+    expect(DEFAULT_END_TIME).toBe('13:00')
+
+    const reminder = newDraft('reminder', '2026-09-03')
+    expect(reminder.startTime).toBe(null)
+    expect(reminder.endTime).toBe(null)
+  })
+
+  it('takes the confirmation switch from the caller, off unless told', () => {
+    // The default lives in Settings, and this module has no Svelte in it.
+    expect(newDraft('event', '2026-09-03').askConfirm).toBe(false)
+    expect(newDraft('event', '2026-09-03', true).askConfirm).toBe(true)
+    // An event that has already been sent round opens with the switch on.
+    expect(draftFrom(event({ confirmRequested: true })).askConfirm).toBe(true)
+    expect(draftFrom(event()).askConfirm).toBe(false)
   })
 
   it('starts a new draft as a one-off', () => {
