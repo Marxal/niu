@@ -181,6 +181,22 @@
     if (monthKey(day) !== month) month = monthKey(day)
   }
 
+  /**
+   * The first day of the run an event belongs to, or null for a one-off.
+   *
+   * The sheet needs it to say truthfully when a run would end, because changing
+   * how many times rebuilds from the first day rather than from whichever
+   * occurrence you opened.
+   */
+  function seriesStartFor(event: CalendarEvent | null): string | null {
+    if (event === null || event.seriesId === null) return null
+    const days = calendar.events
+      .filter((e) => e.seriesId === event.seriesId)
+      .map((e) => e.startsOn)
+      .sort()
+    return days[0] ?? event.startsOn
+  }
+
   function open(event: CalendarEvent) {
     sheet = { event, kind: event.kind }
   }
@@ -243,6 +259,13 @@
       await removeEvent(existing.id, scope)
       syncSoon()
     }
+  }
+
+  /** Answering from inside the detail view. Closes it — the question is done. */
+  async function answerFromSheet(reply: 'yes' | 'no') {
+    const existing = sheet?.event ?? null
+    sheet = null
+    if (existing) await answer(existing, reply)
   }
 
   async function answer(event: CalendarEvent, reply: 'yes' | 'no') {
@@ -443,8 +466,10 @@
       event={sheet.event}
       kind={sheet.kind}
       day={selected}
+      seriesStart={seriesStartFor(sheet.event)}
       onsave={save}
       onremove={remove}
+      onanswer={(reply) => answerFromSheet(reply)}
       onclose={() => (sheet = null)}
     />
   {/key}

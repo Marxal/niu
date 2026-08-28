@@ -10,6 +10,7 @@ import {
   confirmState,
   coversDay,
   draftFrom,
+  draftOccurrences,
   draftRule,
   eventDays,
   isRepeating,
@@ -21,6 +22,7 @@ import {
   needsMyAnswer,
   needsReconfirming,
   newDraft,
+  seriesShapeChanged,
   sortEvents,
   spanDays,
   toEventColour,
@@ -275,6 +277,30 @@ describe('drafts', () => {
     // clampCount floors at two, because one occurrence is not a series.
     expect(once?.repeatCount).toBe(2)
     expect(draftRule(once as EventDraft)).toBe('weekly')
+  })
+
+  it('spots a change to the shape of a run', () => {
+    const gym = event({ seriesId: 'abc', seriesIndex: 2, seriesCount: 10, seriesRule: 'weekly' })
+    const same = draftFrom(gym)
+
+    // Editing the title of one of ten is not a change to the run.
+    expect(seriesShapeChanged(gym, { ...same, title: 'Swimming' })).toBe(false)
+    // Twelve instead of ten is.
+    expect(seriesShapeChanged(gym, { ...same, repeatCount: 12 })).toBe(true)
+    // So is a different rhythm, and so is stopping it repeating at all.
+    expect(seriesShapeChanged(gym, { ...same, repeat: 'fortnightly' })).toBe(true)
+    expect(seriesShapeChanged(gym, { ...same, repeat: 'none' })).toBe(true)
+  })
+
+  it('spots a one-off being turned into a run', () => {
+    const dinner = event()
+    const same = draftFrom(dinner)
+    expect(seriesShapeChanged(dinner, same)).toBe(false)
+    // The count moving on a one-off means nothing until a rule is set with it.
+    expect(seriesShapeChanged(dinner, { ...same, repeatCount: 4 })).toBe(false)
+    expect(seriesShapeChanged(dinner, { ...same, repeat: 'weekly', repeatCount: 4 })).toBe(true)
+    expect(draftOccurrences({ ...same, repeat: 'weekly', repeatCount: 4 })).toBe(4)
+    expect(draftOccurrences(same)).toBe(1)
   })
 
   it('reads an existing series back into the draft', () => {

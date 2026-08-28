@@ -39,6 +39,18 @@
   rows (recurrence.ts explains why), so the rule is something the sheet *makes*
   rather than something an existing event carries around.
 
+  ## Reading one, before changing it
+
+  An event you have already written opens **read-only** (Marçal, round 14):
+  everything it says, laid out, with Edit and Remove under it. Tapping an event
+  to check what time it is is much commoner than tapping it to change something,
+  and landing straight in a form made the commoner thing the harder one — every
+  field a target you could nudge by accident, and a Save you have to think about
+  before backing out.
+
+  Edit turns the same sheet into the form it always was. A new event skips the
+  detail view entirely: there is nothing yet to read.
+
   Two decisions worth knowing about:
 
   - **The draft is snapshotted on mount**, like PlanEntrySheet's note field. If
@@ -61,16 +73,25 @@
     confirmState,
     draftFrom,
     isSeries,
+    needsMyAnswer,
     needsReconfirming,
     newDraft,
   } from '../lib/calendar'
   import { EVENT_COLOURS } from '../lib/calendar'
   import type { EditScope } from '../lib/calendar.svelte'
-  import { addDays, daysBetween, longDate, shortDate, shortDayName } from '../lib/dates'
+  import {
+    addDays,
+    dateRange,
+    daysBetween,
+    longDate,
+    shortDate,
+    shortDayName,
+    timeLabel,
+  } from '../lib/dates'
   import {
     MAX_OCCURRENCES,
     MIN_REPEAT_COUNT,
-    type RepeatKind,
+    REPEAT_KINDS,
     clampCount,
     isNoChange,
     lastOccurrence,
@@ -87,8 +108,10 @@
     event = null,
     kind = 'event',
     day,
+    seriesStart = null,
     onsave,
     onremove,
+    onanswer,
     onclose,
   }: {
     /** Null when writing a new one. */
@@ -97,8 +120,15 @@
     kind?: EventKind
     /** The day the sheet was opened from. Only read when `event` is null. */
     day: string
+    /**
+     * The first day of the run this event belongs to, when it is one of
+     * several. What the "last one …" line counts from — see repeatSummary.
+     */
+    seriesStart?: string | null
     onsave: (draft: EventDraft, reask: boolean, scope: EditScope) => void
     onremove: (scope: EditScope) => void
+    /** Answering "can you make this?" from the detail view. */
+    onanswer: (reply: 'yes' | 'no') => void
     onclose: () => void
   } = $props()
 
@@ -111,6 +141,13 @@
   )
   // svelte-ignore state_referenced_locally
   const original: EventDraft = event ? draftFrom(event) : newDraft(kind, day, prefs.askConfirm)
+
+  /**
+   * 'view' is the detail panel, 'edit' is the form. A new event has nothing to
+   * read, so it starts in the form.
+   */
+  // svelte-ignore state_referenced_locally
+  let mode = $state<'view' | 'edit'>(event === null ? 'edit' : 'view')
 
   let more = $state(false)
   /**
@@ -154,6 +191,26 @@
     if (isReminder) return editing ? strings.calendar.editReminder : strings.calendar.newReminder
     return editing ? strings.calendar.editEvent : strings.calendar.newEvent
   })
+
+  /** What the detail panel says about when it is. */
+  let whenLine = $derived.by(() => {
+    const span =
+      draft.endsOn > draft.startsOn
+        ? dateRange(draft.startsOn, draft.endsOn)
+        : `${shortDayName(draft.startsOn)} ${longDate(draft.startsOn)}`
+    const clock = timeLabel(draft.startTime, draft.endTime)
+    return clock === '' ? `${span} · ${strings.calendar.allDayLabel}` : `${span} · ${clock}`
+  })
+
+  /** The people on it, as rows of the detail panel. */
+  let going = $derived(
+    draft.attendees
+      .map((id) => people.list.find((person) => person.id === id) ?? null)
+      .filter((person) => person !== null),
+  )
+
+  /** Whether it is this person's turn to answer — see needsMyAnswer. */
+  let myTurn = $derived(event !== null && needsMyAnswer(event, auth.userId))
 
   /**
    * Series facts about the event being edited. Null when writing a new one or
@@ -220,36 +277,37 @@
   /* ---------------------------------------------------------------------- */
 
   /**
-   * The four on the row, and everything else behind Custom.
+   * Every rhythm on one row, and the count always in sight.
    *
-   * Once, Daily and Weekly cover almost everything and cost one tap each; the
-   * two rarer rhythms and the number of times are one tap further in. The
-   * summary line stays visible whichever route you took, so "Weekly" never
-   * quietly means something you were not told.
+   * Round 13 hid the two rarer ones and the number behind a Custom chip.
+   * Marçal, after using it: *"remove custom and what's inside custom goes out,
+   * the user always picks how many times the event repeats."* He is right —
+   * how many times is not an advanced setting, it is half the sentence.
    */
-  const QUICK_REPEATS: readonly RepeatKind[] = ['none', 'daily', 'weekly']
-  const CUSTOM_REPEATS: readonly RepeatKind[] = ['daily', 'weekly', 'fortnightly', 'monthly']
-
-  let custom = $state(false)
-
-  function setRepeat(repeat: RepeatKind) {
-    custom = false
-    draft.repeat = repeat
-  }
-
-  function openCustom() {
-    custom = true
-    if (draft.repeat === 'none') draft.repeat = 'weekly'
-  }
-
   function nudgeCount(by: number) {
     draft.repeatCount = clampCount(draft.repeatCount + by)
   }
 
+  /**
+   * Where the run starts counting from.
+   *
+   * For a new event that is simply its day. For one of ten it is the *first* of
+   * the ten, shifted by however far this edit moved the day — which is exactly
+   * what reshapeSeries anchors on. Counting from the occurrence you happen to
+   * have open would make the sheet promise a last day the save would not
+   * deliver: open number 3, ask for ten, and you would be told November the
+   * 22nd when the run actually ends on the 8th.
+   */
+  let anchorDay = $derived(
+    seriesStart === null
+      ? draft.startsOn
+      : addDays(seriesStart, daysBetween(original.startsOn, draft.startsOn)),
+  )
+
   /** "10 times · last one Sun 8 Nov" — the sentence the chips add up to. */
   let repeatSummary = $derived.by(() => {
     if (draft.repeat === 'none') return null
-    const last = lastOccurrence(draft.startsOn, draft.repeat, draft.repeatCount)
+    const last = lastOccurrence(anchorDay, draft.repeat, draft.repeatCount)
     return strings.calendar.repeatSummary(
       draft.repeatCount,
       `${shortDayName(last)} ${shortDate(last)}`,
@@ -310,9 +368,73 @@
 <div class="sheet" role="dialog" aria-modal="true" aria-label={heading}>
   <header class="head">
     <h2>{heading}</h2>
-    <button class="text-button" onclick={onclose}>{strings.calendar.cancel}</button>
+    <button class="text-button" onclick={onclose}>
+      {mode === 'view' ? strings.calendar.close : strings.calendar.cancel}
+    </button>
   </header>
 
+  {#if mode === 'view'}
+    <!-- Everything it says, read-only. See the header for why this is the way
+         an existing event opens. -->
+    <div class="body detail">
+      <h3 class="detail-title">{draft.title}</h3>
+
+      <p class="detail-when">{whenLine}</p>
+
+      {#if series}
+        <p class="detail-line">
+          {strings.calendar.seriesNote(
+            strings.calendar.repeatNames[series.rule],
+            series.index + 1,
+            series.count,
+          )}
+        </p>
+      {/if}
+
+      {#if going.length > 0}
+        <div class="detail-people">
+          {#each going as person (person.id)}
+            <span class="detail-person">
+              <PersonAvatar {person} size="sm" />
+              {personName(person)}
+            </span>
+          {/each}
+        </div>
+      {/if}
+
+      {#if draft.location}<p class="detail-line">{draft.location}</p>{/if}
+      {#if draft.notes}<p class="detail-notes">{draft.notes}</p>{/if}
+
+      {#if asked}
+        <div class="field">
+          <p class="answers">
+            {#each event?.confirmations ?? [] as answer (answer.userId)}
+              {@const who = people.list.find((p) => p.userId === answer.userId) ?? null}
+              <span
+                class="answer"
+                class:yes={answer.answer === 'yes'}
+                class:no={answer.answer === 'no'}
+              >
+                {answer.answer === 'yes' ? '✓' : answer.answer === 'no' ? '✕' : '…'}
+                {personName(who)}
+              </span>
+            {/each}
+          </p>
+          <!-- Answering here as well as on the pinned card, because arriving at
+               the event from that card and finding no way to reply would be a
+               dead end. -->
+          {#if myTurn}
+            <div class="scope-actions">
+              <button class="scope" onclick={() => onanswer('yes')}>{strings.calendar.yes}</button>
+              <button class="scope quiet" onclick={() => onanswer('no')}>
+                {strings.calendar.no}
+              </button>
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {:else}
   <div class="body">
     <!-- No label above it. The heading already says which of the two this is,
          the placeholder says what to do, and a label would put a word between
@@ -387,16 +509,6 @@
         <p class="hint">{strings.calendar.reminderHint}</p>
       {/if}
     </div>
-
-    {#if series}
-      <p class="series-note">
-        {strings.calendar.seriesNote(
-          strings.calendar.repeatNames[series.rule],
-          series.index + 1,
-          series.count,
-        )}
-      </p>
-    {/if}
 
     {#if people.list.length > 1}
       <div class="field">
@@ -483,63 +595,47 @@
     </button>
 
     {#if more}
-      {#if !editing}
-        <div class="field">
-          <span class="label">{strings.calendar.repeatLabel}</span>
-          <div class="repeats">
-            {#each QUICK_REPEATS as repeat (repeat)}
-              <button
-                class="chip"
-                class:on={!custom && draft.repeat === repeat}
-                aria-pressed={!custom && draft.repeat === repeat}
-                onclick={() => setRepeat(repeat)}
-              >
-                {strings.calendar.repeatNames[repeat]}
-              </button>
-            {/each}
+      <!-- Offered on an existing event too (round 14). Changing it rewrites the
+           run from its own first day — see reshapeSeries in calendar.svelte.ts
+           for what that keeps and what it does not. -->
+      <div class="field">
+        <span class="label">{strings.calendar.repeatLabel}</span>
+        <div class="repeats">
+          {#each REPEAT_KINDS as repeat (repeat)}
             <button
               class="chip"
-              class:on={custom}
-              aria-pressed={custom}
-              onclick={openCustom}
+              class:on={draft.repeat === repeat}
+              aria-pressed={draft.repeat === repeat}
+              onclick={() => (draft.repeat = repeat)}
             >
-              {strings.calendar.repeatCustom}
+              {strings.calendar.repeatNames[repeat]}
             </button>
-          </div>
-
-          {#if custom}
-            <div class="repeats">
-              {#each CUSTOM_REPEATS as repeat (repeat)}
-                <button
-                  class="chip small"
-                  class:on={draft.repeat === repeat}
-                  aria-pressed={draft.repeat === repeat}
-                  onclick={() => (draft.repeat = repeat)}
-                >
-                  {strings.calendar.repeatNames[repeat]}
-                </button>
-              {/each}
-            </div>
-            <div class="count">
-              <button
-                class="step"
-                aria-label={strings.calendar.fewerTimes}
-                disabled={draft.repeatCount <= MIN_REPEAT_COUNT}
-                onclick={() => nudgeCount(-1)}>−</button
-              >
-              <span class="count-value">{draft.repeatCount}</span>
-              <button
-                class="step"
-                aria-label={strings.calendar.moreTimes}
-                disabled={draft.repeatCount >= MAX_OCCURRENCES}
-                onclick={() => nudgeCount(1)}>+</button
-              >
-            </div>
-          {/if}
-
-          {#if repeatSummary}<p class="hint">{repeatSummary}</p>{/if}
+          {/each}
         </div>
-      {/if}
+
+        {#if draft.repeat !== 'none'}
+          <div class="count">
+            <button
+              class="step"
+              aria-label={strings.calendar.fewerTimes}
+              disabled={draft.repeatCount <= MIN_REPEAT_COUNT}
+              onclick={() => nudgeCount(-1)}>−</button
+            >
+            <span class="count-value">{draft.repeatCount}</span>
+            <button
+              class="step"
+              aria-label={strings.calendar.moreTimes}
+              disabled={draft.repeatCount >= MAX_OCCURRENCES}
+              onclick={() => nudgeCount(1)}>+</button
+            >
+            <span class="count-note">{strings.calendar.timesLabel}</span>
+          </div>
+          {#if repeatSummary}<p class="hint">{repeatSummary}</p>{/if}
+        {/if}
+        {#if series}
+          <p class="hint warn">{strings.calendar.repeatChangeHint}</p>
+        {/if}
+      </div>
 
       <label class="field">
         <span class="label">{strings.calendar.whereLabel}</span>
@@ -572,6 +668,8 @@
       </button>
     {/if}
   </div>
+
+  {/if}
 
   <footer class="foot" class:asking>
     {#if asking !== null}
@@ -606,6 +704,11 @@
           {strings.calendar.cancel}
         </button>
       </div>
+    {:else if mode === 'view'}
+      <button class="text-button danger-text" onclick={() => (asking = 'remove')}>
+        {strings.calendar.remove}
+      </button>
+      <button class="save" onclick={() => (mode = 'edit')}>{strings.calendar.edit}</button>
     {:else}
       <span class="day-note">{shortDayName(draft.startsOn)} {longDate(draft.startsOn)}</span>
       <button class="save" disabled={!canSave(draft)} onclick={save}>
@@ -667,6 +770,61 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+  }
+
+  /* ---- The detail panel ------------------------------------------------- */
+
+  .detail {
+    gap: var(--space-3);
+  }
+
+  .detail-title {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-tight);
+  }
+
+  .detail-when {
+    font-size: var(--text-base);
+    font-weight: var(--weight-medium);
+    color: var(--color-text);
+  }
+
+  .detail-line {
+    font-size: var(--text-base);
+    color: var(--color-text-muted);
+  }
+
+  .detail-notes {
+    padding: var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-sunken);
+    color: var(--color-text-muted);
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    /* A note written on several lines reads back on several lines. */
+    white-space: pre-line;
+  }
+
+  .detail-people {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .detail-person {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+  }
+
+  /* "Can't" is the quieter of the two answers: saying no is a real answer, not
+     a destructive one, so it does not get a red button. */
+  .scope.quiet {
+    background: var(--color-surface-sunken);
+    color: var(--color-text-muted);
   }
 
   .label {
@@ -774,12 +932,6 @@
     padding: 0 var(--space-2);
   }
 
-  /* The second row, inside Custom: quieter than the row that opened it. */
-  .repeats .chip.small {
-    min-height: 2.25rem;
-    font-size: var(--text-xs);
-  }
-
   .count {
     display: flex;
     align-items: center;
@@ -808,16 +960,6 @@
     font-size: var(--text-lg);
     font-weight: var(--weight-bold);
     font-variant-numeric: tabular-nums;
-  }
-
-  /* Which series this one belongs to. A statement, not a control — the rhythm
-     is fixed once the rows exist. */
-  .series-note {
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-sunken);
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
   }
 
   .faces {

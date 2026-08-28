@@ -122,6 +122,9 @@ optional edit afterwards, not a step in adding.
   generated first-letter tile as its icon. Choosing a proper icon is something the user
   can do later, never a blocking step.
 - **Default view:** grid of tiles. Easy to switch to a list.
+- **Typing puts the matches on top of the keyboard** (round 14): the field and
+  the results are one stack pinned to the bottom, with the list still visible
+  behind them, and the bottom nav gets out of the way while you type.
 - **Ticking off:** the tile greys out and drops into an "in the trolley" section below.
 - **Default sort while shopping:** the order you walk the shop, learned from the order
   you tick things off. Easy to switch to: most recently added, most frequent, by category.
@@ -283,6 +286,10 @@ Calendar, Google's own notifications fire on both phones without us building pus
   can show the **ISO week number**, on by default and switchable off per device.
   **Holding a day** in the month grid opens a new event on it.
 
+- **An event you have already written opens read-only** (round 14) — everything
+  it says, with Edit and Remove under it, because checking what time something is
+  is far commoner than changing it. A new one goes straight to the form.
+
 - **A card says what an event is without being opened** (round 13): its whole
   date, its time, where it is, the first lines of any note, and "3/10" when it is
   one of a series. The date is on the card even under a heading that already
@@ -313,7 +320,10 @@ Calendar, Google's own notifications fire on both phones without us building pus
   finite (capped at 60), which is exactly what "ends after X times" already meant.
   "All of them" applies the *change*, not the result: a field you touched is
   copied everywhere, a day you moved shifts everything by the same number of days,
-  and anything you left alone stays as it was on each occurrence.
+  and anything you left alone stays as it was on each occurrence. **The rhythm and
+  the count can be changed later** (round 14), which rebuilds the run from its own
+  first day and reuses the rows it can, so ten becoming twelve is two more events
+  rather than twenty-two.
 - **Colour:** categories have colours *and* people have colours, and the two must be
   visually distinguishable — e.g. category as the event's fill, person as an avatar ring.
   Round 11 shipped exactly that shape, minus the names: an event carries one of the

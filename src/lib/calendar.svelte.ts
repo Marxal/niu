@@ -34,7 +34,9 @@ import {
   awaitingMe,
   cleanDraft,
   draftFrom,
+  draftOccurrences,
   draftRule,
+  seriesShapeChanged,
   toEventColour,
 } from './calendar'
 import {
@@ -421,6 +423,13 @@ export async function updateEvent(
   const existing = calendar.events.find((event) => event.id === id) ?? null
   const seriesId = existing?.seriesId ?? null
 
+  // A changed rhythm or count is a change to how many rows there are, which no
+  // amount of updating existing ones can express. It also has only one possible
+  // scope, so it is checked before the scope is consulted.
+  if (existing !== null && seriesShapeChanged(existing, clean)) {
+    return reshapeSeries(existing, clean)
+  }
+
   if (scope === 'series' && seriesId !== null && existing !== null) {
     return updateSeries(existing, seriesId, clean)
   }
@@ -524,6 +533,133 @@ async function updateSeries(
   if (failed) calendar.error = strings.calendar.saveFailed
   await loadEvents()
   return !failed
+}
+
+/**
+ * Changes how often a run repeats, or how many times — including turning a
+ * one-off into a run and a run back into a one-off.
+ *
+ * Round 12 did not offer this: a series is rows, so changing the rhythm means
+ * writing and deleting them, which is a different operation from editing a
+ * field. Marçal asked for it anyway in round 14, and he is right that a term of
+ * gym that turns out to be twelve weeks is the ordinary case rather than an
+ * exotic one.
+ *
+ * ## The two decisions in here
+ *
+ * **The run is rebuilt from its own first day**, not from the occurrence you
+ * happen to have open. Opening the seventh session and asking for twelve gives
+ * twelve from the beginning, which is what the number means; anchoring on the
+ * seventh would silently throw the first six away. If the same edit also moved
+ * the day, the anchor moves with it, exactly as applyChange shifts everything
+ * else.
+ *
+ * **Rows are reconciled, not replaced.** The first N days reuse the rows that
+ * already exist, so ten becoming twelve is two inserts rather than ten deletes
+ * and twelve inserts. That keeps the ids — which keeps Google updating its
+ * copies instead of churning them, and keeps any confirmations already given on
+ * the occurrences that survive.
+ *
+ * What it does *not* keep is per-occurrence differences: every surviving row
+ * takes the edited draft's title, time, colour, place and notes. Redefining the
+ * run is a statement about all of it, and a rebuild that preserved one moved
+ * Monday would put it back out of rhythm anyway.
+ */
+async function reshapeSeries(existing: CalendarEvent, clean: EventDraft): Promise<boolean> {
+  if (!supabase || !household.id || !auth.userId) return false
+  const client = supabase
+  const householdId = household.id
+
+  // Every row of the run, oldest first — or just this one, when it is a one-off
+  // about to become a run.
+  let rows: CalendarEvent[] = [existing]
+  if (existing.seriesId !== null) {
+    const { data, error } = await client
+      .from('events')
+      .select(EVENT_COLUMNS)
+      .eq('household_id', householdId)
+      .eq('series_id', existing.seriesId)
+
+    if (error || !data) {
+      calendar.error = strings.calendar.saveFailed
+      return false
+    }
+    rows = (data as unknown as EventRow[]).map((row) => toEvent(row, [], []))
+  }
+
+  rows.sort((a, b) => a.startsOn.localeCompare(b.startsOn) || a.id.localeCompare(b.id))
+
+  const first = rows[0] ?? existing
+  const shift = daysBetween(existing.startsOn, clean.startsOn)
+  const anchor = addDays(first.startsOn, shift)
+
+  const rule = draftRule(clean)
+  const days = rule === null ? [anchor] : occurrenceDays(anchor, rule, draftOccurrences(clean))
+  const seriesId = rule === null ? null : (existing.seriesId ?? crypto.randomUUID())
+  const span = Math.max(0, daysBetween(clean.startsOn, clean.endsOn))
+  const keep = Math.min(rows.length, days.length)
+
+  function columnsFor(day: string, index: number): Record<string, unknown> {
+    return {
+      ...draftColumns({ ...clean, startsOn: day, endsOn: addDays(day, span) }),
+      series_id: seriesId,
+      series_index: index,
+      series_count: days.length,
+      series_rule: rule,
+    }
+  }
+
+  const writes: PromiseLike<{ error: unknown }>[] = []
+
+  for (let i = 0; i < keep; i += 1) {
+    const row = rows[i]
+    const day = days[i]
+    if (row === undefined || day === undefined) continue
+    writes.push(
+      client
+        .from('events')
+        .update(columnsFor(day, i))
+        .eq('id', row.id)
+        .eq('household_id', householdId),
+    )
+  }
+
+  const extra = days.slice(keep).map((day, offset) => ({
+    ...columnsFor(day, keep + offset),
+    household_id: householdId,
+    created_by: auth.userId,
+  }))
+  if (extra.length > 0) writes.push(client.from('events').insert(extra).select('id'))
+
+  const dropped = rows.slice(keep).map((row) => row.id)
+  if (dropped.length > 0) {
+    writes.push(client.from('events').delete().in('id', dropped).eq('household_id', householdId))
+  }
+
+  const results = await Promise.all(writes)
+  if (results.some((result) => result.error)) {
+    calendar.error = strings.calendar.saveFailed
+    await loadEvents()
+    return false
+  }
+
+  // The ids that now make up the run: the ones kept, plus whatever was
+  // inserted. Read back rather than assembled, because the inserts' ids are
+  // the database's to hand out.
+  const { data: after } = await client
+    .from('events')
+    .select('id')
+    .eq('household_id', householdId)
+    .eq(seriesId === null ? 'id' : 'series_id', seriesId ?? existing.id)
+
+  await setAttendees(
+    ((after ?? []) as { id: string }[]).map((row) => row.id),
+    clean.attendees,
+  )
+
+  await loadEvents()
+  await loadTombstones()
+  return true
 }
 
 /**

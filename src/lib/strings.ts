@@ -488,6 +488,7 @@ export const strings = {
     moreLabel: 'More options',
     save: 'Save',
     saveAdd: 'Add it',
+    edit: 'Edit',
     cancel: 'Cancel',
     remove: 'Remove',
     removeConfirm: 'Remove this?',
@@ -496,7 +497,7 @@ export const strings = {
     // Repeating (§4.3, round 12). The names are the chips; the summary is the
     // sentence under them that turns four taps into a plain statement.
     repeatLabel: 'Repeats',
-    repeatCustom: 'Custom',
+    timesLabel: 'times',
     repeatNames: {
       none: 'Once',
       daily: 'Daily',
@@ -505,6 +506,7 @@ export const strings = {
       monthly: 'Monthly',
     } as const,
     repeatSummary: (times: number, last: string) => `${times} times · last one ${last}`,
+    repeatChangeHint: 'Changing this rewrites the whole run, from its first day.',
     fewerTimes: 'One time fewer',
     moreTimes: 'One time more',
     seriesNote: (rhythm: string, index: number, count: number) =>

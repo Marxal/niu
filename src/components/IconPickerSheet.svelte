@@ -80,6 +80,14 @@
   let trimmed = $derived(query.trim())
   let searching = $derived(trimmed !== '')
 
+  let scroller = $state<HTMLDivElement | null>(null)
+
+  $effect(() => {
+    // Reading `trimmed` is what subscribes this to the query.
+    trimmed
+    scroller?.scrollTo({ top: 0 })
+  })
+
   let found = $derived(searchIcons(trimmed, INKED))
   let nothing = $derived(
     searching && found.line.length === 0 && found.emoji.length === 0 && found.inked.length === 0,
@@ -172,7 +180,10 @@
     </div>
   {/if}
 
-  <div class="scroller">
+  <!-- Back to the top whenever the query changes, so the first match is the
+       first thing under the field. Without it, typing a second word leaves you
+       looking at wherever you had scrolled to for the first. -->
+  <div class="scroller" bind:this={scroller}>
     {#if !searching}
       <div class="grid">
         {#if tab === 'line'}

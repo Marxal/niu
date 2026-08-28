@@ -184,7 +184,10 @@
     <p class="cook-hint">{strings.plan.pickCookHint}</p>
   {/if}
 
-  <div class="scroller">
+  <!-- While a search is running the results hug the field below them rather
+       than starting at the top of a tall box (Marçal, round 14). Two matches
+       otherwise sit half a screen above the keyboard with nothing in between. -->
+  <div class="scroller" class:searching>
     {#if nothing}
       <p class="none">{strings.plan.pickNone}</p>
     {/if}
@@ -381,6 +384,15 @@
     gap: var(--space-5);
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+
+  /* `margin-top: auto` on the first child rather than `justify-content: end` on
+     the box: with an overflowing flex column, end-justification pushes the top
+     of the content past the scroll origin and makes it unreachable. An auto
+     margin collapses to nothing as soon as the content is taller than the box,
+     so short results sink and long ones still scroll from the top. */
+  .scroller.searching > :first-child {
+    margin-top: auto;
   }
 
   section {

@@ -168,6 +168,10 @@
   {/if}
 
   <form class="search" onsubmit={submitNew}>
+    <!-- Taking focus pulls the field to the top of whatever is scrolling around
+         it, so every pixel between it and the keyboard is results (Marçal,
+         round 14). The browser scrolls a focused field *into view*, which can
+         leave it at the bottom with its own matches underneath the keyboard. -->
     <input
       type="search"
       bind:value={query}
@@ -177,6 +181,7 @@
       autocapitalize="none"
       spellcheck="false"
       enterkeyhint="done"
+      onfocus={(e) => e.currentTarget.scrollIntoView({ block: 'start', behavior: 'smooth' })}
     />
     {#if canAddNew}
       <button type="submit" class="add" disabled={creating}>{strings.shopping.addNewWord}</button>

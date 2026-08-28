@@ -19,6 +19,7 @@
   import ShoppingScreen from './screens/ShoppingScreen.svelte'
   import SignInScreen from './screens/SignInScreen.svelte'
   import { TABS, parseRoute, parseSubRoute, type RouteId, type TabId } from './lib/router'
+  import { shell } from './lib/shell.svelte'
   import { auth, watchAuth } from './lib/auth.svelte'
   import { clearHousehold, household, loadHousehold } from './lib/household.svelte'
   import { clearDishes, loadDishes, watchDishes } from './lib/dishes.svelte'
@@ -197,7 +198,11 @@
       </div>
     </main>
 
-    <BottomNav {route} backTo={lastTab} />
+    <!-- Out of the way while a screen says so — which today means while the
+         shopping search is running. See shell.svelte.ts. -->
+    {#if !shell.navHidden}
+      <BottomNav {route} backTo={lastTab} />
+    {/if}
   </div>
 {/if}
 
