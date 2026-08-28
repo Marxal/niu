@@ -2342,3 +2342,189 @@ glyph is now a real `aria-hidden` span, the way the dock buttons already did it.
   underneath takes the tap and the list opens the event.
 - **A month view for the meal planner.** Open since round 10, still a separate
   thing.
+
+## Round 13 — The sheet, rebuilt around the way you actually fill it in
+
+**Branch:** `claude/calendar-recurrence-navigation-2bvlbn`
+
+Nine notes from Marçal after round 12. No migration — all of it is the front
+end, and most of it is the event sheet.
+
+### When, the way Google does it
+
+The biggest one, and the one that made four other things simpler. Out goes the
+"When" heading, the "All day" chip and the "More than one day" toggle; in comes
+one **All-day switch**, then two lines — *Starts* with a date and a time,
+*Ends* with a date and a time.
+
+**More than one day stopped being a mode.** It used to be a chip that revealed a
+second date field; now the second date is always there, and a holiday is simply
+what happens when you change it. One control fewer, and the state that control
+used to hold is visible in the field itself.
+
+Round 12 had made a time optional by opening with none at all, which was the
+right answer to *"start is set to 18 by default"* and the wrong shape. With a
+switch in plain sight, the untimed case no longer has to be the one you land on
+— so a new event is timed again, at **12:00 to 13:00**. Midday is the least
+wrong guess for something that could be anything, and an hour is what Google
+assumes for an event with no end anyway. A reminder still opens with no time:
+"remember to renew the permit" is about a day.
+
+**Moving the start now takes the end with it.** A three-day trip moved to the
+following week is still three days. Round 12 collapsed it back to one, which
+meant moving a holiday's first day quietly changed how long the holiday was.
+The subtlety is that the gap has to be measured from the *previous* start, not
+from the draft's original one — otherwise stretching an event and then moving it
+loses the days you just added. Driven in a real browser: stretch to three days,
+move it twice, still three days.
+
+### Repeats, under More, on one row
+
+Once / Daily / Weekly / **Custom**, where Custom opens the two rarer rhythms and
+the number of times. Most events repeat never or weekly and cost one tap; the
+four-fifths of the control those two cases do not need is no longer sitting in
+the middle of the sheet. The summary line — *"10 times · last one Sun 8 Nov"* —
+stays visible whichever route you took, so "Weekly" never quietly means
+something you were not told.
+
+### Ask to confirm is a switch now
+
+It used to be a button at the bottom of the sheet you pressed *after* saving,
+which meant a brand-new event could never be sent round without saving it first
+and opening it again. Now it is a switch in the ordinary flow — **off by
+default**, because most of what goes on a family calendar is a statement rather
+than a question — and **Settings → Ask to confirm** decides whether a new event
+starts with it on.
+
+Turning it off on something already sent round withdraws the question. For a
+series it asks about the **first** occurrence only: confirmations are
+per-occurrence by design, so asking about all ten would put ten identical
+questions at the top of the other phone's calendar.
+
+Flipping the switch deliberately does **not** count as an edit, so it never sets
+off "change this one, or all 10?" — there is nothing about a confirmation to
+apply to the other nine.
+
+### Richer cards
+
+An event row now carries what you would otherwise have to open it to learn: the
+**whole date**, the time, **3/10** for an occurrence of a series, the place, and
+the first two lines of the note.
+
+The date is on the card *even in the day list*, under a heading that already
+says the day. That is deliberate: the same row appears in "Coming up", in the
+week view and pinned above the grid, and a card whose meaning depends on what is
+above it is a card you cannot move. Saying it twice on one screen costs less than
+being wrong on the other three.
+
+The render caught one thing worth keeping: "· Waiting on Marta" wrapped onto its
+own line and left the separator dangling at the start of it. The state and the
+"3/10" are small badges now rather than another "· something" — which is also
+truer, since both are facts about the *event* rather than about the evening.
+
+### The confirmation card says which Thursday
+
+*"Can you make Thursday?"* is not answerable if you cannot see which Thursday —
+and that card deliberately floats away from the day it belongs to, pinned at the
+top of the screen wherever in the year the event falls. So it carries the whole
+date and the time range, not just the weekday.
+
+### Sliding months, and holding a day
+
+**The swipe slides.** The month you are leaving goes out the way your finger was
+going, and the next one arrives from the other side. Out is quicker than in
+(130ms against 190) — the standard trick for making a transition feel responsive
+rather than slow. The ‹ › buttons use the same slide, because a swipe that slid
+while a button jumped would read as two different features. Reduced motion swaps
+with no animation at all.
+
+Only one month is ever rendered. Two on screen genuinely sliding past each other
+means laying out two grids on every frame, to say what the swap already says.
+
+**A long press on a day** opens the new-event sheet on that day, which saves the
+tap-then-scroll-then-＋ the day list otherwise costs. It cancels on any real
+movement, which is also how it stays out of the swipe's way: a sideways drag has
+moved past the tolerance long before the timer would fire.
+
+### The bug the touch test caught
+
+A long press fires, the sheet opens — and then the finger lifts, and the browser
+sends the **click** that always follows a touch. By then the sheet's backdrop is
+covering the day that was held, so the click lands on the backdrop, whose entire
+job is to close the sheet. Hold a day, and the sheet would have opened and shut
+in one gesture.
+
+Swallowing that click on the element that was held cannot work: the click never
+reaches it. So the press arms a one-shot listener on the **window**, in the
+capture phase, which eats whatever the next click turns out to be — and disarms
+itself after half a second in case no click ever comes, because a listener
+waiting forever would eventually eat a real tap.
+
+This is round 10.2's lesson again, and it is the reason these are driven with
+`Input.dispatchTouchEvent` rather than a mouse: a mouse never produces this at
+all.
+
+### Also
+
+- **"＋ More options"** opens *and* closes now, with a chevron that turns. It was
+  a one-way door.
+- **"Nobody picked means all of you"** is gone.
+- A **switch** component (`Toggle.svelte`), used by All day and by Ask to
+  confirm. A filled chip reading "All day" says *what* rather than *whether*.
+
+### How it was checked
+
+415 unit tests, 2 of them new: the draft's new defaults (an event at midday, a
+reminder with none, the confirmation switch coming in from the caller), and that
+flipping that switch is not an edit.
+
+**Gestures driven with real touch events**, and each asserted:
+
+- hold a day → the sheet opens **and stays open**; the next real tap still works;
+  a short press is an ordinary tap; a hold whose click never arrives does not eat
+  the following one
+- a sideways drag starting on a day swipes rather than holds
+- the slide leaves nothing stranded — transform none, opacity 1, flag cleared
+- tapping › twice quickly advances **two** months rather than dropping one
+- a vertical drag over the grid scrolls 400px and turns no page
+
+Rendered in a real Chromium at 412×915 in both themes: the new sheet with and
+without people, all-day on and off, More open, Custom open, and four cards
+covering a series occurrence, a waiting event, a five-day holiday with a note,
+and a reminder. Nothing scrolls sideways; no console errors.
+
+### How to test it
+
+No migration this round — just reload.
+
+1. **＋ Event.** The sheet is the new shape: **All day**, then Starts and Ends
+   with a date and a time each, at 12:00 and 13:00.
+2. **Change the second date** to two days later. That is all a multi-day event
+   is now — no chip to find.
+3. **Then change the first date.** The end should move with it and stay two days
+   long.
+4. **All day** on: the times disappear. Off: they come back at 12:00 and 13:00.
+5. **Ask Marta to confirm** is a switch, off. Turn it on and **Add it** — it
+   should land on her phone as a question straight away, without you saving and
+   reopening. Turn it off on an existing one and the question is withdrawn.
+   **Settings → Ask to confirm → On to start** if you would rather it began on.
+6. **＋ More options** opens and closes. **Repeats** is in there: Once / Daily /
+   Weekly / **Custom**.
+7. **Look at the cards.** Each says its date, its time, where it is, and the
+   first lines of any note. A gym session out of ten wears a small **3/10**.
+8. **Waiting on you**, at the top: it now says the whole date.
+9. **Swipe the month sideways.** It should slide out and the next one slide in.
+   The ‹ › buttons do the same. Tap › twice quickly — you should get two months
+   on, not one.
+10. **Hold a finger on any day** in the month grid. A short buzz, and the new
+    event sheet opens on that day. It must **stay** open — this is the one that
+    was broken and is the thing most worth checking.
+
+### Deliberately not done
+
+- **A separate "no time yet" state.** A null start time *is* all day (§7) and
+  there is deliberately no boolean beside it that could disagree. An event with
+  no hour goes to Google as an all-day banner, which is the honest consequence.
+- **Asking a whole series to confirm.** First occurrence only — see above.
+- **Turning an existing one-off into a series**, still.
+- **Two months on screen during a swipe.** See above.

@@ -1,12 +1,22 @@
 <!--
   One event or reminder, as a row in the day list.
 
-  The row carries four marks, and each one is a different question:
+  The row carries what you would otherwise have to open the event to learn
+  (Marçal, round 13: *"the cards can be richer with information"*):
 
     the colour bar    which category it is — the event's own colour
-    the time          when, or "All day"
+    the day and time  the whole date, not only the hour
+    3/10              which occurrence of a series this is
     the avatars       who is going. Absent means everyone (§4.3)
+    the place         where, when there is one
+    the note          the first two lines of it
     the state         waiting / can't make it / not in Google yet
+
+  **The date is on the card even in the day list**, under a heading that already
+  says the day. That is deliberate: the same row appears in "Coming up", in the
+  week view and pinned above the grid, and a card whose meaning depends on what
+  is above it is a card you cannot move. Saying it twice on one screen costs
+  less than being wrong on the other three.
 
   **Unconfirmed is dashed, not hidden.** An event that only appeared once the
   other person confirmed it would be an event you cannot talk about. So it is
@@ -26,7 +36,7 @@
     isMultiDay,
     spanDays,
   } from '../lib/calendar'
-  import { dateRange, timeLabel } from '../lib/dates'
+  import { dateRange, longDate, shortDayName, timeLabel } from '../lib/dates'
   import { tagStyle } from '../lib/dish-tags'
   import { personById, personByUserId, personName } from '../lib/people.svelte'
   import { strings } from '../lib/strings'
@@ -48,6 +58,24 @@
   let state = $derived(confirmState(event))
   let done = $derived(event.doneAt !== null)
   let time = $derived(timeLabel(event.startTime, event.endTime))
+
+  /**
+   * When it is, in words: a range for a holiday, otherwise the day itself.
+   *
+   * The weekday goes in front of the date because a family calendar is read in
+   * weekdays — "Saturday the 20th" is how the question gets asked out loud, and
+   * "20 September" alone makes you count.
+   */
+  let when = $derived(
+    isMultiDay(event)
+      ? dateRange(event.startsOn, event.endsOn)
+      : `${shortDayName(event.startsOn)} ${longDate(event.startsOn)}`,
+  )
+
+  /** "3/10" — which of a series this is. Null on a one-off. */
+  let ordinal = $derived(
+    event.seriesRule === null ? null : `${event.seriesIndex + 1}/${event.seriesCount}`,
+  )
 
   let going = $derived(
     event.attendees.map((id) => personById(id)).filter((p) => p !== null),
@@ -107,19 +135,24 @@
     </span>
 
     <span class="meta">
+      <span class="when">{when}</span>
       {#if isMultiDay(event)}
-        <span class="when">{dateRange(event.startsOn, event.endsOn)}</span>
         <span class="dim">· {spanDays(event)} days</span>
       {:else if time === ''}
-        <span class="when">{strings.calendar.allDay}</span>
+        <span class="dim">· {strings.calendar.allDay}</span>
       {:else}
-        <span class="when">{time}</span>
+        <span class="at">· {time}</span>
       {/if}
 
-      {#if event.location}<span class="dim">· {event.location}</span>{/if}
-      {#if stateLabel}<span class="state">· {stateLabel}</span>{/if}
+      {#if ordinal}<span class="badge ordinal">{ordinal}</span>{/if}
+      {#if stateLabel}<span class="badge state">{stateLabel}</span>{/if}
       {#if unsynced}<span class="dim cloud" title={strings.google.notSynced}>· ☁</span>{/if}
     </span>
+
+    {#if event.location}<span class="where">{event.location}</span>{/if}
+    <!-- Two lines of the note. Enough to remind you what it said; not enough to
+         turn a list of six events into a page of prose. -->
+    {#if event.notes}<span class="note">{event.notes}</span>{/if}
   </button>
 </div>
 
@@ -260,13 +293,55 @@
     font-weight: var(--weight-medium);
   }
 
+  /* The hour is the half of "when" you scan for, so it keeps the ink the date
+     gives up by being longer. */
+  .at {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+    font-weight: var(--weight-medium);
+  }
+
   .dim {
     color: var(--color-text-faint);
   }
 
+  /* "3/10" and "Waiting on Marta" are badges rather than another "· something".
+     Two reasons: they are a different kind of fact from the date and the place
+     — about the event rather than about the evening — and a "·" separator that
+     wraps onto the next line leaves a dot dangling at the start of it. */
+  .badge {
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-sunken);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+  }
+
+  .ordinal {
+    color: var(--color-text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .where,
+  .note {
+    font-size: var(--text-sm);
+    color: var(--color-text-faint);
+    line-height: var(--leading-normal);
+  }
+
+  .note {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    /* A note is often written on more than one line, and the two we show should
+       be its first two rather than one long run-on. */
+    white-space: pre-line;
+  }
+
   .state {
     color: var(--color-warning);
-    font-weight: var(--weight-medium);
   }
 
   .row.declined .state {

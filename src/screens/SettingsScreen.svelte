@@ -20,6 +20,7 @@
   import HouseholdCard from '../components/HouseholdCard.svelte'
   import {
     prefs,
+    setAskConfirm,
     setIconStyle,
     setWeekNumbers,
     setSortMode,
@@ -168,6 +169,31 @@
             {mode.label}
           </button>
         {/each}
+      </div>
+    </div>
+
+    <div class="row stack">
+      <div class="text">
+        <h2>{strings.prefs.askTitle}</h2>
+        <p>{strings.prefs.askHint}</p>
+      </div>
+      <div class="segmented" role="group" aria-label={strings.prefs.askTitle}>
+        <button
+          class="segment"
+          class:on={!prefs.askConfirm}
+          aria-pressed={!prefs.askConfirm}
+          onclick={() => setAskConfirm(false)}
+        >
+          {strings.prefs.askOff}
+        </button>
+        <button
+          class="segment"
+          class:on={prefs.askConfirm}
+          aria-pressed={prefs.askConfirm}
+          onclick={() => setAskConfirm(true)}
+        >
+          {strings.prefs.askOn}
+        </button>
       </div>
     </div>
 

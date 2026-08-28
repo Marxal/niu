@@ -313,16 +313,27 @@ export interface EventDraft {
   repeat: RepeatKind
   /** How many times, when `repeat` is not 'none'. */
   repeatCount: number
+  /**
+   * Whether to send it round for confirmation on save.
+   *
+   * On the draft rather than only on the saved event, because round 13 moved
+   * the question into the ordinary flow: it is a switch you set while writing
+   * the thing down, not a button you come back and press afterwards. Turning it
+   * off again withdraws a question already asked.
+   */
+  askConfirm: boolean
 }
 
 /**
- * The time an event gets when you ask for one.
+ * The hours a timed event starts and ends at when nobody has said otherwise.
  *
- * Still 18:00 — a family event is usually an evening one — but it is now the
- * value behind "Add a time" rather than the value every new event starts with.
- * See newDraft.
+ * Midday to one o'clock (Marçal, round 13, after round 12's 18:00 and round
+ * 11's). The middle of the day is the least wrong guess for a family event that
+ * could be anything, and an hour is what Google assumes for an event with no
+ * end anyway — so the pair agrees with what the push would have done.
  */
-export const DEFAULT_START_TIME = '18:00'
+export const DEFAULT_START_TIME = '12:00'
+export const DEFAULT_END_TIME = '13:00'
 
 /**
  * A blank draft for a day. Nothing starts with a time — see below.
@@ -338,25 +349,32 @@ export const DEFAULT_START_TIME = '18:00'
  * happens on a day rather than at an hour. Round 11 was making everyone say
  * *when* before they had decided there was a when.
  *
- * So a new event and a new reminder now start the same way: a title and a day.
- * The 18:00 has not gone anywhere — it is what "Add a time" fills in, one tap
- * away, which is exactly the number of taps the old "All day" chip cost the
- * other way round.
+ * Round 13 settled where that leaves the default. An **event** opens timed, at
+ * midday, with an All day switch right above it — which is the Google shape
+ * Marçal asked for, and which makes "no time" one obvious tap rather than the
+ * thing you have to opt out of. A **reminder** still opens with no time at all:
+ * "remember to renew the permit" is about a day, and asking for an hour would
+ * make the faster of the two kinds the slower one.
+ *
+ * `askConfirm` comes in from the caller because its default is a device
+ * preference (Settings → Ask to confirm) and this module has no Svelte in it.
  */
-export function newDraft(kind: EventKind, day: string): EventDraft {
+export function newDraft(kind: EventKind, day: string, askConfirm = false): EventDraft {
+  const timed = kind === 'event'
   return {
     kind,
     title: '',
     startsOn: day,
     endsOn: day,
-    startTime: null,
-    endTime: null,
+    startTime: timed ? DEFAULT_START_TIME : null,
+    endTime: timed ? DEFAULT_END_TIME : null,
     location: '',
     notes: '',
     colour: DEFAULT_EVENT_COLOUR,
     attendees: [],
     repeat: 'none',
     repeatCount: DEFAULT_REPEAT_COUNT,
+    askConfirm,
   }
 }
 
@@ -377,6 +395,8 @@ export function draftFrom(event: CalendarEvent): EventDraft {
     // Editing these is not offered — see EditableField in recurrence.ts.
     repeat: event.seriesRule ?? 'none',
     repeatCount: event.seriesRule === null ? DEFAULT_REPEAT_COUNT : event.seriesCount,
+    // Already asked is the switch already on. Turning it off withdraws.
+    askConfirm: event.confirmRequested,
   }
 }
 
@@ -425,6 +445,7 @@ export function cleanDraft(draft: EventDraft): EventDraft | null {
     // A repeat of one is a one-off wearing a rule, which would leave a series of
     // a single event on the calendar for no reason.
     repeatCount: draft.repeat === 'none' ? 1 : clampCount(draft.repeatCount),
+    askConfirm: draft.askConfirm,
   }
 }
 

@@ -16,20 +16,28 @@
   "different and faster than an event", and the way to be faster is to ask less,
   not to ask the same things in a smaller font.
 
-  **A time is optional** (round 12). Round 11 opened every event at 18:00;
-  Marçal's note after using it was *"start is set to 18 by default, can we find
-  a way or a flow where start time is not required?"* — and the answer was
-  already in the data model, where a null start time simply *is* all day. So a
-  new event and a new reminder both open with a day and no hour, and the same
-  one chip that used to say "All day" now says "Add a time" when there isn't
-  one. Same single tap, opposite default, and 18:00 is still what that tap
-  fills in.
+  **When, the way Google does it** (Marçal, round 13). One All-day switch, then
+  two lines — a start date with a start time, an end date with an end time —
+  and no label above them, because two dates and two times need no introducing.
 
-  **Repeating** is set here too, and only when writing a new one: ten Sunday
-  gym sessions are ten real rows (recurrence.ts explains why), so the rule is
-  something the sheet *makes* rather than something an existing event carries
-  around. Editing an occurrence shows what series it belongs to and no longer
-  offers to change the rhythm.
+  The thing that got simpler is **more than one day**: it is not a mode any
+  more. Round 11 had a "More than one day" chip that revealed a second date;
+  now the second date is always there, and a holiday is what happens when you
+  change it. One control fewer, and the state it used to hold is now visible in
+  the field itself.
+
+  Round 12 had made a time optional by opening with none at all. This keeps that
+  — the switch is right there and one tap — while going back to a timed default,
+  because with an All-day switch in plain sight the untimed case no longer needs
+  to be the one you land on. Midday to one o'clock; see DEFAULT_START_TIME.
+
+  **Repeating** lives under More (round 13) and takes one row: Once / Daily /
+  Weekly / Custom, with Custom opening the rest — every 2 weeks, monthly, and
+  how many times. Most events repeat never or weekly, and the four-fifths of the
+  control those two cases do not need was sitting in the middle of the sheet.
+  It is offered only when writing a new one: ten Sunday gym sessions are ten real
+  rows (recurrence.ts explains why), so the rule is something the sheet *makes*
+  rather than something an existing event carries around.
 
   Two decisions worth knowing about:
 
@@ -47,6 +55,7 @@
     type CalendarEvent,
     type EventDraft,
     type EventKind,
+    DEFAULT_END_TIME,
     DEFAULT_START_TIME,
     canSave,
     confirmState,
@@ -57,11 +66,10 @@
   } from '../lib/calendar'
   import { EVENT_COLOURS } from '../lib/calendar'
   import type { EditScope } from '../lib/calendar.svelte'
-  import { addDays, longDate, shortDate, shortDayName } from '../lib/dates'
+  import { addDays, daysBetween, longDate, shortDate, shortDayName } from '../lib/dates'
   import {
     MAX_OCCURRENCES,
     MIN_REPEAT_COUNT,
-    REPEAT_KINDS,
     type RepeatKind,
     clampCount,
     isNoChange,
@@ -70,8 +78,10 @@
   import { tagStyle, type TagColour } from '../lib/dish-tags'
   import { people, personName } from '../lib/people.svelte'
   import { auth } from '../lib/auth.svelte'
+  import { prefs } from '../lib/prefs.svelte'
   import { strings } from '../lib/strings'
   import PersonAvatar from './PersonAvatar.svelte'
+  import Toggle from './Toggle.svelte'
 
   let {
     event = null,
@@ -79,8 +89,6 @@
     day,
     onsave,
     onremove,
-    onask,
-    onunask,
     onclose,
   }: {
     /** Null when writing a new one. */
@@ -91,16 +99,18 @@
     day: string
     onsave: (draft: EventDraft, reask: boolean, scope: EditScope) => void
     onremove: (scope: EditScope) => void
-    onask: () => void
-    onunask: () => void
     onclose: () => void
   } = $props()
 
-  // Snapshotted once — see the header.
+  // Snapshotted once — see the header. The confirmation switch on a *new* one
+  // starts wherever Settings says (prefs.askConfirm), which is off unless this
+  // household has decided otherwise.
   // svelte-ignore state_referenced_locally
-  let draft = $state<EventDraft>(event ? draftFrom(event) : newDraft(kind, day))
+  let draft = $state<EventDraft>(
+    event ? draftFrom(event) : newDraft(kind, day, prefs.askConfirm),
+  )
   // svelte-ignore state_referenced_locally
-  const original: EventDraft = event ? draftFrom(event) : newDraft(kind, day)
+  const original: EventDraft = event ? draftFrom(event) : newDraft(kind, day, prefs.askConfirm)
 
   let more = $state(false)
   /**
@@ -165,22 +175,71 @@
   /** Whether Save would actually write anything different. */
   let unchanged = $derived(editing && isNoChange(original, draft))
 
-  /**
-   * All day is the absence of a start time, not a column of its own — so this
-   * one chip is both "make it all day" and, read the other way, "give it a
-   * time". See the header for why round 12 turned the default around.
-   */
-  function toggleTime() {
-    if (draft.startTime === null) {
-      draft.startTime = DEFAULT_START_TIME
+  /** All day is the absence of a start time, not a column of its own (§7). */
+  let allDay = $derived(draft.startTime === null)
+
+  function setAllDay(on: boolean) {
+    if (on) {
+      draft.startTime = null
+      draft.endTime = null
       return
     }
-    draft.startTime = null
-    draft.endTime = null
+    draft.startTime = DEFAULT_START_TIME
+    draft.endTime = DEFAULT_END_TIME
   }
 
+  /**
+   * Moving the start takes the end with it, keeping the gap.
+   *
+   * Round 12 collapsed a single-day event back to one day and left a multi-day
+   * one alone, which meant moving a holiday's first day changed how long the
+   * holiday was. Shifting is what a person means every time: a three-day trip
+   * moved to the following week is still three days.
+   *
+   * `previousStart` is what makes that work rather than the draft's own start,
+   * which `bind:value` has already overwritten by the time this runs. Reading
+   * the gap off the *original* draft instead would be wrong the moment somebody
+   * lengthens the event and then moves it — the extra days would vanish.
+   */
+  let previousStart = original.startsOn
+
+  function onStartDayChange() {
+    const gap = Math.max(0, daysBetween(previousStart, draft.endsOn))
+    previousStart = draft.startsOn
+    draft.endsOn = addDays(draft.startsOn, gap)
+  }
+
+  /** An end before its start is a typo, not an instruction. The `min` on the
+   *  field stops most of them; a keyboard-typed date can still get through. */
+  function onEndDayChange() {
+    if (draft.endsOn < draft.startsOn) draft.endsOn = draft.startsOn
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Repeating                                                               */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * The four on the row, and everything else behind Custom.
+   *
+   * Once, Daily and Weekly cover almost everything and cost one tap each; the
+   * two rarer rhythms and the number of times are one tap further in. The
+   * summary line stays visible whichever route you took, so "Weekly" never
+   * quietly means something you were not told.
+   */
+  const QUICK_REPEATS: readonly RepeatKind[] = ['none', 'daily', 'weekly']
+  const CUSTOM_REPEATS: readonly RepeatKind[] = ['daily', 'weekly', 'fortnightly', 'monthly']
+
+  let custom = $state(false)
+
   function setRepeat(repeat: RepeatKind) {
+    custom = false
     draft.repeat = repeat
+  }
+
+  function openCustom() {
+    custom = true
+    if (draft.repeat === 'none') draft.repeat = 'weekly'
   }
 
   function nudgeCount(by: number) {
@@ -196,17 +255,6 @@
       `${shortDayName(last)} ${shortDate(last)}`,
     )
   })
-
-  function setMultiDay(on: boolean) {
-    draft.endsOn = on ? addDays(draft.startsOn, 1) : draft.startsOn
-  }
-
-  /** Keep a single-day event single as its start moves — the common case by far. */
-  function onStartDayChange() {
-    if (original.endsOn === original.startsOn || draft.endsOn < draft.startsOn) {
-      draft.endsOn = draft.startsOn
-    }
-  }
 
   function toggleAttendee(personId: string) {
     draft.attendees = draft.attendees.includes(personId)
@@ -289,104 +337,66 @@
       }}
     />
 
-    <div class="field">
-      <span class="label">{strings.calendar.whenLabel}</span>
-      <div class="when">
-        <input class="input day" type="date" bind:value={draft.startsOn} onchange={onStartDayChange} />
-        <!-- One chip, two readings. With no time it offers one; with a time it
-             offers to take it away again, which is what "all day" is. -->
-        <button class="chip" class:add={draft.startTime === null} onclick={toggleTime}>
-          {#if draft.startTime === null}
-            <!-- Decorative: the words are the label, and a screen reader
-                 reading "plus Add a time" is a worse label than "Add a time". -->
-            <span aria-hidden="true">＋</span> {strings.calendar.addTimeLabel}
-          {:else}
-            {strings.calendar.allDayLabel}
-          {/if}
-        </button>
+    <!-- Google's shape: one switch, then a start line and an end line. No
+         "When" heading — two dates and two times need no introducing — and no
+         "more than one day" mode, because the second date is always there and
+         a holiday is simply what happens when you change it. -->
+    <div class="field when">
+      <Toggle label={strings.calendar.allDayLabel} on={allDay} onchange={setAllDay} />
+
+      <div class="line">
+        <span class="edge">{strings.calendar.startsLabel}</span>
+        <input
+          class="input day"
+          type="date"
+          aria-label={strings.calendar.startsLabel}
+          bind:value={draft.startsOn}
+          onchange={onStartDayChange}
+        />
+        {#if !allDay}
+          <input
+            class="input time"
+            type="time"
+            aria-label={strings.calendar.startTimeLabel}
+            bind:value={draft.startTime}
+          />
+        {/if}
       </div>
 
-      <!-- Start and end together, up here rather than behind More (Marçal,
-           round 11.1). The end is optional and says so: an empty field reads as
-           "no end", which is exactly what it means, and Google gets its usual
-           hour when it is left that way. -->
-      {#if draft.startTime !== null}
-        <div class="times">
-          <label class="sub">
-            <span class="sub-label">{strings.calendar.startsLabel}</span>
-            <input class="input time" type="time" bind:value={draft.startTime} />
-          </label>
-          <label class="sub">
-            <span class="sub-label">{strings.calendar.endOptional}</span>
-            <input class="input time" type="time" bind:value={draft.endTime} />
-          </label>
-          {#if draft.endTime}
-            <button
-              class="clear"
-              aria-label={strings.calendar.clearEnd}
-              onclick={() => (draft.endTime = null)}>×</button
-            >
-          {/if}
-        </div>
-      {/if}
+      <div class="line">
+        <span class="edge">{strings.calendar.endsLabel}</span>
+        <input
+          class="input day"
+          type="date"
+          min={draft.startsOn}
+          aria-label={strings.calendar.endsLabel}
+          bind:value={draft.endsOn}
+          onchange={onEndDayChange}
+        />
+        {#if !allDay}
+          <input
+            class="input time"
+            type="time"
+            aria-label={strings.calendar.endTimeLabel}
+            bind:value={draft.endTime}
+          />
+        {/if}
+      </div>
 
-      {#if draft.startTime === null}
-        <p class="hint">
-          {isReminder ? strings.calendar.reminderHint : strings.calendar.noTimeHint}
-        </p>
+      {#if isReminder && allDay}
+        <p class="hint">{strings.calendar.reminderHint}</p>
       {/if}
     </div>
 
-    <!-- Repeating is set when a thing is written, not afterwards: ten Sunday
-         sessions are ten real rows, so the rule makes them rather than living
-         on them. Editing one shows which series it is in instead. -->
-    {#if editing}
-      {#if series}
-        <p class="series-note">
-          {strings.calendar.seriesNote(
-            strings.calendar.repeatNames[series.rule],
-            series.index + 1,
-            series.count,
-          )}
-        </p>
-      {/if}
-    {:else}
-      <div class="field">
-        <span class="label">{strings.calendar.repeatLabel}</span>
-        <div class="repeats">
-          {#each REPEAT_KINDS as repeat (repeat)}
-            <button
-              class="chip"
-              class:on={draft.repeat === repeat}
-              aria-pressed={draft.repeat === repeat}
-              onclick={() => setRepeat(repeat)}
-            >
-              {strings.calendar.repeatNames[repeat]}
-            </button>
-          {/each}
-        </div>
-
-        {#if draft.repeat !== 'none'}
-          <div class="count">
-            <button
-              class="step"
-              aria-label={strings.calendar.fewerTimes}
-              disabled={draft.repeatCount <= MIN_REPEAT_COUNT}
-              onclick={() => nudgeCount(-1)}>−</button
-            >
-            <span class="count-value">{draft.repeatCount}</span>
-            <button
-              class="step"
-              aria-label={strings.calendar.moreTimes}
-              disabled={draft.repeatCount >= MAX_OCCURRENCES}
-              onclick={() => nudgeCount(1)}>+</button
-            >
-            <span class="count-note">{repeatSummary}</span>
-          </div>
-        {/if}
-      </div>
+    {#if series}
+      <p class="series-note">
+        {strings.calendar.seriesNote(
+          strings.calendar.repeatNames[series.rule],
+          series.index + 1,
+          series.count,
+        )}
+      </p>
     {/if}
-
 
     {#if people.list.length > 1}
       <div class="field">
@@ -405,11 +415,46 @@
             />
           {/each}
         </div>
-        {#if draft.attendees.length === 0}
-          <p class="hint">{strings.calendar.whoEveryone}</p>
+      </div>
+    {/if}
+    <!-- Round 13 moved this out of the edit-only section at the bottom and into
+         the ordinary flow: sending something round to be agreed is part of
+         writing it down, not an afterthought you come back for. Off unless
+         Settings says otherwise — most of what goes on a family calendar is a
+         statement rather than a question.
+
+         Only when there is somebody with a phone to ask. -->
+    {#if !people.alone}
+      <div class="field">
+        <Toggle
+          label={theOther
+            ? strings.calendar.askOne(personName(theOther))
+            : strings.calendar.askEveryone}
+          hint={draft.askConfirm ? strings.calendar.askHint : null}
+          on={draft.askConfirm}
+          onchange={(on) => (draft.askConfirm = on)}
+        />
+        {#if willReask}
+          <p class="hint warn">{strings.calendar.reconfirm}</p>
+        {/if}
+        {#if asked && (event?.confirmations.length ?? 0) > 0}
+          <p class="answers">
+            {#each event?.confirmations ?? [] as answer (answer.userId)}
+              {@const who = people.list.find((p) => p.userId === answer.userId) ?? null}
+              <span
+                class="answer"
+                class:yes={answer.answer === 'yes'}
+                class:no={answer.answer === 'no'}
+              >
+                {answer.answer === 'yes' ? '✓' : answer.answer === 'no' ? '✕' : '…'}
+                {personName(who)}
+              </span>
+            {/each}
+          </p>
         {/if}
       </div>
     {/if}
+
     <!-- Six colours, one line. Eight wrapped onto two rows and the second row
          read as an afterthought; sage and stone were the two nobody reached
          for. See EVENT_COLOURS in calendar.ts. -->
@@ -429,23 +474,72 @@
       </div>
     </div>
 
+    <!-- One button that opens and closes, rather than a one-way door. The
+         chevron says which way it goes; the word stays the same so the row
+         does not change width as you use it. -->
+    <button class="more-button" class:open={more} aria-expanded={more} onclick={() => (more = !more)}>
+      <span class="chevron" aria-hidden="true">›</span>
+      {strings.calendar.moreLabel}
+    </button>
+
     {#if more}
-      <div class="field">
-        <span class="label">{strings.calendar.endsLabel}</span>
-        <div class="when">
-          <button
-            class="chip"
-            class:on={draft.endsOn !== draft.startsOn}
-            aria-pressed={draft.endsOn !== draft.startsOn}
-            onclick={() => setMultiDay(draft.endsOn === draft.startsOn)}
-          >
-            {strings.calendar.moreDays}
-          </button>
-          {#if draft.endsOn !== draft.startsOn}
-            <input class="input day" type="date" min={draft.startsOn} bind:value={draft.endsOn} />
+      {#if !editing}
+        <div class="field">
+          <span class="label">{strings.calendar.repeatLabel}</span>
+          <div class="repeats">
+            {#each QUICK_REPEATS as repeat (repeat)}
+              <button
+                class="chip"
+                class:on={!custom && draft.repeat === repeat}
+                aria-pressed={!custom && draft.repeat === repeat}
+                onclick={() => setRepeat(repeat)}
+              >
+                {strings.calendar.repeatNames[repeat]}
+              </button>
+            {/each}
+            <button
+              class="chip"
+              class:on={custom}
+              aria-pressed={custom}
+              onclick={openCustom}
+            >
+              {strings.calendar.repeatCustom}
+            </button>
+          </div>
+
+          {#if custom}
+            <div class="repeats">
+              {#each CUSTOM_REPEATS as repeat (repeat)}
+                <button
+                  class="chip small"
+                  class:on={draft.repeat === repeat}
+                  aria-pressed={draft.repeat === repeat}
+                  onclick={() => (draft.repeat = repeat)}
+                >
+                  {strings.calendar.repeatNames[repeat]}
+                </button>
+              {/each}
+            </div>
+            <div class="count">
+              <button
+                class="step"
+                aria-label={strings.calendar.fewerTimes}
+                disabled={draft.repeatCount <= MIN_REPEAT_COUNT}
+                onclick={() => nudgeCount(-1)}>−</button
+              >
+              <span class="count-value">{draft.repeatCount}</span>
+              <button
+                class="step"
+                aria-label={strings.calendar.moreTimes}
+                disabled={draft.repeatCount >= MAX_OCCURRENCES}
+                onclick={() => nudgeCount(1)}>+</button
+              >
+            </div>
           {/if}
+
+          {#if repeatSummary}<p class="hint">{repeatSummary}</p>{/if}
         </div>
-      </div>
+      {/if}
 
       <label class="field">
         <span class="label">{strings.calendar.whereLabel}</span>
@@ -468,36 +562,6 @@
           bind:value={draft.notes}
         ></textarea>
       </label>
-
-    {:else}
-      <button class="more-button" onclick={() => (more = true)}>
-        {strings.calendar.moreLabel}
-      </button>
-    {/if}
-
-    {#if editing && !people.alone}
-      <div class="field confirm">
-        <span class="label">{strings.calendar.askTitle}</span>
-        {#if willReask}
-          <p class="hint warn">{strings.calendar.reconfirm}</p>
-        {/if}
-        {#if asked}
-          <p class="answers">
-            {#each event?.confirmations ?? [] as answer (answer.userId)}
-              {@const who = people.list.find((p) => p.userId === answer.userId) ?? null}
-              <span class="answer" class:yes={answer.answer === 'yes'} class:no={answer.answer === 'no'}>
-                {answer.answer === 'yes' ? '✓' : answer.answer === 'no' ? '✕' : '…'}
-                {personName(who)}
-              </span>
-            {/each}
-          </p>
-          <button class="text-button quiet" onclick={onunask}>{strings.calendar.unask}</button>
-        {:else}
-          <button class="ask" onclick={onask}>
-            {theOther ? strings.calendar.askOne(personName(theOther)) : strings.calendar.askEveryone}
-          </button>
-        {/if}
-      </div>
     {/if}
 
     {#if editing}
@@ -642,63 +706,41 @@
     border-bottom-color: var(--color-tab-calendar);
   }
 
-  .times {
-    display: flex;
-    align-items: flex-end;
-    gap: var(--space-2);
-  }
-
-  .sub {
-    flex: 1 1 0;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .sub-label {
-    font-size: var(--text-xs);
-    color: var(--color-text-faint);
-  }
-
-  /* `flex: none` is load-bearing. `.time` carries a flex basis for the row it
-     sits in elsewhere, and inside a *column* a basis is a height — which is how
-     a 48px time field turned into a 112px one. */
-  .sub .time {
-    flex: none;
-    width: 100%;
-  }
-
-  .clear {
-    flex: none;
-    width: var(--tap-min);
-    height: var(--tap-min);
-    border: none;
-    background: none;
-    color: var(--color-text-faint);
-    font-size: var(--text-lg);
-  }
-
   .notes {
     padding: var(--space-3);
     min-height: 5rem;
     line-height: var(--leading-normal);
   }
 
+  /* The switch, then two lines that read across: what it is, the day, the
+     hour. The labels are the left column so the two lines line up. */
   .when {
+    gap: var(--space-3);
+  }
+
+  .line {
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-2);
   }
 
+  .edge {
+    flex: none;
+    width: 3.25rem;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+  }
+
   .day {
-    flex: 1 1 9rem;
+    flex: 1 1 auto;
+    min-width: 0;
     width: auto;
   }
 
   .time {
-    flex: 0 1 7rem;
+    flex: 0 0 6.25rem;
     width: auto;
+    padding: 0 var(--space-2);
     font-variant-numeric: tabular-nums;
   }
 
@@ -719,16 +761,23 @@
     color: var(--color-accent-ink);
   }
 
-  /* "Add a time" is an offer, not a state, so it is dashed like the other
-     things in this app that are a way in rather than a setting. */
-  .chip.add {
-    border-style: dashed;
-  }
-
+  /* Four on one row at 412px, which is why these are tighter than a chip
+     elsewhere. They still wrap rather than squeeze if a translation is longer. */
   .repeats {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
+  }
+
+  .repeats .chip {
+    flex: 1 1 auto;
+    padding: 0 var(--space-2);
+  }
+
+  /* The second row, inside Custom: quieter than the row that opened it. */
+  .repeats .chip.small {
+    min-height: 2.25rem;
+    font-size: var(--text-xs);
   }
 
   .count {
@@ -759,13 +808,6 @@
     font-size: var(--text-lg);
     font-weight: var(--weight-bold);
     font-variant-numeric: tabular-nums;
-  }
-
-  .count-note {
-    flex: 1;
-    min-width: 0;
-    font-size: var(--text-sm);
-    color: var(--color-text-faint);
   }
 
   /* Which series this one belongs to. A statement, not a control — the rhythm
@@ -813,32 +855,44 @@
     background: var(--tag-ink);
   }
 
+  /* Opens and closes, and says which it will do. Full width because it is a
+     section heading you can press, not a chip among chips. */
   .more-button {
-    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
     min-height: var(--tap-min);
-    padding: 0 var(--space-4);
+    padding: 0 var(--space-3);
     border: 1px dashed var(--color-border-strong);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-md);
     background: none;
     color: var(--color-text-muted);
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
+    text-align: left;
   }
 
-  .confirm {
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--color-border);
+  .chevron {
+    display: inline-block;
+    font-size: var(--text-lg);
+    line-height: 1;
+    transition: transform var(--dur-fast) var(--ease);
   }
 
-  .ask {
-    min-height: var(--tap-min);
-    padding: 0 var(--space-4);
-    border: 1px solid var(--color-tab-calendar);
-    border-radius: var(--radius-full);
-    background: var(--color-surface);
-    color: var(--color-tab-calendar);
-    font-size: var(--text-base);
-    font-weight: var(--weight-medium);
+  .more-button.open {
+    border-style: solid;
+    color: var(--color-text);
+  }
+
+  .more-button.open .chevron {
+    transform: rotate(90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chevron {
+      transition: none;
+    }
   }
 
   .answers {
@@ -874,10 +928,6 @@
     background: none;
     color: var(--color-text-muted);
     font-size: var(--text-base);
-  }
-
-  .text-button.quiet {
-    font-size: var(--text-sm);
   }
 
   .danger-text {

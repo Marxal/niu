@@ -279,8 +279,16 @@ Calendar, Google's own notifications fire on both phones without us building pus
   columns and a clock down the side — the way a laptop draws a week — does not
   survive 412px: a column is 55px, and every event becomes a coloured smudge you
   have to tap to read. Both views step by a sideways **swipe** as well as the
-  arrows, and both can show the **ISO week number**, on by default and switchable
-  off per device.
+  arrows — the month slides out and the next one slides in (round 13) — and both
+  can show the **ISO week number**, on by default and switchable off per device.
+  **Holding a day** in the month grid opens a new event on it.
+
+- **A card says what an event is without being opened** (round 13): its whole
+  date, its time, where it is, the first lines of any note, and "3/10" when it is
+  one of a series. The date is on the card even under a heading that already
+  names the day, because the same card also appears in Coming up, in the week
+  view and pinned above the grid — one that only makes sense in its own context
+  is one that cannot travel.
 - **Event fields:** title, date, start/end time, all-day, multi-day (for holidays),
   who's involved, location, notes, colour/category, reminder, repeat, link.
 - **Adding an event** is where Google is worst and where we earn our keep. Target flow:
@@ -320,7 +328,10 @@ It has one thing an event does not: **a checkbox**. A reminder that merely slid 
 the past never told anybody the permit got renewed.
 
 **Send it for confirmation** (Marçal, round 11), and the reason the calendar is
-really worth building. Any event can be sent to the rest of the household, who see it
+really worth building. It is a **switch in the event sheet** since round 13 —
+off by default, with a device preference for whether it starts on — rather than a
+button pressed after saving, so a brand-new event can be sent round in the same
+breath as writing it. Any event can be sent to the rest of the household, who see it
 with Yes / Can't on it, pinned to the top of their calendar screen wherever in the
 year it actually falls. An unconfirmed event is **dashed rather than hidden**: it is
 on the calendar the moment it is written, and the mark says the other person has not
@@ -532,7 +543,7 @@ in the repo; this is the shape.
 | 4 | **Order and learning** — shop order, per-item stats, the suggestions strip, multiple shops | The list starts sorting itself sensibly |
 | 5 | **Dishes** — dish objects, the dishes category in the catalogue, tap-a-dish-adds-its-items | Bundles working from the shopping side |
 | 6 | **Meal planner** — day/week views, meals, plan-to-list *and* list-to-plan, repeat and leftover markers, dragging | A planned week that fills the shopping list (round 10). Month view and auto-suggest-a-week deferred |
-| 7 | **Calendar** — events, reminders, month grid, avatars, confirmations, one-way push to Google | Shared family events on both phones (round 11). Recurrence, dots, swiping and an optional start time followed in round 12; quick-add still deferred |
+| 7 | **Calendar** — events, reminders, month grid, avatars, confirmations, one-way push to Google | Shared family events on both phones (round 11). Recurrence, dots, swiping and week numbers in round 12; the sheet rebuilt Google-style, richer cards and holding a day in round 13. Quick-add still deferred |
 | 7.1 | **Push notifications** — service worker, VAPID, one Supabase function | The confirmation request buzzes the other phone |
 | 8+ | Stock inference, offline, export, icon upgrades | As they earn their place |
 

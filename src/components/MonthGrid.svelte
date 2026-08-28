@@ -33,6 +33,14 @@
   Dots, by contrast, live inside their cell — a dot never spans anything, so it
   has no reason to leave.
 
+  ## Holding a day
+
+  A long press on a cell opens the new-event sheet on that day (Marçal, round
+  13), which saves the tap-then-scroll-then-＋ the day list otherwise costs. The
+  timer is cancelled by any real movement, which is also how it stays out of the
+  swipe's way: a sideways drag has already moved past the tolerance by the time
+  this would have fired.
+
   ## The week numbers
 
   A narrow column down the left, on by default and switchable off in Settings
@@ -53,6 +61,7 @@
   import { isoWeek, monthGrid, monthKey, WEEKDAY_INITIALS } from '../lib/dates'
   import { tagStyle } from '../lib/dish-tags'
   import { layOutGrid, showsTime } from '../lib/grid-layout'
+  import { longPress } from '../lib/press'
   import { strings } from '../lib/strings'
 
   let {
@@ -63,6 +72,7 @@
     byDay,
     weekNumbers = true,
     onselect,
+    onhold,
   }: {
     /** 'YYYY-MM'. */
     month: string
@@ -75,6 +85,9 @@
     /** The ISO week down the left. A device preference — see prefs.svelte.ts. */
     weekNumbers?: boolean
     onselect: (day: string) => void
+    /** Holding a day. The fast way to put something on a Tuesday you can see
+     *  but have not selected — see press.ts. */
+    onhold: (day: string) => void
   } = $props()
 
   let days = $derived(monthGrid(month))
@@ -118,6 +131,7 @@
                 aria-selected={day === selected}
                 aria-label={labelFor(day)}
                 onclick={() => onselect(day)}
+                use:longPress={{ onPress: () => onhold(day) }}
               >
                 <span class="date">{Number(day.slice(8))}</span>
                 <span class="reserved"></span>

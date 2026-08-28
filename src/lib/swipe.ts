@@ -73,6 +73,87 @@ const FOLLOW_MAX = 44
 export type SwipeDirection = 'next' | 'previous' | null
 
 /**
+ * The two halves of a page turn: the month you are leaving slides out, the one
+ * you are arriving at slides in from the other side.
+ *
+ * Out is quicker than in, which is the standard trick for making a transition
+ * feel responsive rather than slow — the thing you asked to leave goes promptly
+ * and the thing you asked for takes its time arriving.
+ *
+ * Only one month is ever rendered. The alternative — both on screen at once,
+ * genuinely sliding past each other — means laying out two grids on every frame
+ * of the gesture, and says nothing the swap does not.
+ */
+const OUT_MS = 130
+const IN_MS = 190
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/**
+ * Slides a page out, swaps what is in it, and slides the new one in.
+ *
+ * Exported because the ‹ › buttons page the calendar too, and a swipe that
+ * slides while a button jumps would read as two different features. `swap` is
+ * called at the moment the old page is off screen — everything the screen does
+ * to change month goes in there.
+ *
+ * Reduced motion swaps with no animation at all: this is decoration, and the
+ * one thing it must not do is delay the answer for somebody who asked for less
+ * movement. It is honoured here rather than in CSS because these transitions
+ * are set from script, where the global media query in global.css cannot reach.
+ */
+export function slidePage(
+  node: HTMLElement,
+  went: Exclude<SwipeDirection, null>,
+  swap: () => void,
+): void {
+  if (prefersReducedMotion()) {
+    swap()
+    return
+  }
+
+  // Already on its way somewhere. Swap immediately and let the animation in
+  // flight carry the new content: tapping › three times to reach December has
+  // to move three months, and dropping the taps that land mid-slide would make
+  // the arrows feel broken. The flag is on the element rather than in a module
+  // variable because two calendars could in principle be on screen.
+  if (node.dataset.sliding === 'yes') {
+    swap()
+    return
+  }
+  node.dataset.sliding = 'yes'
+
+  const distance = Math.round(node.offsetWidth * 0.35)
+  const out = went === 'next' ? -distance : distance
+
+  node.style.transition = `transform ${OUT_MS}ms ease-in, opacity ${OUT_MS}ms ease-in`
+  node.style.transform = `translateX(${out}px)`
+  node.style.opacity = '0'
+
+  window.setTimeout(() => {
+    swap()
+    // Straight to the far side with no transition, so the new page has somewhere
+    // to arrive from. Two frames, because a transform and the transition that
+    // animates it set in the same frame are one jump, not an animation.
+    node.style.transition = 'none'
+    node.style.transform = `translateX(${-out}px)`
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        node.style.transition = `transform ${IN_MS}ms ease-out, opacity ${IN_MS}ms ease-out`
+        node.style.transform = ''
+        node.style.opacity = '1'
+        window.setTimeout(() => {
+          delete node.dataset.sliding
+        }, IN_MS)
+      })
+    })
+  }, OUT_MS)
+}
+
+/**
  * Which way a finished gesture went, or null if it was not a swipe.
  *
  * "Next" is a drag to the *left*, because the content moves the way the finger
@@ -100,11 +181,9 @@ export interface SwipeOptions {
 /**
  * A Svelte action: `<div use:swipeable={{ onNext, onPrevious }}>`.
  *
- * The element leans a little way with the finger and springs back, which is the
- * only feedback here — there is no half-drawn next month sliding in behind it.
- * That is a deliberate stop: two months rendered at once for the length of a
- * gesture doubles the work the grid does on every frame, to say something the
- * lean already says.
+ * The element leans with the finger while it is down. Let go far enough and it
+ * carries on the way it was going, swaps, and the next month arrives from the
+ * other side (slidePage above); let go short and it springs back.
  */
 export function swipeable(node: HTMLElement, options: SwipeOptions) {
   let current = options
@@ -132,6 +211,8 @@ export function swipeable(node: HTMLElement, options: SwipeOptions) {
 
   function onPointerDown(event: PointerEvent): void {
     if (current.enabled === false || pointerId !== null) return
+    // A page is already on its way somewhere; let it get there.
+    if (node.dataset.sliding === 'yes') return
     // A mouse's secondary buttons are not a swipe; a second finger is a pinch.
     if (event.pointerType === 'mouse' && event.button !== 0) return
     if (isEdgeStart(event.clientX, window.innerWidth)) return
@@ -175,13 +256,19 @@ export function swipeable(node: HTMLElement, options: SwipeOptions) {
 
     if (!wasSwipe) return
 
-    springBack()
     const went = direction(dx, dy)
-    if (went === null) return
+    if (went === null) {
+      springBack()
+      return
+    }
 
+    // The finger already moved it part of the way; the slide carries on from
+    // there rather than snapping back first.
     swallowClick = true
-    if (went === 'next') current.onNext()
-    else current.onPrevious()
+    slidePage(node, went, () => {
+      if (went === 'next') current.onNext()
+      else current.onPrevious()
+    })
   }
 
   /**

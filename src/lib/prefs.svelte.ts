@@ -55,6 +55,15 @@ interface StoredPrefs {
    * Off is one tap away in Settings for anybody who does not think that way.
    */
   weekNumbers: boolean
+  /**
+   * Whether a new event starts with "ask the others to confirm" already on.
+   *
+   * Off by default (Marçal, round 13). Confirmation is the feature the calendar
+   * is really for, but most of what goes on a family calendar is a statement
+   * rather than a question — and a switch that is on by default turns every
+   * dentist appointment into something the other person has to answer.
+   */
+  askConfirm: boolean
 }
 
 const DEFAULTS: StoredPrefs = {
@@ -63,6 +72,7 @@ const DEFAULTS: StoredPrefs = {
   sortMode: 'shop-order',
   shopId: null,
   weekNumbers: true,
+  askConfirm: false,
 }
 
 function isIconStyle(v: unknown): v is IconStyle {
@@ -102,6 +112,7 @@ function read(): StoredPrefs {
       // Anything but an explicit false is on, so a phone storing prefs from
       // before this existed keeps the default rather than silently opting out.
       weekNumbers: obj.weekNumbers !== false,
+      askConfirm: obj.askConfirm === true,
     }
   } catch {
     // Unreadable, unparseable, or storage refused. Defaults are always valid.
@@ -115,6 +126,7 @@ class PrefsState {
   sortMode = $state<SortMode>(DEFAULTS.sortMode)
   shopId = $state<string | null>(DEFAULTS.shopId)
   weekNumbers = $state<boolean>(DEFAULTS.weekNumbers)
+  askConfirm = $state<boolean>(DEFAULTS.askConfirm)
 }
 
 export const prefs = new PrefsState()
@@ -129,6 +141,7 @@ function save(): void {
         sortMode: prefs.sortMode,
         shopId: prefs.shopId,
         weekNumbers: prefs.weekNumbers,
+        askConfirm: prefs.askConfirm,
       }),
     )
   } catch {
@@ -144,6 +157,7 @@ export function loadPrefs(): void {
   prefs.sortMode = stored.sortMode
   prefs.shopId = stored.shopId
   prefs.weekNumbers = stored.weekNumbers
+  prefs.askConfirm = stored.askConfirm
 }
 
 export function setIconStyle(style: IconStyle): void {
@@ -169,5 +183,11 @@ export function setShopId(shopId: string | null): void {
 
 export function setWeekNumbers(on: boolean): void {
   prefs.weekNumbers = on
+  save()
+}
+
+/** Whether the switch in the event sheet starts on. Not whether it exists. */
+export function setAskConfirm(on: boolean): void {
+  prefs.askConfirm = on
   save()
 }

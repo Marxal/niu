@@ -74,10 +74,11 @@
     monthName,
     shortDate,
     startOfWeek,
+    timeLabel,
     todayKey,
   } from '../lib/dates'
   import { prefs } from '../lib/prefs.svelte'
-  import { swipeable } from '../lib/swipe'
+  import { slidePage, swipeable } from '../lib/swipe'
   import { google } from '../lib/google.svelte'
   import { runSync, sync, syncSoon } from '../lib/google-sync.svelte'
   import { household } from '../lib/household.svelte'
@@ -103,6 +104,9 @@
 
   /** What the sheet is showing, or null when it is closed. */
   let sheet = $state<{ event: CalendarEvent | null; kind: EventKind } | null>(null)
+
+  /** The element the swipe and the ‹ › both slide. */
+  let pagesEl = $state<HTMLDivElement | null>(null)
 
   let byDay = $derived(eventsByDay(calendar.events, calendar.from, calendar.to))
   let dayEvents = $derived(eventsOn(calendar.events, selected))
@@ -151,6 +155,21 @@
     selected = byDay.has(candidate) || candidate.slice(8) <= '28' ? candidate : `${month}-01`
   }
 
+  /**
+   * The ‹ › buttons page the calendar the same way a swipe does.
+   *
+   * Round 13 made the swipe slide; a button that jumped instead would read as
+   * two different features doing one thing. slidePage falls back to a plain
+   * swap when the element is not there or the person asked for less motion.
+   */
+  function page(delta: number) {
+    if (pagesEl === null) {
+      step(delta)
+      return
+    }
+    slidePage(pagesEl, delta > 0 ? 'next' : 'previous', () => step(delta))
+  }
+
   function goToday() {
     today = todayKey()
     month = monthKey(today)
@@ -170,23 +189,44 @@
     sheet = { event: null, kind }
   }
 
-  /** The + on a day in the week view, and tapping an empty day there. */
+  /** The + on a day in the week view, tapping an empty day there, and holding
+   *  a day in the month grid (round 13). */
   function addOn(day: string) {
     selected = day
     sheet = { event: null, kind: 'event' }
   }
 
+  /**
+   * Saves the sheet, and sends the event round if the switch says so.
+   *
+   * The confirmation used to be two buttons at the bottom of the sheet, pressed
+   * after saving. Round 13 made it a switch in the ordinary flow, so this is
+   * where "on" becomes an actual question and "off" withdraws one — including
+   * on a brand new event, which is the case that never used to exist.
+   *
+   * For a series it asks about the **first** occurrence only. Confirmations are
+   * per-occurrence by design (a yes to Thursday is not a yes to Saturday), so
+   * asking about all ten would put ten identical questions at the top of the
+   * other phone's calendar.
+   */
   async function save(draft: EventDraft, reask: boolean, scope: EditScope) {
     const existing = sheet?.event ?? null
     sheet = null
 
     if (existing === null) {
-      await addEvent(draft)
+      const id = await addEvent(draft)
+      if (id !== null && draft.askConfirm) await askToConfirm(id)
     } else {
       await updateEvent(existing.id, draft, scope)
-      // The evening moved, so the answers were about a different evening.
-      if (reask) {
+
+      if (!draft.askConfirm) {
+        // Switched off: the question is withdrawn, answers and all.
+        if (existing.confirmRequested) await unaskConfirmation(existing.id)
+      } else if (reask) {
+        // The evening moved, so the answers were about a different evening.
         await unaskConfirmation(existing.id)
+        await askToConfirm(existing.id)
+      } else if (!existing.confirmRequested) {
         await askToConfirm(existing.id)
       }
     }
@@ -205,23 +245,6 @@
     }
   }
 
-  async function ask() {
-    const existing = sheet?.event ?? null
-    if (!existing) return
-    await askToConfirm(existing.id)
-    // Reopen on the freshly-loaded row so the sheet shows the new state.
-    sheet = { event: calendar.events.find((e) => e.id === existing.id) ?? null, kind: existing.kind }
-    syncSoon()
-  }
-
-  async function unask() {
-    const existing = sheet?.event ?? null
-    if (!existing) return
-    await unaskConfirmation(existing.id)
-    sheet = { event: calendar.events.find((e) => e.id === existing.id) ?? null, kind: existing.kind }
-    syncSoon()
-  }
-
   async function answer(event: CalendarEvent, reply: 'yes' | 'no') {
     await answerConfirmation(event.id, reply)
     syncSoon()
@@ -238,7 +261,7 @@
     <button
       class="step"
       aria-label={view === 'week' ? strings.calendar.previousWeek : strings.calendar.previousMonth}
-      onclick={() => step(-1)}>‹</button
+      onclick={() => page(-1)}>‹</button
     >
     <h1>
       {view === 'week'
@@ -253,7 +276,7 @@
     <button
       class="step"
       aria-label={view === 'week' ? strings.calendar.nextWeek : strings.calendar.nextMonth}
-      onclick={() => step(1)}>›</button
+      onclick={() => page(1)}>›</button
     >
   </header>
 
@@ -282,10 +305,21 @@
         <div class="ask-card">
           <!-- One line, not two. This card sits above the grid and its job is
                to be impossible to miss, not to be the whole screen. -->
+          <!-- The whole date, not just the weekday (Marçal, round 13). "Can
+               you make Thursday?" is not answerable if you cannot see which
+               Thursday — and this card deliberately floats away from the day
+               it belongs to, so it is the one place that has to say. -->
           <button class="ask-body" onclick={() => open(event)}>
             <span class="ask-title">{event.title}</span>
             <span class="ask-when">
-              {dayName(event.startsOn, today)}{#if event.startTime}, {event.startTime}{/if}
+              {dayName(event.startsOn, today)}
+              <span class="ask-date">
+                {#if event.endsOn > event.startsOn}
+                  {dateRange(event.startsOn, event.endsOn)}
+                {:else}
+                  {longDate(event.startsOn)}
+                {/if}{#if event.startTime}, {timeLabel(event.startTime, event.endTime)}{/if}
+              </span>
             </span>
           </button>
           <div class="ask-actions">
@@ -303,6 +337,7 @@
        10.2 learned the hard way and wrote down in drag.svelte.ts. -->
   <div
     class="pages"
+    bind:this={pagesEl}
     use:swipeable={{
       onNext: () => step(1),
       onPrevious: () => step(-1),
@@ -328,6 +363,7 @@
         {byDay}
         weekNumbers={prefs.weekNumbers}
         onselect={select}
+        onhold={addOn}
       />
 
       <div class="day">
@@ -409,8 +445,6 @@
       day={selected}
       onsave={save}
       onremove={remove}
-      onask={ask}
-      onunask={unask}
       onclose={() => (sheet = null)}
     />
   {/key}
@@ -558,8 +592,16 @@
   }
 
   .ask-when {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1);
     font-size: var(--text-xs);
     color: var(--color-text-muted);
+  }
+
+  .ask-date {
+    color: var(--color-text-faint);
   }
 
   .ask-actions {
