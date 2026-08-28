@@ -2,25 +2,43 @@
   The month, as a grid of days with the events drawn on top of it.
 
   §4.3: "Default view: month grid." Round 11 drew one coloured dot per event;
-  Marçal's note after using it was that they should be small boxes with some of
-  the title showing, and that **a holiday running Friday to Tuesday should be
-  one unbroken bar**. This is that.
+  round 11.1 replaced them with small boxes carrying the title, and **a holiday
+  running Friday to Tuesday as one unbroken bar**. Round 12 keeps both and lets
+  the day choose between them.
 
-  ## Why the boxes are not inside the cells
+  ## Boxes, bars and dots
+
+  Marçal, after a busy fortnight: *"if there's more than one event it gets too
+  crowded. one event show the text, more than one event show dots instead."*
+
+  So a day with one thing on it says what that thing is, and a day with three
+  says that there are three and leaves the reading to the list underneath. The
+  exception is a multi-day event, which is always a bar — five dots on five days
+  say five things happened, not that one thing lasted five days. The rule itself
+  lives in grid-layout.ts, which is pure and tested; this file turns it into CSS.
+
+  ## Why the bars are not inside the cells
 
   A box that spans five days cannot live inside a day cell — a cell cannot draw
   outside itself. So a week is two layers:
 
-    .cells   seven buttons. The tap targets, the date numbers, the "+2".
+    .cells   seven buttons. The tap targets, the date numbers, the dots, the "+2".
     .bars    one CSS grid on top, where a box is `grid-column: 3 / span 5`.
 
   The bars layer is `pointer-events: none`, so every tap lands on the day
-  underneath. That is deliberate rather than lazy: a 14px-tall box is not a
+  underneath. That is deliberate rather than lazy: a 17px-tall box is not a
   touch target, and the list below the grid is where an event is meant to be
   read and opened. The grid answers *where*; the list answers *what*.
 
-  Which lane each box sits on is worked out in grid-layout.ts, which is pure and
-  tested. This file only turns three numbers into CSS.
+  Dots, by contrast, live inside their cell — a dot never spans anything, so it
+  has no reason to leave.
+
+  ## The week numbers
+
+  A narrow column down the left, on by default and switchable off in Settings
+  (round 12). It sits *outside* the seven-column grid rather than as an eighth
+  column of it, which is what keeps the bars layer's arithmetic seven-based and
+  unchanged whether the numbers are showing or not.
 
   ## Sizing
 
@@ -32,7 +50,7 @@
 <script lang="ts">
   import type { CalendarEvent } from '../lib/calendar'
   import { isUnconfirmed } from '../lib/calendar'
-  import { monthGrid, monthKey, WEEKDAY_INITIALS } from '../lib/dates'
+  import { isoWeek, monthGrid, monthKey, WEEKDAY_INITIALS } from '../lib/dates'
   import { tagStyle } from '../lib/dish-tags'
   import { layOutGrid, showsTime } from '../lib/grid-layout'
   import { strings } from '../lib/strings'
@@ -43,6 +61,7 @@
     today,
     events,
     byDay,
+    weekNumbers = true,
     onselect,
   }: {
     /** 'YYYY-MM'. */
@@ -53,6 +72,8 @@
     events: readonly CalendarEvent[]
     /** Day key to the events on it, for the "+n" count and the labels. */
     byDay: Map<string, CalendarEvent[]>
+    /** The ISO week down the left. A device preference — see prefs.svelte.ts. */
+    weekNumbers?: boolean
     onselect: (day: string) => void
   } = $props()
 
@@ -66,53 +87,75 @@
   }
 </script>
 
-<div class="grid-wrap">
+<div class="grid-wrap" class:with-weeks={weekNumbers}>
   <div class="headings" aria-hidden="true">
-    {#each WEEKDAY_INITIALS as initial, i (i)}
-      <span class="heading">{initial}</span>
-    {/each}
+    {#if weekNumbers}<span class="wk head-wk">{strings.calendar.weekAbbrev}</span>{/if}
+    <div class="heading-days">
+      {#each WEEKDAY_INITIALS as initial, i (i)}
+        <span class="heading">{initial}</span>
+      {/each}
+    </div>
   </div>
 
   <div class="grid" role="grid" aria-label={strings.calendar.title}>
     {#each weeks as week, w (w)}
       {@const weekDays = days.slice(w * 7, w * 7 + 7)}
+      {@const monday = weekDays[0]}
       <div class="week" style="--lanes: {week.lanes}">
-        <div class="cells" role="row">
-          {#each weekDays as day, column (day)}
-            <button
-              class="cell"
-              class:outside={monthKey(day) !== month}
-              class:today={day === today}
-              class:selected={day === selected}
-              role="gridcell"
-              aria-selected={day === selected}
-              aria-label={labelFor(day)}
-              onclick={() => onselect(day)}
-            >
-              <span class="date">{Number(day.slice(8))}</span>
-              <span class="reserved"></span>
-              {#if (week.overflow[column] ?? 0) > 0}
-                <span class="more">+{week.overflow[column]}</span>
-              {/if}
-            </button>
-          {/each}
-        </div>
+        {#if weekNumbers && monday}
+          <span class="wk" aria-hidden="true">{isoWeek(monday)}</span>
+        {/if}
 
-        <div class="bars" aria-hidden="true">
-          {#each week.segments as segment (segment.event.id)}
-            <span
-              class="bar"
-              class:waiting={isUnconfirmed(segment.event)}
-              class:done={segment.event.doneAt !== null}
-              class:all-day={segment.event.startTime === null}
-              class:from-before={segment.clippedStart}
-              class:into-after={segment.clippedEnd}
-              style="{tagStyle(segment.event.colour)}; --col: {segment.column}; --span: {segment.span}; --lane: {segment.lane}"
-            >
-              {#if showsTime(segment)}<b class="at">{segment.event.startTime}</b>{/if}
-              <span class="text">{segment.event.title}</span>
-            </span>
-          {/each}
+        <div class="stack">
+          <div class="cells" role="row">
+            {#each weekDays as day, column (day)}
+              <button
+                class="cell"
+                class:outside={monthKey(day) !== month}
+                class:today={day === today}
+                class:selected={day === selected}
+                role="gridcell"
+                aria-selected={day === selected}
+                aria-label={labelFor(day)}
+                onclick={() => onselect(day)}
+              >
+                <span class="date">{Number(day.slice(8))}</span>
+                <span class="reserved"></span>
+                {#if (week.dots[column] ?? []).length > 0}
+                  <span class="dots">
+                    {#each week.dots[column] ?? [] as event (event.id)}
+                      <span
+                        class="dot"
+                        class:waiting={isUnconfirmed(event)}
+                        class:done={event.doneAt !== null}
+                        style={tagStyle(event.colour)}
+                      ></span>
+                    {/each}
+                  </span>
+                {/if}
+                {#if (week.overflow[column] ?? 0) > 0}
+                  <span class="more">+{week.overflow[column]}</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+
+          <div class="bars" aria-hidden="true">
+            {#each week.segments as segment (segment.event.id)}
+              <span
+                class="bar"
+                class:waiting={isUnconfirmed(segment.event)}
+                class:done={segment.event.doneAt !== null}
+                class:all-day={segment.event.startTime === null}
+                class:from-before={segment.clippedStart}
+                class:into-after={segment.clippedEnd}
+                style="{tagStyle(segment.event.colour)}; --col: {segment.column}; --span: {segment.span}; --lane: {segment.lane}"
+              >
+                {#if showsTime(segment)}<b class="at">{segment.event.startTime}</b>{/if}
+                <span class="text">{segment.event.title}</span>
+              </span>
+            {/each}
+          </div>
         </div>
       </div>
     {/each}
@@ -127,12 +170,45 @@
     --lane-step: calc(var(--lane-h) + var(--lane-gap));
     /* The date number and the gap under it — where the bars layer starts. */
     --date-block: 1.5rem;
+    /* The week-number column. Zero when it is switched off, so nothing else in
+       here has to know whether it is there. */
+    --wk-col: 0rem;
     padding: 0 var(--space-2);
   }
 
-  .headings {
+  .grid-wrap.with-weeks {
+    --wk-col: 1.375rem;
+  }
+
+  .headings,
+  .week {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .heading-days,
+  .cells {
+    flex: 1;
+    min-width: 0;
     display: grid;
     grid-template-columns: repeat(7, 1fr);
+  }
+
+  /* Outside the seven columns, not an eighth one — see the header. */
+  .wk {
+    flex: none;
+    width: var(--wk-col);
+    padding-top: 2px;
+    text-align: center;
+    font-size: 0.625rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.375rem;
+    color: var(--color-text-faint);
+  }
+
+  .head-wk {
+    line-height: 1;
+    padding-top: 0;
   }
 
   .heading {
@@ -143,13 +219,11 @@
     color: var(--color-text-faint);
   }
 
-  .week {
+  /* The cells and the bars share one box, so a bar's columns are the cells'. */
+  .stack {
     position: relative;
-  }
-
-  .cells {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    flex: 1;
+    min-width: 0;
   }
 
   .cell {
@@ -204,6 +278,36 @@
 
   .cell.today.selected .date {
     box-shadow: 0 0 0 2px var(--color-surface-sunken), 0 0 0 4px var(--color-tab-calendar);
+  }
+
+  /* A busy day, in one line instead of three. The colour is the whole message:
+     which events they are is the list's job, and the cell's job is to say the
+     day is not empty and roughly how full it is. */
+  .dots {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: nowrap;
+    gap: 3px;
+    height: 0.5rem;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--tag-ink);
+  }
+
+  /* Hollow while somebody has not answered — the same "outlined means not
+     settled yet" the bars and the list rows use. */
+  .dot.waiting {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--tag-ink);
+  }
+
+  .dot.done {
+    opacity: 0.4;
   }
 
   .more {

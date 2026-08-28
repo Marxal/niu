@@ -29,11 +29,18 @@
   Round 11.1 turns that into a real phone notification; this round makes sure the
   thing the notification will point at already exists and already works.
 
+  ## Stepping through time
+
+  Three ways, all doing the same thing: the ‹ › either side of the heading, and
+  since round 12 a **sideways swipe** across the grid or the week. The swipe
+  deliberately ignores anything starting within 24px of either edge, which is
+  Android's own back gesture and the one that must keep working — see swipe.ts.
+
   ## What is not here
 
-  Recurrence (§4.3 wants "repeats X times per week"), and typed quick-add
-  ("Thursday 18:30 dinner", §11 question 1). Both were left out on purpose and
-  both are written up in ROADMAP.md.
+  Typed quick-add ("Thursday 18:30 dinner", §11 question 1), still. Recurrence
+  arrived in round 12; the sheet writes the rows and the "this one or all of
+  them?" question lives in EventSheet's footer.
 -->
 <script lang="ts">
   import {
@@ -45,6 +52,7 @@
     upcoming,
   } from '../lib/calendar'
   import {
+    type EditScope,
     addEvent,
     answerConfirmation,
     askToConfirm,
@@ -60,6 +68,7 @@
     addMonths,
     dateRange,
     dayName,
+    isoWeek,
     longDate,
     monthKey,
     monthName,
@@ -67,6 +76,8 @@
     startOfWeek,
     todayKey,
   } from '../lib/dates'
+  import { prefs } from '../lib/prefs.svelte'
+  import { swipeable } from '../lib/swipe'
   import { google } from '../lib/google.svelte'
   import { runSync, sync, syncSoon } from '../lib/google-sync.svelte'
   import { household } from '../lib/household.svelte'
@@ -165,14 +176,14 @@
     sheet = { event: null, kind: 'event' }
   }
 
-  async function save(draft: EventDraft, reask: boolean) {
+  async function save(draft: EventDraft, reask: boolean, scope: EditScope) {
     const existing = sheet?.event ?? null
     sheet = null
 
     if (existing === null) {
       await addEvent(draft)
     } else {
-      await updateEvent(existing.id, draft)
+      await updateEvent(existing.id, draft, scope)
       // The evening moved, so the answers were about a different evening.
       if (reask) {
         await unaskConfirmation(existing.id)
@@ -185,11 +196,11 @@
     syncSoon()
   }
 
-  async function remove() {
+  async function remove(scope: EditScope) {
     const existing = sheet?.event ?? null
     sheet = null
     if (existing) {
-      await removeEvent(existing.id)
+      await removeEvent(existing.id, scope)
       syncSoon()
     }
   }
@@ -233,6 +244,11 @@
       {view === 'week'
         ? dateRange(weekStart, addDays(weekStart, 6))
         : monthName(month, today)}
+      <!-- The week view's own week number. The month view writes one down the
+           side of every row instead, which is where a month needs them. -->
+      {#if view === 'week' && prefs.weekNumbers}
+        <span class="wk">{strings.calendar.weekAbbrev}{isoWeek(weekStart)}</span>
+      {/if}
     </h1>
     <button
       class="step"
@@ -281,69 +297,90 @@
     </div>
   {/if}
 
-  {#if view === 'week'}
-    <WeekView
-      {weekStart}
-      {today}
-      events={calendar.events}
-      {unsyncedIds}
-      onopen={open}
-      ontoggleDone={toggleDone}
-      onadd={addOn}
-    />
-  {:else}
-    <MonthGrid {month} {selected} {today} events={calendar.events} {byDay} onselect={select} />
+  <!-- One swipe surface over whichever view is showing, so a sideways drag
+       anywhere on the calendar turns the page. `touch-action: pan-y` below is
+       what stops Android's compositor claiming the gesture — the lesson round
+       10.2 learned the hard way and wrote down in drag.svelte.ts. -->
+  <div
+    class="pages"
+    use:swipeable={{
+      onNext: () => step(1),
+      onPrevious: () => step(-1),
+      enabled: sheet === null,
+    }}
+  >
+    {#if view === 'week'}
+      <WeekView
+        {weekStart}
+        {today}
+        events={calendar.events}
+        {unsyncedIds}
+        onopen={open}
+        ontoggleDone={toggleDone}
+        onadd={addOn}
+      />
+    {:else}
+      <MonthGrid
+        {month}
+        {selected}
+        {today}
+        events={calendar.events}
+        {byDay}
+        weekNumbers={prefs.weekNumbers}
+        onselect={select}
+      />
 
-    <div class="day">
-      <div class="day-head">
-        <h2>
-          <span class="day-name">{dayName(selected, today)}</span>
-          <span class="day-date">{longDate(selected)}</span>
-        </h2>
+      <div class="day">
+        <div class="day-head">
+          <h2>
+            <span class="day-name">{dayName(selected, today)}</span>
+            <span class="day-date">{longDate(selected)}</span>
+          </h2>
+        </div>
+
+        {#if dayEvents.length === 0}
+          <div class="empty">
+            <p class="empty-line">{strings.calendar.nothingOn}</p>
+            {#if next.length > 0}
+              <p class="empty-hint">{strings.calendar.comingUp}</p>
+              <!-- Each one says which day it is on (Marçal, round 11.1). Without
+                   it "Coming up" is three events with no dates, which is the one
+                   thing a calendar must never be. -->
+              <div class="rows">
+                {#each next as event (event.id)}
+                  <div class="upcoming">
+                    <span class="upcoming-day">
+                      {dayName(event.startsOn, today)}
+                      <span class="upcoming-date">{shortDate(event.startsOn)}</span>
+                    </span>
+                    <EventRow
+                      {event}
+                      unsynced={unsyncedIds.has(event.id)}
+                      onopen={() => open(event)}
+                      ontoggleDone={() => toggleDone(event)}
+                    />
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <p class="empty-hint">{strings.calendar.nothingOnHint}</p>
+            {/if}
+          </div>
+        {:else}
+          <div class="rows">
+            {#each dayEvents as event (event.id)}
+              <EventRow
+                {event}
+                unsynced={unsyncedIds.has(event.id)}
+                onopen={() => open(event)}
+                ontoggleDone={() => toggleDone(event)}
+              />
+            {/each}
+          </div>
+        {/if}
       </div>
-
-      {#if dayEvents.length === 0}
-        <div class="empty">
-          <p class="empty-line">{strings.calendar.nothingOn}</p>
-          {#if next.length > 0}
-            <p class="empty-hint">{strings.calendar.comingUp}</p>
-            <!-- Each one says which day it is on (Marçal, round 11.1). Without
-                 it "Coming up" is three events with no dates, which is the one
-                 thing a calendar must never be. -->
-            <div class="rows">
-              {#each next as event (event.id)}
-                <div class="upcoming">
-                  <span class="upcoming-day">
-                    {dayName(event.startsOn, today)}
-                    <span class="upcoming-date">{shortDate(event.startsOn)}</span>
-                  </span>
-                  <EventRow
-                    {event}
-                    unsynced={unsyncedIds.has(event.id)}
-                    onopen={() => open(event)}
-                    ontoggleDone={() => toggleDone(event)}
-                  />
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <p class="empty-hint">{strings.calendar.nothingOnHint}</p>
-          {/if}
-        </div>
-      {:else}
-        <div class="rows">
-          {#each dayEvents as event (event.id)}
-            <EventRow
-              {event}
-              unsynced={unsyncedIds.has(event.id)}
-              onopen={() => open(event)}
-              ontoggleDone={() => toggleDone(event)}
-            />
-          {/each}
-        </div>
-      {/if}
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   {#if calendar.error}<p class="error day-error">{calendar.error}</p>{/if}
 
@@ -399,9 +436,31 @@
 
   h1 {
     flex: 1;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: var(--space-2);
     text-align: center;
     font-size: var(--text-xl);
     font-weight: var(--weight-bold);
+  }
+
+  .wk {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-regular);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-faint);
+  }
+
+  /* The swipe surface. Vertical panning stays the browser's, horizontal is
+     ours — without this line the compositor takes the sideways drag for a pan
+     and cancels the gesture mid-way, which is exactly how round 10.1's swipe
+     came to do nothing at all on a real phone. */
+  .pages {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    touch-action: pan-y;
   }
 
   .step {

@@ -28,12 +28,36 @@
  * the low lanes first keeps them low and unbroken, and lets the single days
  * shuffle around them.
  *
+ * ## Dots, and the rule that decides between a box and a dot
+ *
+ * Round 11.1 drew every event as a titled box and stacked up to three of them.
+ * Marçal, after a busy week: *"if there's more than one event it gets too
+ * crowded. one event show the text, more than one event show dots instead."*
+ *
+ * So the rule is per **day**, and it is the one he wrote:
+ *
+ *   one thing on that day    → a box with the title in it
+ *   more than one            → a dot each, on one line
+ *
+ * with one exception, which is the reason the boxes exist at all: **a multi-day
+ * event is always a bar.** A holiday running Friday to Tuesday cannot become
+ * five dots — five dots on five days say five things happened, not that one
+ * thing lasted five days — and it is the only shape in the grid that can say
+ * "this is still going". So a day carrying a holiday *and* a birthday draws the
+ * bar and turns the birthday into a dot, which is still the rule: the day has
+ * more than one thing on it, so what fits gets a word and the rest get dots.
+ *
+ * A dot is 6px and a box is 17px, so a day with four things on it costs one
+ * line instead of three, and a busy September stops pushing the day list off
+ * the bottom of the screen. Which day each dot belongs to is never in doubt,
+ * because a dot never leaves its own cell.
+ *
  * ## Overflow
  *
- * A phone has room for two or three lanes, not eight. Anything that doesn't fit
- * is dropped from the layout and counted per column, so the cell can say "+2".
- * The count is per *day*, not per week: "+2" under Tuesday has to mean two more
- * things on Tuesday.
+ * A phone has room for two or three lanes and about four dots, not eight of
+ * either. Anything that doesn't fit is dropped from the layout and counted per
+ * column, so the cell can say "+2". The count is per *day*, not per week: "+2"
+ * under Tuesday has to mean two more things on Tuesday.
  */
 
 import type { CalendarEvent } from './calendar'
@@ -57,6 +81,11 @@ export interface Segment {
 
 export interface WeekLayout {
   segments: Segment[]
+  /**
+   * Per column, the events drawn as dots rather than boxes, in the order they
+   * happen. Always length 7; usually mostly empty.
+   */
+  dots: CalendarEvent[][]
   /** How many lanes are actually used. Zero for an empty week. */
   lanes: number
   /** Per column, how many events did not fit. Always length 7. */
@@ -65,6 +94,14 @@ export interface WeekLayout {
 
 /** What a week row can show before it starts counting instead. */
 export const DEFAULT_MAX_LANES = 3
+
+/**
+ * How many dots fit across one cell.
+ *
+ * A cell is about 52px wide and a dot with its gap is 9px, so five would fit
+ * and four leaves room for the "+2" beside them when there are more.
+ */
+export const MAX_DOTS = 4
 
 /**
  * Where an event sits in a given week, or null if it misses the week entirely.
@@ -113,10 +150,23 @@ function packingOrder(events: readonly CalendarEvent[]): CalendarEvent[] {
 }
 
 /**
+ * How busy each column is — how many events cover that day, counting the ones
+ * that started before this week and are still going.
+ *
+ * This is the number the box-or-dot rule reads. It counts *events on the day*,
+ * not events drawn in the week, so Tuesday is busy because Tuesday is busy and
+ * not because Thursday is.
+ */
+function dayCounts(days: readonly string[], events: readonly CalendarEvent[]): number[] {
+  return days.map((day) => events.filter((e) => e.startsOn <= day && day <= e.endsOn).length)
+}
+
+/**
  * Lay one week out.
  *
  * `maxLanes` is how many lines of boxes there is room for; anything beyond that
- * is counted in `overflow` rather than drawn.
+ * is counted in `overflow` rather than drawn. See the header for the rule that
+ * decides which events become boxes and which become dots.
  */
 export function layOutWeek(
   days: readonly string[],
@@ -124,14 +174,35 @@ export function layOutWeek(
   maxLanes: number = DEFAULT_MAX_LANES,
 ): WeekLayout {
   const segments: Segment[] = []
+  const dots: CalendarEvent[][] = [[], [], [], [], [], [], []]
   const overflow = [0, 0, 0, 0, 0, 0, 0]
   // taken[lane][column] — whether that box is already occupied.
   const taken: boolean[][] = []
   let lanes = 0
 
+  const counts = dayCounts(days, events)
+
+  /** A single-day event's dot goes in its own column, or is counted. */
+  function dot(event: CalendarEvent, column: number): void {
+    const bucket = dots[column]
+    if (bucket === undefined) return
+    if (bucket.length >= MAX_DOTS) overflow[column] = (overflow[column] ?? 0) + 1
+    else bucket.push(event)
+  }
+
   for (const event of packingOrder(events)) {
     const spot = place(event, days)
     if (spot === null) continue
+
+    // The rule: a bar if it spans days, a box if it is the only thing on its
+    // day, a dot otherwise. `place` clamps a bar to the week, so a holiday
+    // that started last month is multi-day here even when its span is 1.
+    const multiDay = isMultiDay(event)
+    const alone = (counts[spot.column] ?? 0) <= 1
+    if (!multiDay && !alone) {
+      dot(event, spot.column)
+      continue
+    }
 
     let lane = 0
     while (lane < maxLanes) {
@@ -145,6 +216,10 @@ export function layOutWeek(
 
     if (lane >= maxLanes) {
       // No room. It still happened, so every day it touches says so.
+      //
+      // Only a bar can land here: a single-day event reaching the lane search
+      // is by definition the only thing on its day, so nothing can be occupying
+      // that column and lane 0 is always free for it.
       for (let i = 0; i < spot.span; i += 1) {
         const column = spot.column + i
         if (column < overflow.length) overflow[column] = (overflow[column] ?? 0) + 1
@@ -159,7 +234,11 @@ export function layOutWeek(
     lanes = Math.max(lanes, lane + 1)
   }
 
-  return { segments, lanes, overflow }
+  // Dots read in the day's own order — all-day first, then the clock — which
+  // packingOrder deliberately does not use.
+  for (let i = 0; i < dots.length; i += 1) dots[i] = sortEvents(dots[i] ?? [])
+
+  return { segments, dots, lanes, overflow }
 }
 
 /**

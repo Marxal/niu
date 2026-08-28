@@ -33,13 +33,40 @@ import {
   type EventDraft,
   awaitingMe,
   cleanDraft,
+  draftFrom,
+  draftRule,
   toEventColour,
 } from './calendar'
-import { addMonths, isDayKey, monthGrid, monthKey, monthStart, todayKey } from './dates'
+import {
+  addDays,
+  addMonths,
+  daysBetween,
+  isDayKey,
+  monthGrid,
+  monthKey,
+  monthStart,
+  todayKey,
+} from './dates'
 import { household } from './household.svelte'
 import { isEventKind } from './calendar'
+import {
+  type SeriesRule,
+  applyChange,
+  draftChanges,
+  isSeriesRule,
+  occurrenceDays,
+} from './recurrence'
 import { strings } from './strings'
 import { supabase } from './supabase'
+
+/**
+ * Which occurrences an edit or a removal touches.
+ *
+ * Two options rather than Google's three — §4.3 asks for exactly "this one, or
+ * all of them?", and "this and everything after" is a third answer to a question
+ * that already has a right one for a household calendar.
+ */
+export type EditScope = 'one' | 'series'
 
 class CalendarState {
   events = $state<CalendarEvent[]>([])
@@ -78,7 +105,19 @@ interface EventRow {
   done_by: string | null
   created_by: string
   updated_at: string
+  series_id: string | null
+  series_index: number | null
+  series_count: number | null
+  series_rule: string | null
 }
+
+/** Every column an event row is read with. One place, because three queries
+ *  want the same list and a column missing from one of them is a field that is
+ *  silently null on some screens and not others. */
+const EVENT_COLUMNS =
+  'id, kind, title, starts_on, ends_on, start_time, end_time, location, notes, ' +
+  'colour, confirm_requested, done_at, done_by, created_by, updated_at, ' +
+  'series_id, series_index, series_count, series_rule'
 
 function toEvent(
   row: EventRow,
@@ -104,6 +143,12 @@ function toEvent(
     updatedAt: row.updated_at,
     attendees,
     confirmations,
+    seriesId: row.series_id,
+    seriesIndex: row.series_index ?? 0,
+    // A row from before 0014 has no counts. One is the truthful answer for a
+    // one-off and keeps "3 of 10" from reading as "3 of 0".
+    seriesCount: row.series_count ?? 1,
+    seriesRule: isSeriesRule(row.series_rule) ? row.series_rule : null,
   }
 }
 
@@ -164,10 +209,7 @@ export async function loadEvents(): Promise<void> {
   const [eventsResult, attendeesResult, confirmationsResult] = await Promise.all([
     supabase
       .from('events')
-      .select(
-        'id, kind, title, starts_on, ends_on, start_time, end_time, location, notes, ' +
-          'colour, confirm_requested, done_at, done_by, created_by, updated_at',
-      )
+      .select(EVENT_COLUMNS)
       .eq('household_id', household.id)
       .lte('starts_on', calendar.to)
       .gte('ends_on', calendar.from),
@@ -291,11 +333,44 @@ function draftColumns(draft: EventDraft): Record<string, unknown> {
 }
 
 /**
- * Writes a new event and returns its id, or null if it couldn't be written.
+ * The rows one draft turns into: one for an ordinary event, ten for "every
+ * Sunday, ten times".
+ *
+ * Each occurrence keeps the draft's *length* rather than its end date — a
+ * two-day thing repeated weekly is two days each week, not a bar reaching back
+ * to the first one.
+ */
+function seriesRows(
+  clean: EventDraft,
+  seriesId: string | null,
+  rule: SeriesRule | null,
+): Record<string, unknown>[] {
+  const days =
+    rule === null ? [clean.startsOn] : occurrenceDays(clean.startsOn, rule, clean.repeatCount)
+  const span = Math.max(0, daysBetween(clean.startsOn, clean.endsOn))
+
+  return days.map((day, index) => ({
+    ...draftColumns({ ...clean, startsOn: day, endsOn: addDays(day, span) }),
+    household_id: household.id,
+    created_by: auth.userId,
+    series_id: seriesId,
+    series_index: index,
+    series_count: days.length,
+    series_rule: rule,
+  }))
+}
+
+/**
+ * Writes a new event — or a whole series of them — and returns the first id, or
+ * null if it couldn't be written.
  *
  * Not optimistic, unlike tapping a shopping tile. Adding an event is a sheet
  * you filled in and a Save you pressed, so a moment's wait is expected and
  * showing a card that might vanish would be worse than showing one a beat late.
+ *
+ * A series is **one insert of ten rows**, not ten inserts: on mobile data ten
+ * round trips is ten chances for one of them to fail and leave half a term of
+ * gym on the calendar. One statement either writes them all or writes none.
  */
 export async function addEvent(draft: EventDraft): Promise<string | null> {
   if (!supabase || !household.id || !auth.userId) return null
@@ -303,32 +378,52 @@ export async function addEvent(draft: EventDraft): Promise<string | null> {
   const clean = cleanDraft(draft)
   if (clean === null) return null
 
+  const rule = draftRule(clean)
+  // Ours, not Google's — it never leaves the database, so it needs to be
+  // unique and nothing else.
+  const seriesId = rule === null ? null : crypto.randomUUID()
+
   const { data, error } = await supabase
     .from('events')
-    .insert({
-      ...draftColumns(clean),
-      household_id: household.id,
-      created_by: auth.userId,
-    })
+    .insert(seriesRows(clean, seriesId, rule))
     .select('id')
-    .single()
 
   if (error || !data) {
     calendar.error = strings.calendar.saveFailed
     return null
   }
 
-  const id = (data as { id: string }).id
-  await setAttendees(id, clean.attendees)
+  const ids = (data as { id: string }[]).map((row) => row.id)
+  await setAttendees(ids, clean.attendees)
   await loadEvents()
-  return id
+  return ids[0] ?? null
 }
 
-export async function updateEvent(id: string, draft: EventDraft): Promise<boolean> {
+/**
+ * Saves an edit, to this occurrence or to every occurrence of its series.
+ *
+ * The interesting half is `scope === 'series'`, and the thing to understand is
+ * that it applies the **change**, not the result — see applyChange in
+ * recurrence.ts. What changed is worked out against the row as it is currently
+ * loaded, which is the version the person had in front of them; if the other
+ * phone edited it in the same breath, last write wins (§3), as everywhere else.
+ */
+export async function updateEvent(
+  id: string,
+  draft: EventDraft,
+  scope: EditScope = 'one',
+): Promise<boolean> {
   if (!supabase || !household.id) return false
 
   const clean = cleanDraft(draft)
   if (clean === null) return false
+
+  const existing = calendar.events.find((event) => event.id === id) ?? null
+  const seriesId = existing?.seriesId ?? null
+
+  if (scope === 'series' && seriesId !== null && existing !== null) {
+    return updateSeries(existing, seriesId, clean)
+  }
 
   const { error } = await supabase
     .from('events')
@@ -341,44 +436,145 @@ export async function updateEvent(id: string, draft: EventDraft): Promise<boolea
     return false
   }
 
-  await setAttendees(id, clean.attendees)
+  await setAttendees([id], clean.attendees)
   await loadEvents()
   return true
 }
 
 /**
- * Replaces an event's attendee list.
+ * The same edit, applied to every occurrence of a series.
+ *
+ * Two paths, and the split is worth it rather than tidy:
+ *
+ *   **nothing about the days moved** — a new time, a new title, a new colour —
+ *   and every row gets identical values, so it is one statement across the
+ *   whole series.
+ *
+ *   **the day or the length moved**, and every row needs its own dates, so it
+ *   is one statement each, sent together. That is the rarer edit and the one
+ *   worth the extra requests.
+ *
+ * The rows are read back from the database rather than taken from what is on
+ * screen: a series can easily run past the loaded window, and half a series
+ * silently keeping the old time would be worse than not offering this at all.
+ */
+async function updateSeries(
+  existing: CalendarEvent,
+  seriesId: string,
+  clean: EventDraft,
+): Promise<boolean> {
+  if (!supabase || !household.id) return false
+  // Held in a local so the narrowing survives into the closure below.
+  const client = supabase
+  const householdId = household.id
+
+  const before = draftFrom(existing)
+  const changed = draftChanges(before, clean)
+  if (changed.size === 0) return true
+
+  const { data, error } = await client
+    .from('events')
+    .select(EVENT_COLUMNS)
+    .eq('household_id', household.id)
+    .eq('series_id', seriesId)
+
+  if (error || !data) {
+    calendar.error = strings.calendar.saveFailed
+    return false
+  }
+
+  const rows = (data as unknown as EventRow[]).map((row) => toEvent(row, [], []))
+  const moved = changed.has('day') || changed.has('span')
+  let failed = false
+
+  if (moved) {
+    // Every row needs its own dates, so it is one statement each — sent
+    // together rather than in turn, which makes it one round trip's wait.
+    const results = await Promise.all(
+      rows.map((row) => {
+        const next = cleanDraft(applyChange(draftFrom(row), before, clean, changed))
+        if (next === null) return Promise.resolve({ error: null })
+        return client
+          .from('events')
+          .update(draftColumns(next))
+          .eq('id', row.id)
+          .eq('household_id', householdId)
+      }),
+    )
+    failed = results.some((result) => result.error)
+  } else {
+    // Identical values everywhere, so it is one statement across the series.
+    const result = await client
+      .from('events')
+      .update(draftColumns(clean))
+      .eq('household_id', householdId)
+      .eq('series_id', seriesId)
+    failed = result.error !== null
+  }
+
+  // Only touched when the faces actually changed. Leaving them alone otherwise
+  // is what lets one occurrence keep an extra person the others never had.
+  if (!failed && changed.has('attendees')) {
+    await setAttendees(
+      rows.map((row) => row.id),
+      clean.attendees,
+    )
+  }
+
+  if (failed) calendar.error = strings.calendar.saveFailed
+  await loadEvents()
+  return !failed
+}
+
+/**
+ * Replaces the attendee list on one event, or on every occurrence of a series.
  *
  * The ids are *people* since round 11.2, not accounts — which is the whole
  * point of that round: a child can be on the list without having a phone.
  *
  * Delete-then-insert rather than a diff: the list is at most a handful of rows
  * and working out which two changed costs more code than rewriting all of them.
+ * Two statements whatever the number of events, for the same reason the insert
+ * above is one.
  */
-async function setAttendees(eventId: string, personIds: readonly string[]): Promise<void> {
-  if (!supabase || !household.id) return
+async function setAttendees(
+  eventIds: readonly string[],
+  personIds: readonly string[],
+): Promise<void> {
+  if (!supabase || !household.id || eventIds.length === 0) return
 
-  await supabase.from('event_attendees').delete().eq('event_id', eventId)
+  await supabase.from('event_attendees').delete().in('event_id', eventIds)
 
   if (personIds.length === 0) return
 
   await supabase.from('event_attendees').insert(
-    personIds.map((personId) => ({
-      event_id: eventId,
-      person_id: personId,
-      household_id: household.id,
-    })),
+    eventIds.flatMap((eventId) =>
+      personIds.map((personId) => ({
+        event_id: eventId,
+        person_id: personId,
+        household_id: household.id,
+      })),
+    ),
   )
 }
 
-export async function removeEvent(id: string): Promise<boolean> {
+/**
+ * Removes an event, or every occurrence of its series.
+ *
+ * §4.3: *"Deleting asks: this one, or all of them?"* — the asking happens in
+ * the sheet; this is the half that does it. Every row deleted leaves a
+ * tombstone by trigger, so ten occurrences leave ten, and the Google push has
+ * exactly what it needs to take ten events off both phones.
+ */
+export async function removeEvent(id: string, scope: EditScope = 'one'): Promise<boolean> {
   if (!supabase || !household.id) return false
 
-  const { error } = await supabase
-    .from('events')
-    .delete()
-    .eq('id', id)
-    .eq('household_id', household.id)
+  const existing = calendar.events.find((event) => event.id === id) ?? null
+  const seriesId = existing?.seriesId ?? null
+  const wholeSeries = scope === 'series' && seriesId !== null
+
+  const query = supabase.from('events').delete().eq('household_id', household.id)
+  const { error } = await (wholeSeries ? query.eq('series_id', seriesId) : query.eq('id', id))
 
   if (error) {
     calendar.error = strings.calendar.deleteFailed
@@ -386,9 +582,11 @@ export async function removeEvent(id: string): Promise<boolean> {
   }
 
   // Dropped locally straight away. The delete is the one write worth being
-  // optimistic about: the row is gone on the server, and waiting for realtime
+  // optimistic about: the rows are gone on the server, and waiting for realtime
   // to say so leaves the card sitting there looking like the tap missed.
-  calendar.events = calendar.events.filter((event) => event.id !== id)
+  calendar.events = calendar.events.filter((event) =>
+    wholeSeries ? event.seriesId !== seriesId : event.id !== id,
+  )
   await loadTombstones()
   return true
 }

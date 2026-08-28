@@ -2120,3 +2120,225 @@ message will now tell you which of the two setup steps is missing.
   runs on. Worth revisiting only if a sideways face actually turns up.
 - **A zoom slider.** Pinch is the gesture everybody already knows, and a slider
   would be a second control for the same thing on a screen with no room for it.
+
+## Round 12 — Repeats, dots, swiping, and a time you don't have to give
+
+**Branch:** `claude/calendar-recurrence-navigation-2bvlbn`
+
+Four notes from Marçal after a fortnight of real use. Three of them were on
+round 11's own "deliberately not done" list, which is the right way for that
+list to get shorter.
+
+### 1. Repeating events
+
+*"Every sunday there's gym for 10 times from x time to x time. Then when editing
+one of this events the system should ask the user if they want to update them
+all or just that day."* — which is §4.3's recurrence, in the exact shape §4.3
+asked for it.
+
+**Ten rows, not one rule.** The usual way to store a repeating event is one row
+carrying a rule, expanded on the fly whenever a calendar needs drawing. That is
+how Google does it, and it is why Google's API has `recurringEventId`, instance
+ids, and a vocabulary for "this occurrence is an exception".
+
+Niu writes the ten rows. Each occurrence is an ordinary event that happens to
+share a `series_id`, and **everything built before this round keeps working
+untouched**: the grid draws them, the day list sorts them, RLS protects them,
+attendees and confirmations attach to them, and the Google push sends ten
+ordinary events whose ids come from their own uuids. No RRULE on either side,
+and no exception machinery — because an occurrence you edited on its own is not
+an exception here, it is a row with different values in it.
+
+The price, stated plainly: a series is **finite**, capped at 60. "Every Monday
+forever" cannot be written down. §4.3 asked for the finite version, so this is
+the shape of the feature and not a corner cut around it.
+
+**In the sheet:** a *Repeats* row — Once / Daily / Weekly / Every 2 weeks /
+Monthly — with a count that starts at 10 and a line underneath reading
+"10 times · last one Sun 8 Nov". Set when you write the thing down, not
+afterwards; opening an occurrence later shows "Weekly · number 3 of 10" as a
+statement rather than a control.
+
+**Monthly clamps rather than skips.** The 31st of January plus a month is the
+28th of February, not nothing and not the 3rd of March. Google's RRULE would
+drop February entirely, which is defensible for a spec and wrong for a rent
+reminder. Each step is measured from the *original* date, so March comes back to
+the 31st instead of dragging February's clamp through the rest of the year.
+
+### The interesting half: what "all of them" means
+
+Not "make all ten identical" — that would be the wrong answer often enough to
+make the button untrustworthy. The third gym session may already have been moved
+to a Monday, and changing the *title* of the series should not drag it back to
+Sunday.
+
+So an "all of them" edit applies **the change, not the result**:
+
+- a field you touched is copied to every occurrence
+- a field you left alone is left alone on every occurrence
+- moving the day **shifts** every occurrence by the same number of days, so
+  "gym is on Mondays now" keeps the weekly rhythm rather than collapsing ten
+  events onto one Monday
+- changing the length gives every occurrence that length, measured from its own
+  start
+
+That is `applyChange` in `src/lib/recurrence.ts`, and it is the function to read
+before changing anything in there.
+
+The question itself takes over the sheet's **footer** rather than opening a
+second sheet: a sheet over a sheet at 412px is two backdrops and a lost thread.
+It is skipped when it has only one answer — a one-off, or an edit that changed
+nothing, where Save is a Cancel.
+
+**Writing is one statement.** Ten rows go in with one insert: on mobile data, ten
+round trips is ten chances to leave half a term of gym on the calendar. Editing
+all of them is also one statement when the days did not move (a new time, a new
+title), and one per row only when each needs its own dates.
+
+### 2. One event shows the text; more than one shows dots
+
+*"In the month view, if there's more than one event it gets too crowded."*
+
+The rule is per day and it is his:
+
+| on that day | drawn as |
+|---|---|
+| one thing | a box with the title in it |
+| more than one | a dot each, on one line |
+
+with one exception, which is the reason the boxes exist at all: **a multi-day
+event is always a bar.** Five dots on five days say five things happened, not
+that one thing lasted five days. So a day carrying a holiday *and* a birthday
+draws the bar and turns the birthday into a dot — which is still the rule.
+
+A dot is 6px against a box's 17px, so a day with four things on it costs one line
+instead of three, and a busy September stops pushing the day list off the bottom
+of the screen. Four dots fit across a cell; past that the "+2" the grid already
+had takes over.
+
+Writing the tests turned up **dead code**: a single-day event that reaches the
+lane search is by definition the only thing on its day, so nothing can be
+occupying that column and lane 0 is always free. The "no room, fall back to a
+dot" branch could never run. It is gone, and the invariant is written down where
+it used to be.
+
+### 3. Swiping between months, and week numbers
+
+**The swipe** was round 11's "deliberately not done", for a real reason: *"a
+horizontal swipe on the grid fights Android's own back gesture at the screen
+edges, which is the one gesture that must keep working."* That is a description
+of where a swipe may not *start*, not a reason to have none. A gesture beginning
+within 24px of either edge is never ours — no listener, no preventDefault,
+nothing to interfere with the system animation. Everywhere else, which is 90% of
+a 412px screen, turns the page.
+
+Round 10.2's lesson is applied rather than relearned: `touch-action: pan-y` on
+the swipe surface, so the compositor cannot claim a sideways drag and cancel it
+mid-way; the direction decided once at the first movement and never revisited;
+and 1.4× more horizontal than vertical before it counts, so a diagonal scroll
+never turns the page. The content leans a little way with the finger and springs
+back — there is deliberately no half-drawn next month sliding in behind it, which
+would double the grid's work every frame to say what the lean already says.
+
+**Week numbers** are on by default and switchable off in **Settings → Week
+numbers**. ISO-8601, which is what both of this household's countries actually
+use, and which is the only definition that agrees with the app's Monday-first
+week. The Thursday is the whole algorithm: a week belongs to the year owning its
+Thursday, so 1 January 2027 is week 53 of 2026 and 30 December 2024 is already
+week 1 of 2025. In the month they sit in a narrow column outside the seven, which
+is what keeps the bars layer's arithmetic seven-based whether they are showing or
+not; in the week view the number sits beside the date range in the heading.
+
+### 4. A start time you don't have to give
+
+*"Start is set to 18 by default, can we find a way or a flow where start time is
+not required?"*
+
+The answer was already in the data model. A null start time **is** all day (§7) —
+there is no boolean beside it that could disagree — so an event with no time is
+not a half-finished event, it is a complete one that happens on a day rather than
+at an hour. Round 11 was making everybody say *when* before they had decided
+there was a when.
+
+So a new event and a new reminder now start the same way: a title and a day. The
+same single chip that said "All day" says **"＋ Add a time"** when there isn't
+one, and fills in 18:00 when tapped — the same one tap the old chip cost in the
+other direction, with the lower-commitment default. 18:00 has not gone anywhere;
+it is `DEFAULT_START_TIME` and it is what that tap writes.
+
+### How it was checked
+
+**413 unit tests, 44 of them new.** The ones worth naming:
+
+- monthly recurrence clamping to 28 February and coming *back* to the 31st in
+  March, and finding 29 February in a leap year
+- "all of them" shifting days rather than copying them, and leaving a note that
+  only one occurrence had
+- ISO weeks across all four awkward boundaries — 1 Jan on a Thursday, on a
+  Friday, on a Sunday, and a Monday in December that already belongs to next year
+- the box-or-dot decision made day by day, a bar surviving a busy day, and dots
+  sorted the way the day reads
+
+**Gestures driven with real touch events** (CDP `Input.dispatchTouchEvent`, never
+a mouse — that is what made round 10.1's swipe look fine here and do nothing on
+his phone). Asserted: a leftward swipe pages forward and a rightward one back; a
+swipe starting in either 24px edge strip does nothing at all; a vertical drag
+scrolls 516px and turns no page; a tap on a row inside the surface still opens
+it; and a swipe that *ends* over a row pages the calendar without also opening
+that row.
+
+Rendered in a real Chromium at 412×915 in both themes: the month grid with week
+numbers on and off, a five-day bar crossing a week join, a day with six things on
+it, the new-event sheet with and without a time, the repeat chips with their
+summary line, and both footer questions. Nothing scrolls sideways; no console
+errors.
+
+The render caught one thing: `content: '＋ '` on the "Add a time" chip was being
+read into the button's accessible name, so it announced as "＋ Add a time". The
+glyph is now a real `aria-hidden` span, the way the dock buttons already did it.
+
+### How to test it
+
+**One migration this round.** In Supabase → SQL Editor, run
+`supabase/migrations/0014_recurrence.sql`. Then reload the app.
+
+1. **＋ Event → "Gym"**. Note there is no time on it — just Sunday. Tap
+   **＋ Add a time**; it fills in 18:00. Set an end if you want one.
+2. **Repeats → Weekly.** The counter says 10 and the line beside it should read
+   *"10 times · last one Sun 8 Nov"*. **Add it**, and ten Sundays appear.
+3. **Open the third one and change the time.** Save. The footer asks *"Change
+   this one, or all 10?"* — tap **All 10** and every Sunday moves.
+4. **Open a different one and change only that day** — Save → **Just this one**.
+   Then go back to any other one, change the *title*, and choose **All 10**: the
+   one you moved keeps its own day and gets the new title.
+5. **Open one and Remove.** The same question, in red: **Just this one** or
+   **All 10**.
+6. **A busy day.** Put three things on one Saturday. The grid shows three dots
+   instead of three boxes; a day with one thing still shows its name; a holiday
+   across a weekend is still one unbroken bar.
+7. **Swipe the grid left and right** to change month. In **Week**, the same swipe
+   moves a week. **Then swipe from the very edge of the screen** — that must
+   still be Android's back gesture, not ours.
+8. **Week numbers** are down the left of the month and beside the date range in
+   Week. Turn them off in **Settings → Week numbers → Hide**.
+9. **If you use Google Calendar:** tap **Sync**. Ten gym sessions go over as ten
+   ordinary events. Deleting all ten and syncing again takes all ten away.
+
+### Deliberately not done
+
+- **"This and everything after."** Google's third option. §4.3 asks for two, and
+  a third answer to a question that already has a right one is a third thing to
+  read at the moment you are trying to move one dinner.
+- **Turning an existing one-off into a series**, or changing a series' rhythm
+  after the fact. Both mean writing or deleting rows from inside an edit, which
+  is a different operation wearing an edit's clothes. Delete the series and write
+  it again — with ten occurrences that is about fifteen seconds.
+- **Repeating forever.** See above: a series is rows, so it has to end somewhere.
+  60 is the ceiling — over a year of weekly, two months of daily.
+- **Re-asking confirmations across a series.** An answer is about one evening, so
+  it lives on one occurrence. Changing the time of all ten re-asks on the one you
+  had open, and leaves the others' answers alone.
+- **Tapping a box or a dot in the month grid.** Still 17px and 6px; the day
+  underneath takes the tap and the list opens the event.
+- **A month view for the meal planner.** Open since round 10, still a separate
+  thing.

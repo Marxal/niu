@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest'
 import {
   type CalendarEvent,
   type EventDraft,
+  DEFAULT_START_TIME,
   awaitingMe,
   canSave,
   cleanDraft,
   confirmState,
   coversDay,
   draftFrom,
+  draftRule,
   eventDays,
+  isRepeating,
+  isSeries,
   eventsByDay,
   eventsOn,
   isMultiDay,
@@ -41,6 +45,10 @@ function event(over: Partial<CalendarEvent> = {}): CalendarEvent {
     updatedAt: '2026-09-01T10:00:00Z',
     attendees: [],
     confirmations: [],
+    seriesId: null,
+    seriesIndex: 0,
+    seriesCount: 1,
+    seriesRule: null,
     ...over,
   }
 }
@@ -225,9 +233,41 @@ describe('confirmation', () => {
 })
 
 describe('drafts', () => {
-  it('gives an event an evening default and a reminder no time at all', () => {
-    expect(newDraft('event', '2026-09-03').startTime).toBe('18:00')
+  it('starts an event and a reminder alike, with no time at all', () => {
+    // Round 12: a time is something you add, not something you clear. Round 11
+    // opened an event at 18:00 and made you press "All day" to say otherwise.
+    expect(newDraft('event', '2026-09-03').startTime).toBe(null)
     expect(newDraft('reminder', '2026-09-03').startTime).toBe(null)
+    // 18:00 has not gone anywhere — it is what "Add a time" fills in.
+    expect(DEFAULT_START_TIME).toBe('18:00')
+  })
+
+  it('starts a new draft as a one-off', () => {
+    const draft = newDraft('event', '2026-09-03')
+    expect(draft.repeat).toBe('none')
+    expect(isRepeating(draft)).toBe(false)
+    expect(draftRule(draft)).toBe(null)
+  })
+
+  it('turns a repeat of one back into a one-off when cleaning', () => {
+    const once = cleanDraft({
+      ...newDraft('event', '2026-09-03'),
+      title: 'Gym',
+      repeat: 'weekly',
+      repeatCount: 1,
+    })
+    // clampCount floors at two, because one occurrence is not a series.
+    expect(once?.repeatCount).toBe(2)
+    expect(draftRule(once as EventDraft)).toBe('weekly')
+  })
+
+  it('reads an existing series back into the draft', () => {
+    const gym = event({ seriesId: 'abc', seriesIndex: 2, seriesCount: 10, seriesRule: 'weekly' })
+    const draft = draftFrom(gym)
+    expect(draft.repeat).toBe('weekly')
+    expect(draft.repeatCount).toBe(10)
+    expect(isSeries(gym)).toBe(true)
+    expect(isSeries(event())).toBe(false)
   })
 
   it('round-trips an event', () => {
@@ -322,7 +362,7 @@ describe('drafts', () => {
 })
 
 describe('needsReconfirming', () => {
-  const before = newDraft('event', '2026-09-03')
+  const before: EventDraft = { ...newDraft('event', '2026-09-03'), startTime: '18:00' }
 
   it('is true when the day, the time or the place moves', () => {
     expect(needsReconfirming(before, { ...before, startsOn: '2026-09-05' })).toBe(true)

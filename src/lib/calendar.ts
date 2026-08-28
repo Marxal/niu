@@ -40,6 +40,14 @@
 
 import { addDays, daysBetween, minutesOfDay, toTime } from './dates'
 import { isTagColour, type TagColour } from './dish-tags'
+import {
+  DEFAULT_REPEAT_COUNT,
+  MIN_REPEAT_COUNT,
+  type RepeatKind,
+  type SeriesRule,
+  clampCount,
+  isSeriesRule,
+} from './recurrence'
 
 export type EventKind = 'event' | 'reminder'
 
@@ -85,6 +93,22 @@ export interface CalendarEvent {
   attendees: string[]
   /** One row per person who was asked. Empty until somebody asks. */
   confirmations: Confirmation[]
+  /** Which repeating series this belongs to, or null for a one-off. Every
+   *  occurrence of "every Sunday, ten times" is an ordinary event carrying the
+   *  same id here — see recurrence.ts for why there are ten rows and not one. */
+  seriesId: string | null
+  /** Where in the series this one is, from 0. Shown as "3 of 10". */
+  seriesIndex: number
+  /** How many were written. Stays at what the series was *made* as, so a
+   *  removed occurrence does not renumber the ones around it. */
+  seriesCount: number
+  /** How often the series comes round. Null on a one-off. */
+  seriesRule: SeriesRule | null
+}
+
+/** Whether this event is one of several. What makes the sheet ask the question. */
+export function isSeries(event: CalendarEvent): boolean {
+  return event.seriesId !== null
 }
 
 /**
@@ -284,26 +308,55 @@ export interface EventDraft {
   notes: string
   colour: TagColour
   attendees: string[]
+  /** How often to write it. Only read when the event is being created — see
+   *  the note on EditableField in recurrence.ts. */
+  repeat: RepeatKind
+  /** How many times, when `repeat` is not 'none'. */
+  repeatCount: number
 }
 
-/** A blank draft for a day. A reminder starts all-day; an event starts at 18:00. */
+/**
+ * The time an event gets when you ask for one.
+ *
+ * Still 18:00 — a family event is usually an evening one — but it is now the
+ * value behind "Add a time" rather than the value every new event starts with.
+ * See newDraft.
+ */
+export const DEFAULT_START_TIME = '18:00'
+
+/**
+ * A blank draft for a day. Nothing starts with a time — see below.
+ *
+ * Round 11 opened an event at 18:00, on the reasoning that a family event is
+ * usually an evening one and a default you keep beats a field you fill. Marçal,
+ * after using it: *"start is set to 18 by default, can we find a way or a flow
+ * where start time is not required?"*
+ *
+ * The honest answer was already in the data model. A null start time **is**
+ * "all day" (§7) — there is no boolean beside it that could disagree — so an
+ * event with no time is not a half-finished event, it is a complete one that
+ * happens on a day rather than at an hour. Round 11 was making everyone say
+ * *when* before they had decided there was a when.
+ *
+ * So a new event and a new reminder now start the same way: a title and a day.
+ * The 18:00 has not gone anywhere — it is what "Add a time" fills in, one tap
+ * away, which is exactly the number of taps the old "All day" chip cost the
+ * other way round.
+ */
 export function newDraft(kind: EventKind, day: string): EventDraft {
   return {
     kind,
     title: '',
     startsOn: day,
     endsOn: day,
-    // 18:00 because a family event is usually an evening one, and a default you
-    // usually keep beats a blank field you always have to fill. A reminder gets
-    // no time at all: "remember to do x" is about the day, and asking for a
-    // time would make it slower than an event rather than faster, which was the
-    // whole point of having it.
-    startTime: kind === 'event' ? '18:00' : null,
+    startTime: null,
     endTime: null,
     location: '',
     notes: '',
     colour: DEFAULT_EVENT_COLOUR,
     attendees: [],
+    repeat: 'none',
+    repeatCount: DEFAULT_REPEAT_COUNT,
   }
 }
 
@@ -320,6 +373,10 @@ export function draftFrom(event: CalendarEvent): EventDraft {
     notes: event.notes ?? '',
     colour: event.colour,
     attendees: [...event.attendees],
+    // What this event's series *is*, so the sheet can say "Weekly, 3 of 10".
+    // Editing these is not offered — see EditableField in recurrence.ts.
+    repeat: event.seriesRule ?? 'none',
+    repeatCount: event.seriesRule === null ? DEFAULT_REPEAT_COUNT : event.seriesCount,
   }
 }
 
@@ -364,7 +421,21 @@ export function cleanDraft(draft: EventDraft): EventDraft | null {
     // Deduped: the avatar row can't produce a repeat, but a draft round-tripped
     // through an older version of the app could.
     attendees: [...new Set(draft.attendees)],
+    repeat: draft.repeat,
+    // A repeat of one is a one-off wearing a rule, which would leave a series of
+    // a single event on the calendar for no reason.
+    repeatCount: draft.repeat === 'none' ? 1 : clampCount(draft.repeatCount),
   }
+}
+
+/** Whether a clean draft asks for more than one row to be written. */
+export function isRepeating(draft: EventDraft): boolean {
+  return draft.repeat !== 'none' && draft.repeatCount >= MIN_REPEAT_COUNT
+}
+
+/** The rule to store on the rows, or null when it is a one-off. */
+export function draftRule(draft: EventDraft): SeriesRule | null {
+  return isRepeating(draft) && isSeriesRule(draft.repeat) ? draft.repeat : null
 }
 
 /** Whether a draft is currently saveable — what the Save button is bound to. */

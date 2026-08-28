@@ -491,3 +491,58 @@ The Calendar tab's "who goes" row and the whole Settings people card stop
 loading and show a short line instead. Everything else — the list, the planner,
 the events themselves — carries on. Skip only the bucket and everything works
 except choosing a photo, which reports that it couldn't be saved.
+
+## Round 12: repeating events
+
+One file to run in the **SQL Editor**, and nothing else — no bucket, no
+settings page:
+
+1. `supabase/migrations/0014_recurrence.sql`
+
+### What it adds
+
+Four columns on `events`, and no new table:
+
+- `series_id` — null for an ordinary one-off. Every occurrence of *"every
+  Sunday, ten times"* carries the same value.
+- `series_index` and `series_count` — which one this is, out of how many. What
+  "number 3 of 10" in the sheet reads off.
+- `series_rule` — `daily`, `weekly`, `fortnightly` or `monthly`.
+
+Plus two check constraints and one partial index on `(household_id, series_id)`.
+
+### Why there are ten rows and not one rule
+
+The usual way to store a repeating event is one row with a rule on it, expanded
+whenever something needs to draw a calendar. It is how Google does it, and it is
+why Google's API has `recurringEventId`, instance ids and a vocabulary for
+"this occurrence is an exception".
+
+Niu writes the ten rows instead. Each one is an ordinary event that happens to
+share a `series_id`, which means everything built before this round keeps working
+untouched — the grid draws them, Row Level Security protects them, attendees and
+confirmations attach to them, and the Google push sends ten ordinary events. An
+occurrence you edited on its own is not an "exception" here; it is just a row
+with different values in it.
+
+The price is that a series is **finite**: the app caps one at 60 occurrences.
+"Every Monday forever" cannot be written down. NIU.md §4.3 asked for the finite
+version — "repeats X times per week or month; ends after X times" — so that is
+the shape of the feature rather than a corner cut around it.
+
+### No new policies, and that is not an oversight
+
+`CLAUDE.md`'s first rule is that a new table means a new RLS policy in the same
+commit. There is no new table here — these are columns on `events`, which has
+had its four policies since round 11 and applies them to every row whatever is
+written in these columns. A series is not a new kind of thing to protect; it is
+ten of the thing that was already protected.
+
+### Nothing is lost if you don't run it
+
+The calendar carries on exactly as it did in round 11: the app reads the four
+columns and treats a missing one as "this is a one-off". What breaks is *making*
+a repeating event — the insert is rejected because the columns are not there, and
+the sheet reports that it couldn't save. Everything else in this round (the dots
+in the month grid, the swipe, the week numbers, the optional start time) is front
+end only and works with or without the migration.

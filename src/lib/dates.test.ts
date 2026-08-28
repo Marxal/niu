@@ -8,6 +8,7 @@ import {
   daysBetween,
   daysInMonth,
   isDayKey,
+  isoWeek,
   longDate,
   minutesOfDay,
   monthGrid,
@@ -259,5 +260,42 @@ describe('times', () => {
     expect(timeLabel(null, null)).toBe('')
     // An end with no start cannot be stored, and reads as nothing if it is.
     expect(timeLabel(null, '20:00')).toBe('')
+  })
+})
+
+describe('ISO week numbers', () => {
+  it('counts an ordinary week', () => {
+    // Monday 31 Aug 2026 through Sunday 6 Sep are all week 36.
+    expect(isoWeek('2026-08-31')).toBe(36)
+    expect(isoWeek('2026-09-06')).toBe(36)
+    expect(isoWeek('2026-09-07')).toBe(37)
+  })
+
+  it('gives every day of one week the same number', () => {
+    const numbers = weekDays('2026-08-31').map(isoWeek)
+    expect(new Set(numbers)).toEqual(new Set([36]))
+  })
+
+  it('puts week 1 where ISO puts it, not on 1 January', () => {
+    // 1 Jan 2026 is a Thursday, so its week owns the year and is week 1.
+    expect(isoWeek('2026-01-01')).toBe(1)
+    expect(isoWeek('2026-01-04')).toBe(1)
+    expect(isoWeek('2026-01-05')).toBe(2)
+  })
+
+  it('lets a week belong to the year that owns its Thursday', () => {
+    // 1 Jan 2027 is a Friday: still week 53 of 2026.
+    expect(isoWeek('2027-01-01')).toBe(53)
+    expect(isoWeek('2027-01-04')).toBe(1)
+    // And the other way: 30 Dec 2024 is a Monday, already week 1 of 2025.
+    expect(isoWeek('2024-12-30')).toBe(1)
+    // 1 Jan 2023 is a Sunday — the last day of 2022's week 52.
+    expect(isoWeek('2023-01-01')).toBe(52)
+  })
+
+  it('knows the years that have 53 weeks', () => {
+    expect(isoWeek('2026-12-31')).toBe(53)
+    expect(isoWeek('2021-01-01')).toBe(53)
+    expect(isoWeek('2020-01-01')).toBe(1)
   })
 })
