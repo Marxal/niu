@@ -459,6 +459,27 @@ export function draftRule(draft: EventDraft): SeriesRule | null {
   return isRepeating(draft) && isSeriesRule(draft.repeat) ? draft.repeat : null
 }
 
+/** How many rows a draft asks for. One for a one-off. */
+export function draftOccurrences(draft: EventDraft): number {
+  return draftRule(draft) === null ? 1 : draft.repeatCount
+}
+
+/**
+ * Whether an edit changes the *shape* of a run rather than its contents.
+ *
+ * The shape is the rhythm and how many times — the two things that decide how
+ * many rows exist. Everything else is a field on rows that already exist.
+ *
+ * Kept apart from draftChanges (recurrence.ts) because they lead to different
+ * writes and to different questions: a field edit asks "this one, or all of
+ * them?", while a shape change has only one possible answer. You cannot make
+ * one occurrence out of ten repeat fortnightly.
+ */
+export function seriesShapeChanged(event: CalendarEvent, draft: EventDraft): boolean {
+  const nowCount = event.seriesRule === null ? 1 : event.seriesCount
+  return draftRule(draft) !== event.seriesRule || draftOccurrences(draft) !== nowCount
+}
+
 /** Whether a draft is currently saveable — what the Save button is bound to. */
 export function canSave(draft: EventDraft): boolean {
   return draft.title.trim() !== ''

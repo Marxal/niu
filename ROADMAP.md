@@ -2528,3 +2528,159 @@ No migration this round — just reload.
 - **Asking a whole series to confirm.** First occurrence only — see above.
 - **Turning an existing one-off into a series**, still.
 - **Two months on screen during a swipe.** See above.
+
+## Round 14 — Read before you edit, and results where your thumb is
+
+**Branch:** `claude/calendar-recurrence-navigation-2bvlbn`
+
+Three notes. No migration.
+
+### Repeats: no Custom, and available on an event that already exists
+
+Round 13 put Once / Daily / Weekly on a row and hid the two rarer rhythms and
+the number behind **Custom**. Marçal: *"remove custom and what's inside custom
+goes out, the user always picks how many times the event repeats."* He is right
+— how many times is not an advanced setting, it is half the sentence. All five
+rhythms fit on one row at 412px, and the counter is always in sight with the
+summary line under it.
+
+**The bigger half: you can change it on an event you already wrote.** Round 12
+deliberately did not offer this, on the grounds that a series *is* rows, so
+changing the rhythm means writing and deleting them rather than editing a field.
+That was a true observation and the wrong conclusion: a term of gym that turns
+out to be twelve weeks is the ordinary case.
+
+Two decisions inside `reshapeSeries`:
+
+**The run is rebuilt from its own first day**, not from the occurrence you happen
+to have open. Open the seventh session, ask for twelve, and you get twelve from
+the beginning — anchoring on the seventh would silently throw the first six away.
+If the same edit also moved the day, the anchor moves with it, exactly as
+`applyChange` shifts everything else.
+
+**Rows are reconciled, not replaced.** The first N days reuse the rows that
+already exist, so ten becoming twelve is two inserts rather than ten deletes and
+twelve inserts. That keeps the ids, which keeps Google *updating* its copies
+instead of churning them, and keeps any confirmations already given on the
+occurrences that survive. What it does not keep is per-occurrence differences:
+redefining the run is a statement about all of it.
+
+The scope question is skipped when the shape changed, because it has only one
+answer — you cannot make one occurrence out of ten repeat fortnightly.
+
+One thing the render caught: the summary line was counting from the occurrence
+you had open, so opening number 3 of 10 and asking for ten promised a last day
+three weeks later than the save would produce. It counts from the run's first
+day now, which is what the save actually uses.
+
+### An event you have written opens read-only
+
+*"When clicking an event that's done, show the event details and add an
+edit/remove button instead of going to edit straight."*
+
+Tapping an event to check what time it is is much commoner than tapping it to
+change something, and landing straight in a form made the commoner thing the
+harder one: every field a target you could nudge, and a Save to think about
+before backing out.
+
+So an existing event opens as a detail panel — the title, the whole date and
+time, which of a run it is, who is going, where, and the note as written —
+with **Remove** and **Edit** under it. Edit turns the same sheet back into the
+form it always was. A new event skips it: there is nothing yet to read.
+
+It also carries **Yes / Can't** when it is your turn to answer. Arriving at an
+event from the pinned "waiting on you" card and finding no way to reply would
+be a dead end.
+
+### Search results where the thumb already is
+
+*"On the shopping list, when typing, it should show the matches right above the
+keyboard — now the user needs to scroll to find the items they're typing."*
+
+The cause: the field was fixed to the bottom of the screen while the results
+were a section of a page that scrolls independently of it. Type "milk" with a
+long list and the tile you asked for is somewhere above the fold.
+
+The field and the results are now **one fixed stack**. The matches sit directly
+on the field, which sits directly on the keyboard, and the list carries on
+behind — which is the point of this screen and the reason this is a panel rather
+than a takeover.
+
+**The bottom nav goes away while a search is running** (*"there's no need to
+carry up the bottom nav when searching is active"*). The nav is a row of the
+shell's grid, and `interactive-widget=resizes-content` shrinks the layout
+viewport when the keyboard opens, so it rides up and sits on the keyboard taking
+64px out of the little that is left — a whole extra row of tiles. A one-value
+module (`shell.svelte.ts`) lets the screen say so; the `$effect`'s cleanup is
+the load-bearing half, because a tab you cannot leave would be a far worse bug
+than a nav in the way.
+
+**The panel is capped with a percentage, not `vh`.** A percentage on a fixed
+element resolves against the layout viewport, which is exactly the box that
+shrinks when the keyboard opens — so the dock can never grow past what is left,
+whatever `vh` decides to mean. Checked at 412×430, standing in for the screen
+with an Android keyboard up: the field stays fully visible and the matches
+scroll above it.
+
+### The other places you type
+
+- **The planner's picker** already had its field at the bottom, but short results
+  sat at the *top* of a tall box with nothing between them and the field. They
+  hug it now. `margin-top: auto` on the first child rather than
+  `justify-content: end` on the box — end-justification on an overflowing flex
+  column pushes the top of the content past the scroll origin and makes it
+  unreachable, which is a real bug and not a style preference.
+- **The icon picker** returns to the top of its grid whenever the query changes.
+  Without it, typing a second word leaves you looking at wherever you had
+  scrolled for the first.
+- **The ingredient picker** pulls its field to the top of the sheet on focus, so
+  every pixel between it and the keyboard is results. Browsers scroll a focused
+  field *into view*, which can leave it at the bottom with its matches hidden
+  underneath the keyboard.
+
+### How it was checked
+
+417 unit tests, 2 of them new: that a changed rhythm or count is spotted as a
+shape change while a changed title is not, and that a one-off's count means
+nothing until a rule is set with it.
+
+Rendered in a real Chromium at 412×915 in both themes: the detail view with
+everything filled in, the same event's edit form with the flattened Repeats row,
+and the shopping dock at rest and searching. Then again at **412×430** for the
+keyboard case, with the dock's geometry measured rather than eyeballed — field
+at 362–430 in a 430px viewport, results above it, nothing pushed off. No console
+errors; nothing scrolls sideways.
+
+### How to test it
+
+No migration — just reload.
+
+1. **Tap any event.** You get its details, not a form: date, time, who, where,
+   the note, and which of a run it is. **Edit** opens the form; **Remove** asks
+   as before. **Close** backs out without touching anything.
+2. **If something is waiting on your answer**, tapping it from the card at the
+   top now gives you **Yes / Can't** in the details.
+3. **Edit → ＋ More options → Repeats.** All five rhythms on one row, and the
+   number always there. It is on an existing event now, not just a new one.
+4. **Change 10 to 12 on a gym session** and save. You should get twelve
+   Sundays, counted from the *first* one — and the line under the counter should
+   have said so before you saved.
+5. **Set an existing run to Once.** The other occurrences go; the one you were
+   looking at stays.
+6. **Shopping → tap the search field and type.** The matches appear in a panel
+   directly above the field, with the list still visible behind. The bottom nav
+   is gone while you type and comes back when you clear the field.
+7. **Type something with lots of matches** and scroll the panel — the field
+   stays put underneath it.
+8. **Meals → + on a meal → type.** The results sit against the field rather than
+   floating at the top. **Settings → a tile → Change icon → type**: the grid
+   jumps back to the top with each new word.
+
+### Deliberately not done
+
+- **Keeping per-occurrence differences through a repeat change.** A rebuild that
+  preserved one moved Monday would put it back out of rhythm anyway.
+- **A read-only view for a *new* event.** There is nothing to read.
+- **The same dock treatment for the icon and ingredient pickers.** Both already
+  put results next to the field; they needed the scroll position fixed, not the
+  layout.

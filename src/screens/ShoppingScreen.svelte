@@ -75,6 +75,7 @@
     toggleChecked,
     updateItem,
   } from '../lib/shopping.svelte'
+  import { setNavHidden } from '../lib/shell.svelte'
   import { strings } from '../lib/strings'
 
   let openItemId = $state<string | null>(null)
@@ -208,6 +209,18 @@
 
   let trimmed = $derived(query.trim())
   let searching = $derived(trimmed !== '')
+
+  /**
+   * The bottom nav gets out of the way while a search is running.
+   *
+   * The cleanup is the load-bearing half: leave the tab with a query still in
+   * the field and the nav has to come back, or the app has no way out of the
+   * shopping list. See shell.svelte.ts.
+   */
+  $effect(() => {
+    setNavHidden(searching)
+    return () => setNavHidden(false)
+  })
 
   let matches = $derived(
     searching
@@ -475,50 +488,10 @@
     <!-- 4. What looks due. Silent until the app has something to go on. -->
     <SuggestionStrip items={due} {layout} onAdd={handleAdd} />
 
-    <!-- 5. Search matches, or the tiles worth tapping first -->
-    {#if searching}
-      {#if dishMatches.length > 0}
-        <section class="block picker">
-          <h2 class="heading">{strings.dishes.title}</h2>
-          <div class="grid">
-            {#each dishMatches as dish (dish.id)}
-              <div animate:flip={{ duration: FLIP_MS }} in:tileIn out:tileOut>
-                <ItemTile
-                  name={dish.name}
-                  icon={dish.icon}
-                  {layout}
-                  state="pick"
-                  onclick={() => void handleAddDish(dish.id)}
-                />
-              </div>
-            {/each}
-          </div>
-        </section>
-      {/if}
-
-      <section class="block picker">
-        <h2 class="heading">{strings.shopping.searchResults}</h2>
-        {#if matches.length === 0}
-          <p class="none">{strings.shopping.noResults}</p>
-        {:else}
-          <div class="grid">
-            {#each matches as item (item.id)}
-              <div animate:flip={{ duration: FLIP_MS }} in:tileIn out:tileOut>
-                <ItemTile
-                  name={item.name}
-                  icon={item.icon}
-                  emoji={item.emoji}
-                  {layout}
-                  state="pick"
-                  onclick={() => handleAdd(item.id)}
-                  onlongpress={() => choosePick(item)}
-                />
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-    {:else}
+    <!-- 5. The tiles worth tapping first. While a search is running these fold
+         away entirely and the matches appear in the dock, right above the
+         keyboard — see the note there. -->
+    {#if !searching}
       {#if suggestions.length > 0}
         <section class="block picker">
           <h2 class="heading">{strings.shopping.recentlyUsed}</h2>
@@ -574,22 +547,87 @@
     {/if}
   </div>
 
-  <!-- 7. Search, pinned above the nav -->
-  <form class="search" onsubmit={submitNew}>
-    <input
-      type="search"
-      bind:value={query}
-      placeholder={strings.shopping.searchPlaceholder}
-      autocomplete="off"
-      autocapitalize="none"
-      spellcheck="false"
-      enterkeyhint="done"
-      aria-label={strings.shopping.searchPlaceholder}
-    />
-    {#if canAddNew}
-      <button type="submit" class="add">{strings.shopping.addNewWord}</button>
+  <!-- 6. The dock: the matches, then the field, pinned together at the bottom.
+
+       Marçal, round 14: *"when typing, it should show the matches right above the
+       keyboard — now the user needs to scroll to find the items they're typing."*
+       He was right, and the reason is that the field was fixed to the bottom while
+       the results were a section of a page that scrolls independently of it. Type
+       "milk" with the list half a screen long and the one tile you asked for is
+       somewhere above the fold.
+
+       So the two are now one fixed stack. The results sit directly on the field,
+       which sits directly on the keyboard, and the list carries on behind — which
+       is the point of this screen and the reason the results are a panel rather
+       than a takeover.
+
+       The bottom nav goes away while this is up (shell.svelte.ts): 64px is a whole
+       extra row of tiles, and nobody changes tab in the middle of typing. -->
+  <div class="dock" class:searching>
+    {#if searching}
+      <div class="results">
+        <div class="results-scroll">
+          {#if dishMatches.length > 0}
+            <section class="block picker">
+              <h2 class="heading">{strings.dishes.title}</h2>
+              <div class="grid">
+                {#each dishMatches as dish (dish.id)}
+                  <div animate:flip={{ duration: FLIP_MS }} in:tileIn out:tileOut>
+                    <ItemTile
+                      name={dish.name}
+                      icon={dish.icon}
+                      {layout}
+                      state="pick"
+                      onclick={() => void handleAddDish(dish.id)}
+                    />
+                  </div>
+                {/each}
+              </div>
+            </section>
+          {/if}
+
+          <section class="block picker">
+            {#if matches.length === 0}
+              <p class="none">{strings.shopping.noResults}</p>
+            {:else}
+              <h2 class="heading">{strings.shopping.searchResults}</h2>
+              <div class="grid">
+                {#each matches as item (item.id)}
+                  <div animate:flip={{ duration: FLIP_MS }} in:tileIn out:tileOut>
+                    <ItemTile
+                      name={item.name}
+                      icon={item.icon}
+                      emoji={item.emoji}
+                      {layout}
+                      state="pick"
+                      onclick={() => handleAdd(item.id)}
+                      onlongpress={() => choosePick(item)}
+                    />
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </section>
+        </div>
+      </div>
     {/if}
-  </form>
+
+    <form class="search" onsubmit={submitNew}>
+      <input
+        type="search"
+        bind:value={query}
+        placeholder={strings.shopping.searchPlaceholder}
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck="false"
+        enterkeyhint="done"
+        aria-label={strings.shopping.searchPlaceholder}
+      />
+      {#if canAddNew}
+        <button type="submit" class="add">{strings.shopping.addNewWord}</button>
+      {/if}
+    </form>
+  </div>
 
   {#if celebrating}
     <ShoppingDone onDone={() => (celebrating = false)} />
@@ -957,18 +995,67 @@
     font-size: var(--text-sm);
   }
 
-  /* ---- Search, pinned above the bottom nav ------------------------------ */
+  /* ---- The dock: matches, then the field -------------------------------- */
 
-  .search {
+  /* One fixed stack, so the results are always exactly one field away from the
+     keyboard. The nav is gone while searching, so the dock drops to the very
+     bottom and the results get its height as well. */
+  .dock {
     position: fixed;
     right: 0;
     bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
     left: 0;
     z-index: calc(var(--z-nav) - 1);
     display: flex;
-    gap: var(--space-2);
+    flex-direction: column;
+    /* A percentage, not a viewport unit. `interactive-widget=resizes-content`
+       shrinks the layout viewport when the keyboard opens, and a percentage on a
+       fixed element resolves against exactly that — so the whole dock is capped
+       at what is actually left above the keyboard, whatever `vh` decides to
+       mean. Without it a long list of matches could push the field itself off
+       the bottom of the screen. */
+    max-height: 100%;
     max-width: var(--content-max);
     margin-inline: auto;
+    pointer-events: none;
+  }
+
+  .dock.searching {
+    bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .results {
+    pointer-events: auto;
+    margin: 0 var(--space-2);
+    /* Room for a few rows and no more: the list behind stays visible, which is
+       what makes this a panel rather than a takeover. `min-height: 0` is what
+       lets it give way first when the dock runs out of room — the field must
+       never be the thing that gets squeezed. */
+    max-height: 42vh;
+    min-height: 0;
+    flex: 0 1 auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    overflow: hidden;
+  }
+
+  .results-scroll {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-3);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .search {
+    flex: none;
+    display: flex;
+    gap: var(--space-2);
     /* Floating: no bar. The field itself carries the shadow and border. The
        only thing behind it is a short fade to the page colour, so tiles
        dissolve as they pass under instead of being sliced in half — without
@@ -981,6 +1068,13 @@
       var(--color-bg) 100%
     );
     pointer-events: none;
+  }
+
+  /* With the panel above it there is nothing to fade into, and the gradient's
+     top padding would only push the field away from the results. */
+  .dock.searching .search {
+    padding-top: var(--space-2);
+    background: none;
   }
 
   .search > * {
