@@ -89,7 +89,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(title, {
       body,
       icon: './icons/icon-192.png',
-      badge: './icons/icon-192.png',
+      badge: './icons/badge-96.png',
       // Replaces an earlier notification about the same event rather than
       // stacking a second one under it. Asked twice because the time moved,
       // you want the new question, not both.
@@ -174,7 +174,7 @@ self.addEventListener('notificationclick', (event) => {
               ? `You said Yes${result.when ? ` · ${result.when}` : ''}`
               : `You said you can't${result.when ? ` · ${result.when}` : ''}`,
           icon: './icons/icon-192.png',
-          badge: './icons/icon-192.png',
+          badge: './icons/badge-96.png',
           tag: notification.tag,
         })
       } catch {
