@@ -32,6 +32,7 @@
   import MagicIcon from '../components/MagicIcon.svelte'
   import MagicListSheet from '../components/MagicListSheet.svelte'
   import Placeholder from '../components/Placeholder.svelte'
+  import SortSheet from '../components/SortSheet.svelte'
   import { auth } from '../lib/auth.svelte'
   import { isConfigured } from '../lib/config'
   import { categoryIcon } from '../lib/catalogue-seed'
@@ -63,7 +64,7 @@
   import IconPickerSheet from '../components/IconPickerSheet.svelte'
   import TrolleyIcon from '../components/TrolleyIcon.svelte'
   import { FLIP_MS, tileIn, tileOut } from '../lib/motion'
-  import { prefs } from '../lib/prefs.svelte'
+  import { prefs, setSortMode, SORT_MODES } from '../lib/prefs.svelte'
   import {
     addManyToList,
     addNewWord,
@@ -162,6 +163,15 @@
   )
 
   let split = $derived(splitByChecked(display))
+
+  /* Whether the "how is this sorted?" sheet is open. */
+  let sortSheet = $state(false)
+
+  /* What the button on the shop row says. Naming the current order on the
+     button means the row answers the question without being tapped. */
+  let sortLabel = $derived(
+    SORT_MODES.find((mode) => mode.id === prefs.sortMode)?.label ?? SORT_MODES[0]!.label,
+  )
 
   /*
    * The order of the still-to-buy list, in two steps that must stay in this
@@ -532,8 +542,38 @@
       <p class="error" role="alert">{shopping.error}</p>
     {/if}
 
-    <!-- 1. Which shop. Hides itself while there is only one. -->
-    <ShopPicker shops={shops.all} currentId={shops.currentId} onChoose={chooseShop} />
+    <!-- 1. Which shop, and how the list under it is ordered. The two belong
+         together: the default order is the one learned for this shop, so
+         changing shop and changing order are the same thought. ShopPicker
+         still hides itself while there is only one shop — the left side simply
+         goes empty and the order button stays where it is. -->
+    <div class="shop-row">
+      <div class="shop-row-left">
+        <ShopPicker shops={shops.all} currentId={shops.currentId} onChoose={chooseShop} />
+      </div>
+      <button
+        class="sort-btn"
+        onclick={() => (sortSheet = true)}
+        aria-haspopup="dialog"
+        aria-label={strings.shopping.sortLabel}
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 7h11M4 12h8M4 17h5" />
+          <path d="M18 8v9M15 14l3 3 3-3" />
+        </svg>
+        {sortLabel}
+      </button>
+    </div>
 
     <!-- 2. Still to buy -->
     {#if display.length === 0}
@@ -786,6 +826,17 @@
       {/if}
     </form>
   </div>
+
+  {#if sortSheet}
+    <SortSheet
+      current={prefs.sortMode}
+      onPick={(mode) => {
+        setSortMode(mode)
+        sortSheet = false
+      }}
+      onClose={() => (sortSheet = false)}
+    />
+  {/if}
 
   {#if magicSheet}
     <MagicListSheet
@@ -1072,6 +1123,42 @@
     padding: var(--space-4);
     /* Clear of the pinned search field so the last row is never behind it. */
     padding-bottom: calc(var(--space-8) + var(--tap-min));
+  }
+
+  /* The shop chips take whatever width they need and scroll inside it;
+     min-width: 0 is what stops a long list of shops pushing the order button
+     off the right-hand edge. */
+  .shop-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .shop-row-left {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sort-btn {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 2.25rem;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-full);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+    transition:
+      background var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+
+  .sort-btn:active {
+    transform: scale(0.97);
   }
 
   .block {
