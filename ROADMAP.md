@@ -3429,3 +3429,60 @@ exactly that case.
 4. Leave the app closed for longer than that (or just trust the code) — the
    Sync pill with a count is still exactly where it was for the case that
    needs a real tap.
+
+## Round 17.4 — The Yes/Can't buttons come back out
+
+**Same branch.** Marçal, after testing round 17.1/17.2 for real: tapping
+**Yes** on the notification reliably recorded **Can't** — both buttons, in
+fact, landed on Can't. Bisected together: a temporary log on the confirm route
+showed the raw payload the phone sent already said `"answer":"no"` for a Yes
+tap, on a single freshly created event with nothing else queued — so the
+phone's own browser was misreporting which button was pressed, before any
+code in this repo had a chance to be wrong. That's a platform bug on his
+device, not something a server-side fix can reach.
+
+A confirmation is exactly the kind of thing where a silently wrong answer is
+worse than an inconvenient one — "he can't make it" landing in the calendar
+when he actually said yes is a worse failure than an extra tap ever could be.
+So the buttons are gone rather than shipped-but-untrusted.
+
+### What changed
+
+- `public/sw.js`: a push notification is a plain notification again. Tapping
+  it — anywhere on it, there is no separate button to tell apart — opens the
+  app on the calendar screen.
+- That was already enough: the calendar's **"waiting on you"** card (round 11)
+  sits above the grid whatever day is showing, with its own Yes/Can't buttons,
+  answered through a real logged-in session rather than a signed token. That
+  card is now the only place Yes/Can't lives.
+- `supabase/functions/niu-push/index.ts`: the whole `/confirm` route, the
+  token signing and verifying, and the `NIU_ACTION_SECRET` secret are gone
+  with it — there is no longer anything for them to authorise.
+- `docs/SUPABASE_SETUP.md` has a new section on redeploying and removing the
+  now-unused secret.
+
+### Deliberately not chased further
+
+Not trying to find *why* the phone reported the wrong button — that is
+somewhere between Android, Chrome, and this specific device, well outside
+anything `src/` or the Edge Function controls, and not worth more of a
+zero-budget project's time chasing a platform bug when the fallback (open the
+app, answer there) already works. If a future Chrome update fixes whatever
+this was, the two-tap version buried in `git log` is still there to bring
+back.
+
+### How to test it
+
+**Redeploy `niu-push`** with the current `index.ts`, and remove the
+`NIU_ACTION_SECRET` secret in the Supabase dashboard (harmless to leave, but
+nothing reads it any more). Push this branch to `main`, then **fully close
+Niu on the phone** — swiped away — and reopen it once, so the new service
+worker without the button code takes over.
+
+1. Ask to confirm an event.
+2. The other phone buzzes with a plain notification — no Yes/Can't on it now.
+3. Tap it. The app opens on the calendar, and the event is sitting in the
+   **"waiting on you"** card above the grid.
+4. Tap **Yes** there. It should record correctly this time — check the event
+   shows as confirmed, and that the asking phone gets its own "they said yes"
+   notification a moment later, same as round 17.
