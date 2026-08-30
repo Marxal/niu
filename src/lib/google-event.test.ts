@@ -213,6 +213,20 @@ describe('the rest of the body', () => {
     expect(toGoogleEvent(event(), TZ).location).toBeUndefined()
     expect(toGoogleEvent(event({ location: 'Home' }), TZ).location).toBe('Home')
   })
+
+  it('carries the colour over as one of Google\'s own colorIds', () => {
+    expect(toGoogleEvent(event({ colour: 'sky' }), TZ).colorId).toBe('7')
+    expect(toGoogleEvent(event({ colour: 'rose' }), TZ).colorId).toBe('4')
+  })
+
+  it('gives every one of the six on-offer colours its own colorId', () => {
+    const ids = new Set(
+      (['clay', 'amber', 'moss', 'sky', 'plum', 'rose'] as const).map(
+        (colour) => toGoogleEvent(event({ colour }), TZ).colorId,
+      ),
+    )
+    expect(ids.size).toBe(6)
+  })
 })
 
 describe('the sync queue', () => {

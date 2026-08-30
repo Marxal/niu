@@ -28,7 +28,7 @@
   import { clearShops, loadShops, shops, watchShops } from './lib/shops.svelte'
   import { clearCalendar, loadInitialWindow, loadTombstones, watchCalendar } from './lib/calendar.svelte'
   import { clearPeople, loadPeople, watchPeople } from './lib/people.svelte'
-  import { clearSync, loadSyncRows } from './lib/google-sync.svelte'
+  import { clearSync, loadSyncRows, watchAutoSync } from './lib/google-sync.svelte'
   import { loadCalendarId } from './lib/google.svelte'
   import { clearLearning, loadLearning } from './lib/learning.svelte'
   import { watchKeyboard } from './lib/keyboard'
@@ -175,6 +175,13 @@
     })
 
     return watchCalendar()
+  })
+
+  // A quiet sync attempt on open and on every return to the app, so a tap on
+  // the Sync pill is the exception rather than the routine. See google-sync.svelte.ts.
+  $effect(() => {
+    if (!household.id) return
+    return watchAutoSync()
   })
 </script>
 
