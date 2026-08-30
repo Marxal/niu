@@ -3379,3 +3379,53 @@ by the same script run; nothing about the home-screen icon changes.
    notification. It should now genuinely answer — replaced by "You said Yes",
    the app never opening — and Niu's mark, not a blank circle, should be the
    small icon both in the status bar and on the notification itself.
+
+## Round 17.3 — The colour goes over too, and the Sync tap is rarer
+
+**Same branch**, two small answers to questions Marçal asked about the
+existing Google Calendar push: "does deletion sync the other way round? does
+the colour carry over? why is there a Sync button at all?"
+
+Deletion is answered by what already exists rather than a change: sync is
+one-way, Niu → Google, on purpose (§4.3) — editing or deleting an event
+straight in Google Calendar is not seen, and the next push from Niu will
+recreate or overwrite it. That is unchanged by this round.
+
+### What changed
+
+**1. An event's colour now reaches Google.** Google Calendar events don't
+take an arbitrary colour — only one of its own fixed set of eleven, numbered
+1–11 (`colorId`), the same eleven Google's own event colour picker offers.
+`google-event.ts` maps each of Niu's six on-offer colours to the closest
+distinct one of those eleven (clay→Tangerine, amber→Banana, moss→Basil,
+sky→Peacock, plum→Grape, rose→Flamingo) and sends it with every push. It's a
+matching exercise, not a true conversion — Google's palette isn't Niu's — but
+an event now reads the same colour family on both calendars instead of
+whatever the "Niu" calendar's own default happens to be.
+
+**2. A quiet sync now also fires on opening the app, and on returning to it**
+(`watchAutoSync` in `google-sync.svelte.ts`), on top of the existing
+after-every-edit one. In practice this means the ordinary case — open Niu,
+it's already caught up by the time you look at the calendar — needs no tap at
+all. The Sync button and its count still exist, and still matter: any of
+these quiet attempts only does something while this device's Google token is
+still live, which lasts about an hour after the last time it was asked for
+(see the long note in `google.svelte.ts` on why a real background job isn't
+this round's answer). Open the app the next morning, before that hour, and
+there's nothing to piggyback on — the pill and the tap are still there for
+exactly that case.
+
+### How to test it
+
+1. Pull this branch, connect Google Calendar in Settings if not already
+   connected, and add or edit an event with a colour on it.
+2. **Sync it**, then check Google Calendar (the "Niu" calendar): the event
+   should show a colour close to the one you picked, not Google's default.
+3. Edit another event, wait a few seconds without touching Sync, then
+   **background the app and reopen it** (or switch tabs and back). Check
+   Google Calendar again — the edit should already be there without having
+   tapped Sync, as long as it's within about an hour of the last time you
+   connected.
+4. Leave the app closed for longer than that (or just trust the code) — the
+   Sync pill with a count is still exactly where it was for the case that
+   needs a real tap.

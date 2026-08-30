@@ -29,6 +29,7 @@
 
 import type { CalendarEvent } from './calendar'
 import { addDays } from './dates'
+import type { TagColour } from './dish-tags'
 
 /** The scope Niu asks Google for, and the reason it can be trusted.
  *
@@ -87,6 +88,29 @@ export interface GoogleEventBody {
   status?: 'confirmed' | 'tentative'
   transparency?: 'opaque' | 'transparent'
   reminders?: { useDefault: boolean; overrides?: { method: 'popup'; minutes: number }[] }
+  colorId?: string
+}
+
+/**
+ * Niu's six event colours, as the closest of Google's own fixed eleven.
+ *
+ * Google does not take a hex value here — `colorId` is a string '1'–'11'
+ * naming one of a palette Google itself defines and renders, the same one
+ * shown in Google Calendar's own event colour picker. This is a matching
+ * exercise, not a conversion, so each pick favours staying visually distinct
+ * from the other five over being the nearest possible hue.
+ */
+const GOOGLE_COLOUR_ID: Record<TagColour, string> = {
+  clay: '6', // Tangerine
+  amber: '5', // Banana
+  moss: '10', // Basil
+  sky: '7', // Peacock
+  plum: '3', // Grape
+  rose: '4', // Flamingo
+  // Not offered on an event (see EVENT_COLOURS in calendar.ts), kept only so
+  // the map is total over TagColour and a stray value still lands somewhere.
+  sage: '2', // Sage
+  stone: '8', // Graphite
 }
 
 /** How many minutes before a timed reminder Google should buzz the phone. */
@@ -137,6 +161,7 @@ export function toGoogleEvent(event: CalendarEvent, timeZone: string): GoogleEve
     // A reminder should not make you look busy to yourself. An event should.
     transparency: event.kind === 'reminder' ? 'transparent' : 'opaque',
     reminders: reminderRule(event),
+    colorId: GOOGLE_COLOUR_ID[event.colour],
   }
 
   const description = googleDescription(event)

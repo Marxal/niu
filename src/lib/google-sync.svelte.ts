@@ -221,6 +221,27 @@ export function syncSoon(): void {
   void runSync(false)
 }
 
+/**
+ * Tries a quiet sync the moment the app is opened or brought back to the
+ * foreground, on top of the after-every-edit calls above.
+ *
+ * This is what makes "open the app" the usual way sync happens rather than
+ * the Sync tap — but it is still bound by the same hour-long token window as
+ * everything else here (see google.svelte.ts): open the app the next morning
+ * and there is nothing to piggyback on, so the pill and the tap are still
+ * there for that case.
+ */
+export function watchAutoSync(): () => void {
+  syncSoon()
+
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') syncSoon()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+
+  return () => document.removeEventListener('visibilitychange', onVisible)
+}
+
 export function clearSync(): void {
   sync.rows = []
   sync.error = null
