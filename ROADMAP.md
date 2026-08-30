@@ -2938,3 +2938,145 @@ exists. Then reload.
   strip does.
 - **Filling more than one week at a time.** The button acts on the week you are
   looking at, because that is the week you are thinking about.
+
+---
+
+## Round 16 — The order where you shop, the week you already ate, and a tap to Maps
+
+**Branch:** `claude/round-16-list-order-past-plans-maps`
+
+No migration. Four things Marçal asked for in one breath: the list-order control
+where you actually use it, past meals back on screen, the launch bug where
+deleted things came back, and locations that open Maps.
+
+### 1. List order, next to the shop
+
+The shopping list's order was only changeable from Settings — four screens away
+from the aisle you are standing in when you want it. It now has a button on the
+shop row, at the top right of the list.
+
+It sits **next to the shop chips** rather than on the *Still to buy* heading
+(Marçal). The two belong together: the default order is `shop-order`, which is
+learned per shop, so "which shop am I in" and "how is this sorted" are one
+thought. It also means the control is always on screen — the heading it would
+otherwise have lived on disappears the moment everything is in the trolley.
+
+The button names the current order rather than showing a bare icon, so the row
+answers the question without being tapped. Tapping opens a sheet with the four
+orderings as full-width rows, a tick on the current one, and the line explaining
+that shop order learns itself.
+
+**Settings keeps its copy for now** (Marçal: *"keep it so far, we'll clean
+settings later"*). Both write the same device-local preference, so they cannot
+disagree. To stop them drifting in *wording*, the four labels moved into one
+exported `SORT_MODES` in `prefs.svelte.ts` and both controls read it.
+
+### 2. Earlier this week, folded
+
+Round 10.1 cut the days already gone out of the day view, and that was right for
+planning — nobody plans Monday's dinner on a Wednesday, and two screens of dead
+days sat between the tab and the question you opened it to answer.
+
+What it also cut out was looking back, which turns out to be the other half of
+what a week is for: *"what did we have on Monday?"* is how you decide you don't
+want it again on Thursday.
+
+So they are back, **folded**. One row above the open days — *Earlier this week*
+with a count — that unfolds them. Costs one line instead of two screens, and it
+closes itself whenever the week on screen changes.
+
+**Only days with something on them are counted.** An empty Monday is not
+inspiration, and unfolding onto three blank meal slots would make the row look
+broken. This is the current week only: step back a week and the day view already
+shows all seven days, as it always has.
+
+### 3. The launch bug: deleted things coming back
+
+Marçal: *"deleted items briefly reload on launch before resolving on restart."*
+
+**Found it, and it was in two stores, not one.** Every store follows the same
+shape: a full read replaces a list wholesale, while local edits and realtime
+events patch that same list in place. Those two race, and the read always wins
+because it assigns last:
+
+1. a read goes out; the server puts eight rows in an envelope
+2. before it lands you delete one — locally it goes at once, and the DELETE is
+   on its way to the same server
+3. the envelope lands and overwrites local state with all eight rows
+
+The row is back on screen, deleted in the database and nowhere else. Which is
+exactly why it "fixed itself" on the next launch: **nothing was ever wrong with
+the data**, only with which answer was believed.
+
+It bites hardest at launch because launch is when the most reads are in the air
+at once — the boot read, then the one the app fires when it comes to the
+foreground — so the window in which a tap can be undone is at its widest exactly
+when you first start tapping.
+
+**The fix is a generation counter** (`freshness.ts`, tested). Anything that
+changes local state without going through a read bumps it; a read takes a ticket
+before it asks and checks it before it assigns. If the number moved while it was
+waiting, the envelope is dropped — local state at that moment is the server's
+answer *plus* everything since, which is strictly fresher.
+
+Two details that matter:
+
+- **One door, not a dozen bumps.** Every non-read write to the list goes through
+  `setItems()` / `setEntries()`, because a `bump()` beside each of a dozen
+  assignments is a thing some future round forgets, and the one it forgets is
+  the one that brings this back.
+- **A dropped foreground read asks again.** That read is the app's self-healing
+  step — it recovers events Android threw away while the screen was off — so
+  dropping it silently would trade a rare wrong row for a rare missing one. It
+  re-reads the list once, and no more; the next foreground read covers the rest.
+
+The same guard also drops a read that lands *after a sign-out*, which was the
+same bug wearing a much worse hat: the previous account's list appearing for a
+moment in the next one's session.
+
+### 4. Locations open Maps
+
+An event's location in the detail sheet is now a link with a pin beside it.
+Tapping it opens Google Maps — the app itself on Android, via the documented
+`google.com/maps/search/?api=1&query=…` scheme, not a web page.
+
+A search rather than a pin, because Niu never geocodes anything: it does not
+know where "the school" is, and Maps does. Coordinates typed in by hand work
+anyway. A location that is **already a link** — a meeting URL somebody pasted —
+opens as itself instead, since searching Maps for a URL finds nothing.
+`maps.ts`, pure and tested, including that an address full of `&`, `#` and
+accents survives the encoding intact.
+
+### Deliberately not done
+
+- **The location in the day-list rows.** It is inside the row's big
+  tap-to-open button, and a link inside a button is invalid HTML that behaves
+  differently on every phone. Splitting the row would give a fiddly `text-sm`
+  target sitting right next to a 48px one, where a mis-tap throws you out of the
+  app into Maps — against the thumb rule. Tap the event, tap the location: two
+  taps, both of them big. Say if you want it in the row anyway.
+- **Cleaning up Settings.** Marçal's call, next round.
+- **Reading the location back from Google.** Niu still pushes one way (§9).
+
+### How to test it
+
+No migration this time — just reload.
+
+1. **Shopping → look at the top right, above the list.** There is a button
+   naming how the list is sorted — *Shop order* unless you have changed it. Tap
+   it: four orderings, the current one ticked. Pick **Recently added** and the
+   list reorders under it. The button now says *Recently added*. Settings still
+   has the same control and the two agree.
+2. **Meals, on any day that is not a Monday.** Above the days there is
+   **Earlier this week** with a number on it. Tap it: the days already gone
+   unfold, greyed, with what you actually ate. Tap it again to fold them away.
+   Step to next week and back — it should be folded again.
+3. **The launch bug.** Open the app fresh from the home screen and, as soon as
+   the list appears, hold a tile and remove it — or tick a few things and press
+   **Shopping done**. It should stay gone. Before this round that was the exact
+   moment things came back. Then background the app for a minute, come back, and
+   check the list still looks right.
+4. **Calendar → tap an event that has a location.** The location has a pin
+   beside it and is underlined. Tap it: Google Maps opens on that place. If you
+   have an event with no location, add one first — the line only appears when
+   there is something to open.

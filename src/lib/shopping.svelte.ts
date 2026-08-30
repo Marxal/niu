@@ -25,6 +25,7 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { PickerItem } from './list-view'
+import { Generation } from './freshness'
 import { household } from './household.svelte'
 import { recordShop } from './learning.svelte'
 import { strings } from './strings'
@@ -236,12 +237,39 @@ function toListItem(row: ListRow): ListItem {
   }
 }
 
+/*
+ * Which version of the list local state is on. See freshness.ts for the race
+ * this closes — in short, a read that was already in the air when you deleted
+ * something must not put it back.
+ *
+ * Bumped by every optimistic write, every realtime event and the sign-out
+ * clear, because all three are newer news than an answer that left the server
+ * before they happened.
+ */
+const listGen = new Generation()
+
+/**
+ * Every change to the list that is *not* a full read goes through here.
+ *
+ * A helper rather than a `listGen.bump()` beside each assignment, because there
+ * are a dozen of those and the one that gets forgotten in some future round is
+ * the one that brings the bug back. One door, and it cannot be held open.
+ */
+function setItems(next: ListItem[]): void {
+  shopping.items = next
+  listGen.bump()
+}
+
 /** Loads the catalogue and the current list. Call after the household is known. */
 export async function loadShopping(): Promise<void> {
   if (!supabase || !household.id) return
 
   shopping.loading = true
   shopping.error = null
+
+  // Taken before the request goes out, checked before its rows are believed.
+  const ticket = listGen.mark()
+  const askedFor = household.id
 
   // RLS already limits the catalogue to the shared seed plus this household's
   // own words, so there is no filter to write here — the database does it.
@@ -279,7 +307,33 @@ export async function loadShopping(): Promise<void> {
   }
 
   shopping.catalogue = (catalogueResult.data as CatalogueRow[]).map(toCatalogueItem)
-  shopping.items = (listResult.data as ListRow[]).map(toListItem)
+
+  /*
+   * The list itself, but only if nothing has happened to it since this request
+   * left. The catalogue above needs no such guard: it is a read-mostly table
+   * nothing on this phone edits optimistically.
+   *
+   * Also dropped if the household changed underneath — signing out mid-request
+   * and having the previous account's list land afterwards is the same bug
+   * wearing a much worse hat.
+   */
+  const stale = listGen.isStale(ticket) || household.id !== askedFor
+  if (!stale) {
+    shopping.items = (listResult.data as ListRow[]).map(toListItem)
+  } else if (household.id === askedFor) {
+    /*
+     * Dropped because something happened mid-flight, not because we changed
+     * account — so ask again, this time for the list alone.
+     *
+     * This matters because the foreground read is the app's self-healing step:
+     * it is what recovers the events Android threw away while the screen was
+     * off. Silently dropping it and doing nothing would trade a rare wrong row
+     * for a rare missing one. The re-read is one small query and it is not
+     * retried again — if that one races too, the next foreground read will do
+     * the job.
+     */
+    void reloadList()
+  }
 
   // Hidden tiles fail soft on their own: if that one query fails the picker
   // just shows everything, which is a worse experience but not a broken one.
@@ -308,7 +362,8 @@ export async function loadShopping(): Promise<void> {
   }
 
   // And again: without these the list simply doesn't say which dish wanted what.
-  if (!dishResult.error && dishResult.data) {
+  // Guarded with the list, since the badges point at rows that may be gone.
+  if (!stale && !dishResult.error && dishResult.data) {
     shopping.itemDishes = collectItemDishes(dishResult.data as ItemDishRow[])
   }
 
@@ -362,6 +417,9 @@ function collectItemDishes(rows: ItemDishRow[]): Record<string, string[]> {
 export async function reloadList(): Promise<void> {
   if (!supabase || !household.id) return
 
+  const ticket = listGen.mark()
+  const askedFor = household.id
+
   // The dish tags come along, because the thing that most often makes this
   // function run is a dish being tapped — and rows arriving without the tag
   // that explains them would read as "nobody asked for this".
@@ -374,6 +432,8 @@ export async function reloadList(): Promise<void> {
   ])
 
   if (listResult.error || !listResult.data) return
+  // Same guard as the full read: something newer may have happened meanwhile.
+  if (listGen.isStale(ticket) || household.id !== askedFor) return
 
   shopping.items = (listResult.data as ListRow[]).map(toListItem)
 
@@ -428,14 +488,14 @@ export function watchShopping(): () => void {
           const row = toListItem(payload.new as ListRow)
           // The optimistic add may already have put this here.
           if (!shopping.items.some((item) => item.id === row.id)) {
-            shopping.items = [...shopping.items, row]
+            setItems([...shopping.items, row])
           }
         } else if (payload.eventType === 'UPDATE') {
           const row = toListItem(payload.new as ListRow)
-          shopping.items = shopping.items.map((item) => (item.id === row.id ? row : item))
+          setItems(shopping.items.map((item) => (item.id === row.id ? row : item)))
         } else if (payload.eventType === 'DELETE') {
           const gone = (payload.old as { id?: string }).id
-          shopping.items = shopping.items.filter((item) => item.id !== gone)
+          setItems(shopping.items.filter((item) => item.id !== gone))
         }
       },
     )
@@ -515,7 +575,7 @@ export async function addToList(catalogueItemId: string, userId: string): Promis
 
   const row = toListItem(data as ListRow)
   if (!shopping.items.some((item) => item.id === row.id)) {
-    shopping.items = [...shopping.items, row]
+    setItems([...shopping.items, row])
   }
 
   // Bump the local count straight away so the picker reorders without waiting,
@@ -572,7 +632,7 @@ export async function addManyToList(
 
   const rows = ((data ?? []) as ListRow[]).map(toListItem)
   const known = new Set(shopping.items.map((item) => item.id))
-  shopping.items = [...shopping.items, ...rows.filter((row) => !known.has(row.id))]
+  setItems([...shopping.items, ...rows.filter((row) => !known.has(row.id))])
 
   // The counts move the picker's "often bought" order, so they are bumped
   // locally first and told to the server afterwards, one call per item. A
@@ -598,9 +658,7 @@ export async function toggleChecked(itemId: string, userId: string): Promise<voi
 
   // Optimistic: the tile has to grey out under the thumb immediately.
   const previous = shopping.items
-  shopping.items = shopping.items.map((item) =>
-    item.id === itemId ? { ...item, checkedAt } : item,
-  )
+  setItems(shopping.items.map((item) => (item.id === itemId ? { ...item, checkedAt } : item)))
 
   const { error } = await supabase
     .from('list_items')
@@ -608,7 +666,7 @@ export async function toggleChecked(itemId: string, userId: string): Promise<voi
     .eq('id', itemId)
 
   if (error) {
-    shopping.items = previous
+    setItems(previous)
     shopping.error = strings.shopping.updateFailed
   }
 }
@@ -627,14 +685,12 @@ export async function updateItem(itemId: string, changes: ItemChanges): Promise<
   if (Object.keys(row).length === 0) return
 
   const previous = shopping.items
-  shopping.items = shopping.items.map((item) =>
-    item.id === itemId ? { ...item, ...changes } : item,
-  )
+  setItems(shopping.items.map((item) => (item.id === itemId ? { ...item, ...changes } : item)))
 
   const { error } = await supabase.from('list_items').update(row).eq('id', itemId)
 
   if (error) {
-    shopping.items = previous
+    setItems(previous)
     shopping.error = strings.shopping.updateFailed
   }
 }
@@ -644,12 +700,12 @@ export async function removeFromList(itemId: string): Promise<void> {
   if (!supabase) return
 
   const previous = shopping.items
-  shopping.items = shopping.items.filter((item) => item.id !== itemId)
+  setItems(shopping.items.filter((item) => item.id !== itemId))
 
   const { error } = await supabase.from('list_items').delete().eq('id', itemId)
 
   if (error) {
-    shopping.items = previous
+    setItems(previous)
     shopping.error = strings.shopping.updateFailed
   }
 }
@@ -675,12 +731,12 @@ export async function clearChecked(shopId: string | null): Promise<number> {
   if (checked.length === 0) return 0
 
   const previous = shopping.items
-  shopping.items = shopping.items.filter((item) => item.checkedAt === null)
+  setItems(shopping.items.filter((item) => item.checkedAt === null))
 
   const recorded = await recordShop(shopId)
 
   if (recorded === null) {
-    shopping.items = previous
+    setItems(previous)
     shopping.error = strings.shopping.updateFailed
     return 0
   }
@@ -945,7 +1001,7 @@ export async function clearItemIcon(catalogueItemId: string): Promise<void> {
 /** Clears everything on sign-out so nothing carries into the next account. */
 export function clearShopping(): void {
   shopping.catalogue = []
-  shopping.items = []
+  setItems([])
   shopping.itemDishes = {}
   shopping.hidden = new Set()
   shopping.muted = new Set()

@@ -23,6 +23,7 @@
  */
 
 import type { RealtimeChannel } from '@supabase/supabase-js'
+import { Generation } from './freshness'
 import { household } from './household.svelte'
 import {
   type EntryKind,
@@ -123,6 +124,21 @@ export function showWeek(startKey: string): void {
 /* Loading                                                                     */
 /* -------------------------------------------------------------------------- */
 
+/*
+ * Which version of the plan local state is on, and the one door that changes
+ * it outside a read. See freshness.ts: a read already in the air when you swipe
+ * a card away would otherwise put the card back.
+ *
+ * Realtime is deliberately not a bump. This store patches nothing on an event —
+ * it re-reads the window — so an event is a read, not a change.
+ */
+const entryGen = new Generation()
+
+function setEntries(next: PlanEntry[]): void {
+  plan.entries = next
+  entryGen.bump()
+}
+
 /**
  * Reads the window around the week on screen.
  *
@@ -139,6 +155,10 @@ export async function loadPlan(): Promise<void> {
 
   plan.loading = true
 
+  // Taken before asking, checked before believing — see setEntries above.
+  const ticket = entryGen.mark()
+  const askedFor = household.id
+
   const { data, error } = await supabase
     .from('meal_entries')
     .select(ENTRY_COLUMNS)
@@ -154,6 +174,11 @@ export async function loadPlan(): Promise<void> {
   }
 
   plan.error = null
+
+  // Something was planned or swiped away while this was in the air, or we
+  // changed account. Either way these rows are the older story.
+  if (entryGen.isStale(ticket) || household.id !== askedFor) return
+
   plan.entries = (data as EntryRow[]).map(toEntry)
 }
 
@@ -319,7 +344,7 @@ export async function planEntry(
   const temporaryId = `pending:${crypto.randomUUID()}`
 
   const previous = plan.entries
-  plan.entries = [
+  setEntries([
     ...plan.entries,
     {
       id: temporaryId,
@@ -333,7 +358,7 @@ export async function planEntry(
       note: null,
       createdAt: new Date().toISOString(),
     },
-  ]
+  ])
 
   const { data, error } = await supabase
     .from('meal_entries')
@@ -350,14 +375,14 @@ export async function planEntry(
     .maybeSingle()
 
   if (error || !data) {
-    plan.entries = previous
+    setEntries(previous)
     plan.error = strings.plan.saveFailed
     return null
   }
 
   const saved = toEntry(data as EntryRow)
   plan.error = null
-  plan.entries = plan.entries.map((entry) => (entry.id === temporaryId ? saved : entry))
+  setEntries(plan.entries.map((entry) => (entry.id === temporaryId ? saved : entry)))
   return saved.id
 }
 
@@ -428,7 +453,7 @@ export async function planMany(
 
   const saved = (data as EntryRow[]).map(toEntry)
   const known = new Set(plan.entries.map((entry) => entry.id))
-  plan.entries = [...plan.entries, ...saved.filter((entry) => !known.has(entry.id))]
+  setEntries([...plan.entries, ...saved.filter((entry) => !known.has(entry.id))])
   plan.error = null
 
   return saved.length
@@ -450,7 +475,7 @@ export async function setToCook(entryId: string, toCook: boolean): Promise<void>
   if (!entry || entry.toCook === toCook) return
 
   const previous = plan.entries
-  plan.entries = plan.entries.map((row) => (row.id === entryId ? { ...row, toCook } : row))
+  setEntries(plan.entries.map((row) => (row.id === entryId ? { ...row, toCook } : row)))
 
   const { error } = await supabase
     .from('meal_entries')
@@ -458,7 +483,7 @@ export async function setToCook(entryId: string, toCook: boolean): Promise<void>
     .eq('id', entryId)
 
   if (error) {
-    plan.entries = previous
+    setEntries(previous)
     plan.error = strings.plan.saveFailed
   }
 }
@@ -481,8 +506,10 @@ export async function moveEntry(entryId: string, slot: Slot): Promise<boolean> {
   const position = nextPosition(plan.entries, slot)
 
   const previous = plan.entries
-  plan.entries = plan.entries.map((row) =>
-    row.id === entryId ? { ...row, date: slot.date, meal: slot.meal, position } : row,
+  setEntries(
+    plan.entries.map((row) =>
+      row.id === entryId ? { ...row, date: slot.date, meal: slot.meal, position } : row,
+    ),
   )
 
   const { error } = await supabase
@@ -491,7 +518,7 @@ export async function moveEntry(entryId: string, slot: Slot): Promise<boolean> {
     .eq('id', entryId)
 
   if (error) {
-    plan.entries = previous
+    setEntries(previous)
     plan.error = strings.plan.saveFailed
     return false
   }
@@ -530,21 +557,23 @@ export async function setEntryKind(entryId: string, kind: EntryKind): Promise<bo
           : { kind, dish_id: null, catalogue_item_id: entry.itemId }
 
   const previous = plan.entries
-  plan.entries = plan.entries.map((row) =>
-    row.id === entryId
-      ? {
-          ...row,
-          kind,
-          dishId: columns.dish_id,
-          itemId: columns.catalogue_item_id,
-        }
-      : row,
+  setEntries(
+    plan.entries.map((row) =>
+      row.id === entryId
+        ? {
+            ...row,
+            kind,
+            dishId: columns.dish_id,
+            itemId: columns.catalogue_item_id,
+          }
+        : row,
+    ),
   )
 
   const { error } = await supabase.from('meal_entries').update(columns).eq('id', entryId)
 
   if (error) {
-    plan.entries = previous
+    setEntries(previous)
     plan.error = strings.plan.saveFailed
     return false
   }
@@ -561,14 +590,16 @@ export async function setEntryNote(entryId: string, note: string): Promise<void>
   const value = trimmed === '' ? null : trimmed
 
   const previous = plan.entries
-  plan.entries = plan.entries.map((row) =>
-    row.id === entryId ? { ...row, note: value } : row,
+  setEntries(
+    plan.entries.map((row) =>
+      row.id === entryId ? { ...row, note: value } : row,
+    ),
   )
 
   const { error } = await supabase.from('meal_entries').update({ note: value }).eq('id', entryId)
 
   if (error) {
-    plan.entries = previous
+    setEntries(previous)
     plan.error = strings.plan.saveFailed
   }
 }
@@ -578,12 +609,12 @@ export async function unplanEntry(entryId: string): Promise<void> {
   if (!supabase) return
 
   const previous = plan.entries
-  plan.entries = plan.entries.filter((entry) => entry.id !== entryId)
+  setEntries(plan.entries.filter((entry) => entry.id !== entryId))
 
   const { error } = await supabase.from('meal_entries').delete().eq('id', entryId)
 
   if (error) {
-    plan.entries = previous
+    setEntries(previous)
     plan.error = strings.plan.saveFailed
   }
 }
@@ -657,7 +688,7 @@ export async function setHouseholdMeals(meals: readonly Meal[]): Promise<boolean
 
 /** Clears everything on sign-out so nothing carries into the next account. */
 export function clearPlan(): void {
-  plan.entries = []
+  setEntries([])
   plan.history = []
   plan.historyFor = null
   plan.weekStart = startOfWeek(todayKey())

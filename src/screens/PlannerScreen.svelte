@@ -36,6 +36,7 @@
   know what is in the cupboards — that is stock inference, and §5 defers it.
 -->
 <script lang="ts">
+  import { slide } from 'svelte/transition'
   import AtHomeSheet from '../components/AtHomeSheet.svelte'
   import DishSheet from '../components/DishSheet.svelte'
   import MagicIcon from '../components/MagicIcon.svelte'
@@ -126,6 +127,20 @@
   let openDays = $derived(planningDays(plan.weekStart, today))
   let weekEnd = $derived(addDays(plan.weekStart, 6))
 
+  /**
+   * Whether the days already gone in this week are unfolded.
+   *
+   * Closed every time the week changes: stepping to next week and back should
+   * give the tab the state it always has, not whatever was open two taps ago.
+   */
+  let showEarlier = $state(false)
+
+  $effect(() => {
+    // Read the week so this re-runs when it changes, then fold up again.
+    plan.weekStart
+    showEarlier = false
+  })
+
   let picking = $state<{ date: string; meal: Meal } | null>(null)
   let opened = $state<PlanEntry | null>(null)
   let shopping_sheet = $state(false)
@@ -162,6 +177,26 @@
 
   /** Only the week on screen is drawn, though a wider window is loaded. */
   let weekEntries = $derived(entriesBetween(plan.entries, plan.weekStart, weekEnd))
+
+  /*
+   * The days of this week that are already behind you *and have something on
+   * them*. Round 10.1 cut these out of the day view, and that was right for
+   * planning — nobody plans Monday's dinner on a Wednesday, and two screens of
+   * dead days sat between the tab and the question you opened it to answer.
+   *
+   * What it also cut out was looking back, which turns out to be the other half
+   * of what the week is for: "what did we have on Monday?" is how you decide
+   * you don't want it again on Thursday. So they come back folded — one row you
+   * can tap, costing one line rather than two screens.
+   *
+   * Days with nothing planned are left out entirely. An empty Monday is not
+   * inspiration, and unfolding onto three blank meal slots would make the row
+   * look broken. This only ever applies to the week you are in: step back a
+   * week and the day view already shows all seven.
+   */
+  let earlierDays = $derived(
+    days.filter((date) => date < today && weekEntries.some((entry) => entry.date === date)),
+  )
 
   /**
    * The rhythm is worked out over the *whole* loaded window, not just this week.
@@ -629,6 +664,57 @@
 
     {#if view === 'days'}
       <div class="days">
+        <!-- What has already been eaten this week, folded away. Above the
+             open days because that is where it happened — the day view reads
+             down the week, and putting Monday under Friday would be a lie
+             about the order of things. -->
+        {#if earlierDays.length > 0}
+          <button
+            class="earlier"
+            class:open={showEarlier}
+            aria-expanded={showEarlier}
+            onclick={() => (showEarlier = !showEarlier)}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+            {showEarlier ? strings.plan.earlierHide : strings.plan.earlierShow}
+            <span class="count">{earlierDays.length}</span>
+          </button>
+
+          {#if showEarlier}
+            <div class="earlier-days" transition:slide={{ duration: 200 }}>
+              {#each earlierDays as date (date)}
+                <PlanDay
+                  {date}
+                  {today}
+                  meals={household.meals}
+                  entries={weekEntries}
+                  dishesById={dishes.byId}
+                  itemsById={shopping.byId}
+                  tags={dishes.tags}
+                  {rhythm}
+                  onAdd={(d, meal) => (picking = { date: d, meal })}
+                  onOpen={(entry) => (opened = entry)}
+                  {onDrop}
+                  onSwipeAway={swipeAway}
+                  {freshId}
+                />
+              {/each}
+            </div>
+          {/if}
+        {/if}
+
         {#each openDays as date (date)}
           <PlanDay
             {date}
@@ -1190,6 +1276,45 @@
   }
 
   .days {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  /* The fold. Reads as a quiet row rather than a button, because it is a way
+     of looking rather than a thing that changes the plan. */
+  .earlier {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    align-self: flex-start;
+    min-height: var(--tap-min);
+    padding: 0 var(--space-2);
+    margin-left: calc(var(--space-2) * -1);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .earlier svg {
+    transition: transform var(--dur-fast) var(--ease);
+  }
+
+  .earlier.open svg {
+    transform: rotate(180deg);
+  }
+
+  .earlier .count {
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-sunken);
+    color: var(--color-text-faint);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .earlier-days {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);

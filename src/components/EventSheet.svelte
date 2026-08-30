@@ -100,6 +100,7 @@
   import { people, personName } from '../lib/people.svelte'
   import { auth } from '../lib/auth.svelte'
   import { prefs } from '../lib/prefs.svelte'
+  import { mapsUrl } from '../lib/maps'
   import { strings } from '../lib/strings'
   import PersonAvatar from './PersonAvatar.svelte'
   import Toggle from './Toggle.svelte'
@@ -357,6 +358,9 @@
    * Accounts, not people: a five-year-old on the attendee row has no phone to
    * be asked on.
    */
+  /* Where tapping the location goes, or null when there is nothing to tap. */
+  let where = $derived(mapsUrl(draft.location))
+
   let theOther = $derived.by(() => {
     const others = people.accounts.filter((p) => p.userId !== auth.userId)
     return others.length === 1 ? others[0] : null
@@ -402,7 +406,31 @@
         </div>
       {/if}
 
-      {#if draft.location}<p class="detail-line">{draft.location}</p>{/if}
+      <!-- The location, as a link to Maps. A place on a family calendar is
+           somewhere one of you has to actually get to, and the alternative is
+           reading it off the screen and typing it into Maps by hand.
+           See maps.ts for what happens to a location that is already a link. -->
+      {#if where}
+        <p class="detail-line">
+          <a class="where" href={where} target="_blank" rel="noreferrer">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z" />
+              <circle cx="12" cy="10" r="2.5" />
+            </svg>
+            {draft.location}
+          </a>
+        </p>
+      {/if}
       {#if draft.notes}<p class="detail-notes">{draft.notes}</p>{/if}
 
       {#if asked}
@@ -793,6 +821,22 @@
   .detail-line {
     font-size: var(--text-base);
     color: var(--color-text-muted);
+  }
+
+  /* Generous line height rather than a taller box: the link sits in a
+     paragraph, and padding here would push the notes under it out of line. */
+  .where {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: var(--tap-min);
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .where svg {
+    flex: none;
   }
 
   .detail-notes {

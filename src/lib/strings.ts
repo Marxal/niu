@@ -247,6 +247,9 @@ export const strings = {
     previousWeek: 'The week before',
     nextWeek: 'The week after',
     thisWeek: 'Back to this week',
+    // The days of this week already gone, folded away above the open ones
+    earlierShow: 'Earlier this week',
+    earlierHide: 'Hide earlier days',
     // A meal with nothing in it
     addTo: (meal: string) => `Add to ${meal.toLowerCase()}`,
     empty: 'Nothing yet',

@@ -14,6 +14,8 @@
  * modes, and a display preference is never worth breaking the app for.
  */
 
+import { strings } from './strings'
+
 /**
  * How a tile's picture is drawn:
  *   line   the house line drawings, one colour, the default
@@ -32,6 +34,21 @@ export type ViewMode = 'grid-4' | 'grid-3' | 'list'
  * list-view.ts because the choice is a stored preference, not a sorting rule.
  */
 export type SortMode = 'shop-order' | 'recent' | 'category' | 'most-bought'
+
+/**
+ * The four orderings with their labels, in the order they are offered.
+ *
+ * Lives here rather than in either screen because there are now two controls
+ * for the same preference — the one on the shopping list and the one in
+ * Settings — and two hand-kept copies of this list is exactly how they end up
+ * naming the same mode two different things.
+ */
+export const SORT_MODES: { id: SortMode; label: string }[] = [
+  { id: 'shop-order', label: strings.prefs.sortShopOrder },
+  { id: 'recent', label: strings.prefs.sortRecent },
+  { id: 'category', label: strings.prefs.sortCategory },
+  { id: 'most-bought', label: strings.prefs.sortMostBought },
+]
 
 const STORAGE_KEY = 'niu.prefs'
 

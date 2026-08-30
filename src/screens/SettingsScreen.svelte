@@ -25,8 +25,8 @@
     setWeekNumbers,
     setSortMode,
     setViewMode,
+    SORT_MODES,
     type IconStyle,
-    type SortMode,
     type ViewMode,
   } from '../lib/prefs.svelte'
   import { strings } from '../lib/strings'
@@ -58,13 +58,6 @@
     { id: 'line', label: strings.prefs.iconsLine },
     { id: 'emoji', label: strings.prefs.iconsEmoji },
     { id: 'inked', label: strings.prefs.iconsInked },
-  ]
-
-  const sortModes: { id: SortMode; label: string }[] = [
-    { id: 'shop-order', label: strings.prefs.sortShopOrder },
-    { id: 'recent', label: strings.prefs.sortRecent },
-    { id: 'category', label: strings.prefs.sortCategory },
-    { id: 'most-bought', label: strings.prefs.sortMostBought },
   ]
 
   const viewModes: { id: ViewMode; label: string }[] = [
@@ -115,7 +108,7 @@
         <p>{strings.prefs.sortHint}</p>
       </div>
       <div class="segmented pairs" role="group" aria-label={strings.prefs.sortTitle}>
-        {#each sortModes as mode (mode.id)}
+        {#each SORT_MODES as mode (mode.id)}
           <button
             class="segment"
             class:on={prefs.sortMode === mode.id}
