@@ -546,3 +546,117 @@ a repeating event — the insert is rejected because the columns are not there, 
 the sheet reports that it couldn't save. Everything else in this round (the dots
 in the month grid, the swipe, the week numbers, the optional start time) is front
 end only and works with or without the migration.
+
+## Round 17: notifications on the phone
+
+This is the longest setup in the project, because it is the only round with a
+piece that runs on a server. Four steps, all in the Supabase dashboard, and
+none of them costs anything: Edge Functions are on the free plan with 500,000
+calls a month included, and this household will use a few hundred a year.
+
+Do them in this order. Nothing breaks if you stop halfway — the app carries on
+exactly as it does today, in-app badge and all, until the last step is done.
+
+### 1. Run the migration
+
+`supabase/migrations/0016_push.sql`, in the SQL editor, same as every round. It
+adds two tables and a trigger, and turns on `pg_net` — the extension that lets
+Postgres make an HTTP call.
+
+Nothing happens yet: the trigger checks for a configuration row that does not
+exist and returns quietly.
+
+### 2. Deploy the function
+
+**Edge Functions → Deploy a new function.** Name it exactly **`niu-push`** —
+the URL is built from that name. Paste the contents of
+`supabase/functions/niu-push/index.ts`.
+
+Then, in that function's settings, **turn Verify JWT off**. This is the one
+setting that is easy to get wrong and the symptom is silence. The caller here is
+Postgres, which has no user session and therefore no JWT to send; the function
+authenticates the call with a shared secret header instead, which step 4 sets up.
+
+### 3. Give the function its keys
+
+**Edge Functions → Secrets**, three of them:
+
+| Name | Value |
+|---|---|
+| `NIU_VAPID_KEYS` | the entire contents of `vapid-keys.local` in the repo folder, pasted as one blob |
+| `NIU_PUSH_SECRET` | a long random string you invent. It only has to match step 4 |
+| `NIU_CONTACT_EMAIL` | your email address |
+
+`vapid-keys.local` holds the key pair that signs every notification. It is
+**not** in git and must never be — the `.local` ending is in `.gitignore` for
+exactly this reason. Its public half is already in `.env` as
+`VITE_VAPID_PUBLIC_KEY`, which is public by design; the private half exists in
+that one file and, after this step, in Supabase.
+
+If you ever lose the file, generate a new pair and update both places. Every
+phone then has to turn notifications on again, because their subscriptions were
+signed with the old key.
+
+### 4. Tell the database where the function is
+
+One row, in the SQL editor. Replace both values:
+
+```sql
+insert into public.push_config (id, function_url, shared_secret)
+values (
+  true,
+  'https://YOUR-PROJECT-REF.supabase.co/functions/v1/niu-push',
+  'THE-SAME-RANDOM-STRING-AS-NIU_PUSH_SECRET'
+)
+on conflict (id) do update
+  set function_url = excluded.function_url,
+      shared_secret = excluded.shared_secret;
+```
+
+The project ref is the same one in `.env` under `VITE_SUPABASE_URL`.
+
+That table has Row Level Security on and **no policies at all**, which means
+nothing reachable through the API can read it — not the app, not you signed in,
+not `anon`. The only thing that sees the secret is the trigger function, which
+runs as its creator. That is the whole reason it is a table rather than a value
+pasted into the migration: this repo is public.
+
+### 5. On the phone
+
+Notifications only work in the **installed** app on the real site. Not the dev
+server — `src/lib/pwa.ts` deliberately does not register a service worker there,
+and there is no worker to receive a push. If Niu is open in a browser tab rather
+than from the home screen, install it first.
+
+**Settings → Notifications → Turn on notifications.** Android asks once. Say
+yes on both phones.
+
+### What actually buzzes
+
+Two things, and deliberately only two (Marçal, round 17):
+
+- somebody asks you to confirm an event
+- somebody answers a request you sent
+
+Not every event the other person adds, and nothing from the shopping list. A
+notification you learn to ignore is worse than no notification, and the second
+one to arrive is the one that teaches you to ignore the first.
+
+Moving an event's day, time or place clears the answers and asks again, so that
+buzzes too — which is the point, since a yes to Thursday is not a yes to
+Saturday.
+
+### Nothing is lost if you don't run it
+
+Every step degrades to silence rather than to an error:
+
+- **No migration**: the Notifications card offers the switch, saving the
+  subscription fails, and the card says it couldn't write it down.
+- **No function**: the trigger calls a URL that isn't there. `pg_net` queues the
+  call, nobody answers, and the event saves normally.
+- **No config row**: the trigger returns without calling anything.
+- **Nobody subscribed**: the function finds no rows and returns.
+
+Throughout, the confirmation still arrives in the app and still puts a red
+number on the Calendar tab, exactly as it has since round 11. The notification
+is a faster route to the same question, not a replacement for it.

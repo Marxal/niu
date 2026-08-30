@@ -17,6 +17,7 @@
   import { setTheme, theme, type ThemeChoice } from '../lib/theme.svelte'
   import ShopsCard from '../components/ShopsCard.svelte'
   import GoogleCard from '../components/GoogleCard.svelte'
+  import NotifyCard from '../components/NotifyCard.svelte'
   import HouseholdCard from '../components/HouseholdCard.svelte'
   import {
     prefs,
@@ -80,6 +81,7 @@
   {#if auth.status === 'signed-in'}
     <HouseholdCard />
     <GoogleCard />
+    <NotifyCard />
     <ShopsCard userId={auth.userId} />
   {/if}
 

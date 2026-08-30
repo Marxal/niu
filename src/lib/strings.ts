@@ -653,6 +653,28 @@ export const strings = {
     someFailed: 'Some events did not reach Google. They will go on the next sync.',
   },
 
+  push: {
+    // Round 17: the confirmation request that reaches the other phone
+    title: 'Notifications',
+    body:
+      'Niu can buzz this phone when someone asks you to confirm an event, and when they answer one of yours. Nothing else — not every event, not the shopping list.',
+    enable: 'Turn on notifications',
+    asking: 'Asking…',
+    on: 'On',
+    onBody: 'This phone will be told about confirmations.',
+    disable: 'Turn them off on this phone',
+    disableBody: 'Only this phone. The other one carries on as it was.',
+    blocked: 'Blocked',
+    blockedBody:
+      'You said no to notifications for Niu, and only Android can undo that: hold the Niu icon → App info → Notifications.',
+    unavailable: 'Not available here',
+    unavailableBody:
+      'Notifications need the installed app on the real site — they do nothing on the dev server, and this build may not have its key yet. Everything else works.',
+    // Failures, all of them things a person can act on
+    failed: "Couldn't turn notifications on just now. Try again in a moment.",
+    saveFailed: "This phone said yes, but Niu couldn't write it down. Try again.",
+  },
+
   theme: {
     title: 'Appearance',
     system: 'Match phone',

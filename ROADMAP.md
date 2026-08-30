@@ -3080,3 +3080,159 @@ No migration this time — just reload.
    beside it and is underlined. Tap it: Google Maps opens on that place. If you
    have an event with no location, add one first — the line only appears when
    there is something to open.
+
+## Round 17 — The phone buzzes
+
+**Branch:** `claude/round-17-push-notifications`
+
+**Run `supabase/migrations/0016_push.sql`, then follow the round 17 section of
+`docs/SUPABASE_SETUP.md`** — this is the one round with a piece that runs on a
+server, and it needs four things done in the Supabase dashboard.
+
+Round 7.1 in NIU.md's roadmap, and the round §9 named the three parts of two
+rounds ago: a service worker that handles `push`, a VAPID key pair, and one
+small Supabase Edge Function holding the private key. All three are here.
+
+The reason it was worth building is the confirmation request. Round 11 shipped
+the question, the dashed styling and the red number on the Calendar tab — and a
+question that only arrives when the other person happens to open the app is a
+question nobody answers in time.
+
+### What buzzes, and what deliberately does not
+
+Marçal's call this round: **two things only.**
+
+- somebody asks you to confirm an event
+- somebody answers a request you sent
+
+Not every event the other person writes, and nothing at all from the shopping
+list. Both were on the table and both were turned down, for the same reason: the
+notification that trains you to ignore notifications is the one that arrives
+when nothing is being asked of you. Two phones and a family calendar produce a
+handful of these a week, which is a number you keep reading.
+
+The hook is `event_confirmations`, which turns out to be exactly the right
+table. A row appearing there *is* somebody being asked; that row's `answer`
+filling in *is* somebody replying. One trigger function covers both, and neither
+needed a new column.
+
+### The thing to understand: it is told who, never what
+
+The database trigger sends the Edge Function four identifiers — a kind, an event
+id, who to tell, who did it. No title, no time, no names. Every word a person
+reads on their lock screen is looked up by the function itself, from the
+database, with the service role.
+
+That is the security model rather than tidiness. The shared secret is what
+should stop a forged call to the function, but if it ever leaked, the worst a
+stranger could do is make a phone repeat something already true. They could not
+put their own words on somebody's lock screen. A design where the trigger sends
+the finished text would have handed them a megaphone.
+
+The same instinct runs through `push_config`, the table holding the function's
+URL and that secret: **RLS on, and no policies at all**, which denies everything
+through the API. Not the app, not a signed-in member, not `anon` — the only
+thing that can read it is the security-definer trigger. That is what makes it
+safe for this migration to be committed to a public repo.
+
+### Why a table for the config rather than values in the SQL
+
+The function URL would have been fine to commit. The shared secret would not,
+and CLAUDE.md rule 2 does not have a "mostly" in it. Splitting them would have
+meant explaining which half was which every time; one row that Marçal pastes
+into the SQL editor keeps the whole migration readable and public.
+
+### Two phones, two rows
+
+A Web Push subscription is an address for one browser on one device, not an
+account setting. So `push_subscriptions` is keyed by endpoint, and its RLS is
+stricter than anywhere else in the app: your own rows only, in all four
+directions. Everywhere else Niu takes the line that a household shares
+everything; a subscription is the exception, because there is no reason for one
+member to read, move or delete the address of the other's phone.
+
+Turning notifications off in Settings therefore turns them off on **that phone**
+— which the card says out loud, because it is not obvious and would otherwise be
+discovered the hard way.
+
+Dead subscriptions clean themselves up. When Google answers 404 or 410 the
+browser has thrown that subscription away — app uninstalled, permission revoked,
+site data cleared — and the function deletes the row rather than failing forever.
+
+### The library, and the one thing I want on record
+
+The function uses `jsr:@negrel/webpush@0.5.0`, pinned. It is Deno-native, built
+only on SubtleCrypto, and needs no Node shims, which is what makes it work
+inside a Supabase Edge Function. I read its source rather than trusting a blog
+post: the API here is verified, not recalled.
+
+Its author says in the README that the crypto has not been reviewed by experts.
+That is worth writing down. The consequence if it were wrong is that the push
+service could read the two lines of text — the event's title and "so-and-so is
+asking you to confirm" — that it is already relaying. It is not a route into the
+database and not a route into the account. Judged acceptable for this, and worth
+revisiting if Niu ever notifies about anything more private.
+
+### Fail soft, at every one of five steps
+
+Each piece degrades to silence, never to an error:
+
+- no config row → the trigger returns without calling anything
+- no function deployed → `pg_net` queues a call nobody answers, and saving the
+  event succeeds regardless
+- no subscriptions → the function returns "nobody subscribed"
+- a push that fails → logged, and the other phones still get theirs
+- permission refused → the card explains where Android keeps that setting,
+  rather than showing a switch that would do nothing
+
+Throughout, the confirmation still arrives in the app and still puts a red
+number on the Calendar tab. The notification is a faster route to the same
+question, never a replacement for it.
+
+### Deliberately not done
+
+- **Notifications for anything else.** See above. The plumbing is now there, so
+  adding a trigger later is small — but each one should have to argue for
+  itself.
+- **A quiet-hours setting.** Nothing here fires at 3am on its own; it fires when
+  the other person is awake and using the app. Android's own Do Not Disturb
+  already covers the rest, and a setting nobody needs is a setting to maintain.
+- **Deep-linking to the event.** Tapping a notification opens the Calendar tab,
+  where an unanswered request is already pinned to the top from round 11. A
+  per-event route would be more code for the same screen.
+- **Offline.** Still deferred (NIU.md §9). The worker now handles `push` and
+  still caches nothing, which is the same deliberate decision it was in round 1.
+- **The one bit of logic without a unit test.** The function builds its two
+  lines of text in Deno, where vitest cannot reach it, so it is kept to eight
+  lines and no branching. The client-side key conversion — the fiddly half, and
+  the half that fails silently when it is wrong — is `src/lib/push-key.ts` with
+  eight tests on it.
+
+### How to test it
+
+**Do the four dashboard steps in `docs/SUPABASE_SETUP.md` § "Round 17" first.**
+Until they are done the card in Settings simply says it is not set up.
+
+Notifications need the **installed** app, from the home screen, on the real
+site. A browser tab has no service worker to receive them, and neither does the
+dev server.
+
+1. **Settings → Notifications.** It explains what will buzz, in two sentences.
+   Tap **Turn on notifications** and say yes to Android. The card grows a green
+   **On** pill. Do the same on her phone.
+2. **Close Niu completely** on her phone. Not backgrounded — swiped away.
+3. **On your phone: Calendar → + Event.** Title, a time, and turn on **Ask her
+   to confirm**. Save it.
+4. **Her phone should buzz within a few seconds**, with the event's title on the
+   top line and "Thu 3 Sep · 18:00 · Marçal is asking you to confirm" under it.
+5. **Tap the notification.** Niu opens on the Calendar tab with the question
+   pinned at the top. Tap **Yes**.
+6. **Your phone buzzes**, saying she said yes. Your event stops being dashed.
+7. **Move the event's time and save.** The answers clear, she is asked again,
+   and her phone buzzes again — a yes to 18:00 is not a yes to 20:00.
+8. **Turn it off on one phone** in Settings. Repeat step 3: that phone stays
+   quiet, the other one still works.
+
+If nothing arrives, the first thing to check is **Verify JWT off** on the
+function. It is the one setting whose failure looks exactly like everything
+working.
