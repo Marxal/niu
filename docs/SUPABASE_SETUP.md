@@ -703,3 +703,21 @@ without the action buttons — tapping one opens the app to the pinned question,
 same as round 17 shipped. Nothing breaks; the phone just falls back to the
 one-more-tap version automatically, because the notification never claims to
 have buttons it can't back up.
+
+### Fix: the buttons opened the app instead of answering
+
+Found the same day, testing on a real phone. Yes/Can't were reaching the
+notification but tapping either one just opened the app — because the phone
+was making a cross-origin call to the Edge Function, and browsers refuse that
+by default unless the server explicitly says it's expected (CORS). Postgres
+calling the trigger route never hit this — a server calling a server isn't
+subject to it — so it was invisible until a phone called `/confirm` directly.
+
+**Redeploy the function once more** with the current
+`supabase/functions/niu-push/index.ts` — same paste-over-the-code step as
+above. No new secret this time, and the notification badge shipped in the
+same update: the app icons are solid, fully-opaque images built for the home
+screen, and Android draws a badge from an image's *transparency*, so they came
+out as a plain white blob. `npm run icons` now also writes
+`public/icons/badge-96.png`, a proper mostly-transparent silhouette, already
+wired into `public/sw.js` — pushing this branch to `main` is what puts it live.

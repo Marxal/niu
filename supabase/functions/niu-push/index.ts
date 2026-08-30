@@ -367,6 +367,32 @@ interface ConfirmPayload {
 }
 
 /**
+ * Where a phone is allowed to call /confirm from. Everywhere else this project
+ * hardcodes these same two origins already — the Google Calendar setup in
+ * docs/SUPABASE_SETUP.md needs them as "Authorized JavaScript origins" for
+ * exactly the same reason: a browser has to be told a cross-origin call is
+ * expected, or it refuses to make it.
+ *
+ * This is the piece the trigger route never needed. Postgres calling this
+ * function is a server talking to a server — CORS is a browser rule and does
+ * not apply. A phone's service worker calling /confirm *is* a browser, so
+ * without this, every tap of Yes or Can't fails before the request even
+ * leaves the phone, silently, which is indistinguishable from no signal at
+ * all — and falls back to opening the app, exactly as if it were offline.
+ */
+const ALLOWED_ORIGINS = new Set(['https://marxal.github.io', 'http://localhost:5173'])
+
+function corsHeaders(request: Request): HeadersInit {
+  const origin = request.headers.get('origin') ?? ''
+  if (!ALLOWED_ORIGINS.has(origin)) return {}
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  }
+}
+
+/**
  * Applies a Yes/Can't tapped straight off a notification.
  *
  * The write is the same one src/lib/calendar.svelte.ts's answerConfirmation()
@@ -376,20 +402,28 @@ interface ConfirmPayload {
  * database already does.
  */
 async function handleConfirm(request: Request): Promise<Response> {
+  const cors = corsHeaders(request)
+
+  if (request.method === 'OPTIONS') {
+    // The browser's preflight check, sent before the real POST because the
+    // request carries a JSON content type. No body, just the permission slip.
+    return new Response(null, { status: 204, headers: cors })
+  }
+
   let payload: ConfirmPayload
   try {
     payload = await request.json()
   } catch {
-    return new Response('bad request', { status: 400 })
+    return new Response('bad request', { status: 400, headers: cors })
   }
 
   if (payload.answer !== 'yes' && payload.answer !== 'no') {
-    return new Response('bad answer', { status: 400 })
+    return new Response('bad answer', { status: 400, headers: cors })
   }
 
   const proof = await verifyAction(payload.token)
   if (!proof) {
-    return new Response('expired or invalid', { status: 401 })
+    return new Response('expired or invalid', { status: 401, headers: cors })
   }
 
   // Belt and braces: even a validly signed token only does anything if a real
@@ -403,7 +437,7 @@ async function handleConfirm(request: Request): Promise<Response> {
     .maybeSingle()
 
   if (!row) {
-    return new Response('nothing waiting on you', { status: 410 })
+    return new Response('nothing waiting on you', { status: 410, headers: cors })
   }
 
   const [{ error }, { data: event }] = await Promise.all([
@@ -420,7 +454,7 @@ async function handleConfirm(request: Request): Promise<Response> {
   ])
 
   if (error) {
-    return new Response('could not save', { status: 500 })
+    return new Response('could not save', { status: 500, headers: cors })
   }
 
   // What the service worker shows as its own "you answered" notification, so
@@ -430,7 +464,7 @@ async function handleConfirm(request: Request): Promise<Response> {
       title: event?.title ?? 'Event',
       when: event ? whenText(event as EventRow) : '',
     }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } },
+    { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
   )
 }
 

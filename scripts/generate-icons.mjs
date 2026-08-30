@@ -112,6 +112,43 @@ async function writeAnyIcon(name, size) {
   console.log(`wrote ${name} (${size}x${size})`)
 }
 
+/**
+ * The notification badge — round 17.1, after Marçal saw a plain white blob in
+ * the status bar instead of Niu's icon.
+ *
+ * Android draws a push notification's badge from the image's **alpha channel
+ * only**: whatever is opaque becomes a white silhouette, whatever is
+ * transparent stays empty. icon-192.png and friends are deliberately fully
+ * opaque squares — they're built for the home screen, where a launcher masks
+ * them into a circle or squircle and needs a solid background to crop safely.
+ * Handed to a badge, "fully opaque square" reads as "solid white square",
+ * which is the blob Marçal saw.
+ *
+ * A badge needs the opposite: mostly *transparent*, with only the mark itself
+ * opaque. This one is drawn straight from the same nest-and-egg glyph as
+ * favicon.svg (the mark used before the photographic wordmark arrived — see
+ * the file header), stripped of its background rect, because a silhouette is
+ * exactly what a simple line mark is good at and a photographic render is not.
+ *
+ * 96×96 is the size Chrome documents for Android badges, already covering a
+ * 4x-density phone without the file being any bigger than it needs to be.
+ */
+const BADGE_GLYPH_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <g fill="none" stroke="#ffffff" stroke-width="6.4" stroke-linecap="round">
+    <path d="M14.4 34.6a17.6 17.6 0 0 0 35.2 0"/>
+    <path d="M14.4 33.6 8.6 28.9"/>
+    <path d="M49.6 33.6 55.4 28.9"/>
+  </g>
+  <circle cx="32" cy="28.7" r="8" fill="#ffffff"/>
+</svg>
+`
+
+async function writeBadgeIcon(name, size) {
+  await sharp(Buffer.from(BADGE_GLYPH_SVG)).resize(size, size).png().toFile(join(OUT_DIR, name))
+  console.log(`wrote ${name} (${size}x${size}, transparent — for the notification badge)`)
+}
+
 async function writeMaskableIcon(name, size, worstFraction, bg) {
   const scale = Math.min(1, SAFE_RADIUS_FRACTION / worstFraction)
   const inner = Math.round(size * scale)
@@ -142,3 +179,4 @@ await writeAnyIcon('icon-192.png', 192)
 await writeAnyIcon('icon-512.png', 512)
 await writeAnyIcon('icon-180.png', 180) // apple-touch-icon
 await writeMaskableIcon('icon-maskable-512.png', 512, worstFraction, bg)
+await writeBadgeIcon('badge-96.png', 96)
