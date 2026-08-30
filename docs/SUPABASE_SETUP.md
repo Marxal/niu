@@ -721,3 +721,29 @@ screen, and Android draws a badge from an image's *transparency*, so they came
 out as a plain white blob. `npm run icons` now also writes
 `public/icons/badge-96.png`, a proper mostly-transparent silhouette, already
 wired into `public/sw.js` — pushing this branch to `main` is what puts it live.
+
+## Round 17.3: the buttons come back out
+
+CORS was the last thing stopping Yes/Can't from reaching the server — once
+that was fixed, taps did reach it, but on Marçal's own phone tapping **Yes**
+reliably recorded **Can't**. Traced with a temporary log on the confirm route:
+the raw payload the phone sent already said `"answer":"no"` for a Yes tap, on
+a freshly created event with nothing else going on — meaning the phone's own
+browser was reporting the wrong button, before any of this project's code had
+a chance to be at fault. A yes/no question that can silently record the
+opposite answer is worse than one that costs an extra tap, so the buttons are
+gone: a notification now only ever opens the app, to the calendar's own
+"waiting on you" card, where Yes/Can't still lives and still works exactly as
+it has since round 11.
+
+**Redeploy the function once more** with the current
+`supabase/functions/niu-push/index.ts` — it dropped the whole confirm route
+and the signing it needed.
+
+**Remove the now-unused secret.** **Edge Functions → Secrets → `NIU_ACTION_SECRET`
+→ delete.** Nothing reads it any more; leaving it costs nothing but it is one
+fewer thing to wonder about later.
+
+Push this branch to `main` too — the service worker no longer draws the
+buttons, and the usual rule applies: fully close Niu on each phone and reopen
+it once, so the new service worker takes over.
