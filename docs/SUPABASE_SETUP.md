@@ -660,3 +660,46 @@ Every step degrades to silence rather than to an error:
 Throughout, the confirmation still arrives in the app and still puts a red
 number on the Calendar tab, exactly as it has since round 11. The notification
 is a faster route to the same question, not a replacement for it.
+
+## Round 17.1: Yes / Can't from the notification itself
+
+An addition to round 17, not a new round of setup from scratch. The
+notification for "somebody is asking you to confirm" now carries two buttons —
+answering taps one, and never opens the app.
+
+The tricky part is not the buttons; Android draws those for free. It is that
+tapping one has to write your answer to the database, and normally *that*
+needs you logged in — which the whole point here is to skip. So the function
+signs a small proof into the notification itself when it sends it: this
+event, this person, valid for a day. The button's tap is just handing that
+proof back; possessing it is what stands in for a login.
+
+### What to do
+
+**1. Redeploy the function.** Same place as before — **Edge Functions →
+niu-push → Code** (or delete and redeploy) — paste the current contents of
+`supabase/functions/niu-push/index.ts` over what's there. It grew a second
+route in the same file; nothing about how it's deployed changes.
+
+**2. Add a fourth secret.** **Edge Functions → Secrets**:
+
+| Name | Value |
+|---|---|
+| `NIU_ACTION_SECRET` | a second long random string, different from `NIU_PUSH_SECRET` |
+
+Different on purpose: one secret proves "this call came from Postgres", the
+other proves "this button tap came with a genuine invitation to answer". A
+leak of one must not also forge the other.
+
+**3. Nothing else.** No migration, no change to `push_config` — the confirm
+route writes to `event_confirmations` exactly the way the app's own Yes/Can't
+buttons already do, which is what makes the other phone's notification still
+arrive: the same database trigger fires either way.
+
+### Nothing is lost if you skip this
+
+Without `NIU_ACTION_SECRET` set, the function simply sends notifications
+without the action buttons — tapping one opens the app to the pinned question,
+same as round 17 shipped. Nothing breaks; the phone just falls back to the
+one-more-tap version automatically, because the notification never claims to
+have buttons it can't back up.

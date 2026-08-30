@@ -3236,3 +3236,87 @@ dev server.
 If nothing arrives, the first thing to check is **Verify JWT off** on the
 function. It is the one setting whose failure looks exactly like everything
 working.
+
+## Round 17.1 — Yes / Can't, no app required
+
+**Same branch as round 17**, extended in place rather than a new one — this is
+a follow-up question about round 17, not a fresh piece of work.
+
+**Redeploy `niu-push` and add a fourth secret, `NIU_ACTION_SECRET`.** See the
+round 17.1 section of `docs/SUPABASE_SETUP.md`.
+
+Marçal, straight after testing round 17 working: "Can the notification include
+a Yes/No answer straight so there's no need to open the app to answer?"
+
+### What changed
+
+The confirmation notification now carries two buttons, **Yes** and **Can't**.
+Tapping one answers immediately — no window opens, no app is brought forward.
+A second, small notification replaces it a moment later confirming what was
+sent, so the tap has visible proof of working.
+
+### The interesting part: proving who you are without a login
+
+Writing an answer to `event_confirmations` normally goes through Row Level
+Security, which checks who is signed in. A notification button has nobody
+signed in — the entire idea is answering *without* opening the app, so there
+is no session to check.
+
+The function signs the proof into the notification instead, when it sends it:
+which event, which person, valid for a day. The service worker doesn't read
+that token or understand it — it only ever hands it back unchanged to a new
+`/confirm` route on the same function, which checks the signature and, if it
+holds up, makes the write itself with the service role. Possessing a valid
+token *is* the authorisation; nothing else is asked.
+
+A day's validity is deliberate: long enough that a question asked over
+breakfast is still answerable from the notification shade that evening, short
+enough that a screenshot of an old notification is not a standing invitation
+to answer for somebody. Even a token that verifies is checked once more
+against the database — a confirmation row still has to be sitting there
+waiting — so a token that outlived an "unask", or an event since deleted, does
+nothing.
+
+Two secrets exist now for a reason: `NIU_PUSH_SECRET` proves a call came from
+Postgres, `NIU_ACTION_SECRET` proves a button tap came from a genuine
+invitation to answer. Different secrets for different proofs, so that a leak
+of one can't forge the other.
+
+### The other half: not lying about what a button can do
+
+The background answer goes over the network, same as anything else here, and
+it can fail — no signal, an expired token, the function briefly down. On any
+failure the service worker falls back to opening the app to the pinned
+question, rather than leaving a tap that silently did nothing. A person who
+taps Yes either sees it worked, or sees the app open so they can still answer
+— never a tap into the void.
+
+The same instinct decides what happens with no `NIU_ACTION_SECRET` set at
+all: the function just sends the notification without buttons, and tapping it
+opens the app exactly as round 17 shipped. The feature degrades to the
+version underneath it rather than to a broken one.
+
+### Deliberately not done
+
+- **Buttons on the "somebody answered" notification.** There is nothing to
+  answer there — it is already the answer. Adding buttons that do nothing
+  would be worse than none.
+- **A "why" reason attached to Can't.** Google Calendar and most apps stop at
+  yes/no; a text field on a notification is not a thing Android supports
+  without opening a window anyway, which is the exact case this round exists
+  to avoid.
+
+### How to test it
+
+**Redeploy `niu-push` and add `NIU_ACTION_SECRET`** per `docs/SUPABASE_SETUP.md`
+first — the old deployed version doesn't have the buttons.
+
+1. On your phone: **Calendar → + Event → Ask her to confirm → Save.**
+2. Her phone buzzes with the notification now showing **Yes** and **Can't**
+   underneath it.
+3. **Tap Yes directly on the notification** — don't open the app.
+4. It's replaced within a second by a small confirmation: "You said Yes ·
+   Thu 3 Sep · 18:00". The app was never opened.
+5. **Your phone buzzes** saying she said yes, same as round 17.
+6. Open the event on her phone and check it shows as confirmed — the database
+   agrees with what the notification said.

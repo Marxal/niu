@@ -57,9 +57,16 @@ self.addEventListener('fetch', () => {})
 /* -------------------------------------------------------------------------- */
 
 /*
- * The Edge Function sends `{ title, body, tag }` as JSON. Everything a person
- * reads was looked up in the database there rather than sent by the phone that
- * caused it — see the note at the top of supabase/functions/niu-push/index.ts.
+ * The Edge Function sends `{ title, body, tag, action? }` as JSON. Everything a
+ * person reads was looked up in the database there rather than sent by the
+ * phone that caused it — see the note at the top of
+ * supabase/functions/niu-push/index.ts.
+ *
+ * `action`, present only on "somebody is asking you to confirm", carries a
+ * `confirmUrl` and a signed `token` — not something this worker can read or
+ * needs to; it is only ever handed back unchanged in notificationclick below.
+ * Its presence is what puts Yes / Can't buttons on the notification (round
+ * 17.1: answering without opening the app).
  *
  * Chrome requires that a push results in a visible notification: a handler that
  * decides not to show one gets the browser's own "this site was updated in the
@@ -91,12 +98,25 @@ self.addEventListener('push', (event) => {
       // A calendar question is not urgent enough to override a silent phone,
       // but it is worth a buzz when the phone is not silent.
       vibrate: [80, 40, 80],
+      // Carried through to notificationclick untouched. Only an "ask" push
+      // sets it, which is what makes the two buttons below appear only there.
+      data: message.action || null,
+      actions: message.action
+        ? [
+            { action: 'yes', title: 'Yes' },
+            { action: 'no', title: "Can't" },
+          ]
+        : [],
     }),
   )
 })
 
 /*
- * Tapping the notification opens the calendar.
+ * Tapping the body of the notification opens the calendar. Tapping Yes or
+ * Can't answers straight from here, no window opened — that's the whole point
+ * of round 17.1. If that background answer fails for any reason (offline,
+ * expired token, the function being unreachable), it falls back to opening the
+ * app instead of leaving the tap looking like it did nothing.
  *
  * Focusing a window that is already open matters more than it sounds: opening a
  * second one leaves the person with two copies of an installed app and no idea
@@ -107,28 +127,61 @@ self.addEventListener('push', (event) => {
  * same reason vite.config.ts uses a relative base — nothing in this project
  * knows the folder it is served from.
  */
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close()
-
+async function openCalendar() {
   const url = self.registration.scope + '#/calendar'
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+
+  for (const client of windows) {
+    // Same app, already open: bring it forward and move it to the calendar.
+    if (client.url.startsWith(self.registration.scope)) {
+      if ('navigate' in client) await client.navigate(url)
+      if ('focus' in client) return await client.focus()
+      return
+    }
+  }
+
+  await self.clients.openWindow(url)
+}
+
+/** Answers straight from the notification. Never throws — see the caller. */
+async function answerFromNotification(action, data) {
+  const response = await fetch(data.confirmUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: data.token, answer: action }),
+  })
+  if (!response.ok) throw new Error(`confirm failed: ${response.status}`)
+  return await response.json()
+}
+
+self.addEventListener('notificationclick', (event) => {
+  const { action, notification } = event
+  notification.close()
+
+  if (action !== 'yes' && action !== 'no') {
+    event.waitUntil(openCalendar())
+    return
+  }
 
   event.waitUntil(
     (async () => {
-      const windows = await self.clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true,
-      })
-
-      for (const client of windows) {
-        // Same app, already open: bring it forward and move it to the calendar.
-        if (client.url.startsWith(self.registration.scope)) {
-          if ('navigate' in client) await client.navigate(url)
-          if ('focus' in client) return await client.focus()
-          return
-        }
+      try {
+        const result = await answerFromNotification(action, notification.data)
+        // Visible proof the tap worked, without ever opening the app.
+        await self.registration.showNotification(result.title || 'Niu', {
+          body:
+            action === 'yes'
+              ? `You said Yes${result.when ? ` · ${result.when}` : ''}`
+              : `You said you can't${result.when ? ` · ${result.when}` : ''}`,
+          icon: './icons/icon-192.png',
+          badge: './icons/icon-192.png',
+          tag: notification.tag,
+        })
+      } catch {
+        // The answer didn't go through silently — open the app so the person
+        // can still answer, rather than leaving the tap looking like it worked.
+        await openCalendar()
       }
-
-      await self.clients.openWindow(url)
     })(),
   )
 })
