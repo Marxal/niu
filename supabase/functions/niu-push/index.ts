@@ -417,6 +417,10 @@ async function handleConfirm(request: Request): Promise<Response> {
     return new Response('bad request', { status: 400, headers: cors })
   }
 
+  // TEMPORARY — round 17.3 bug hunt (Yes and Can't both landing as "no").
+  // Remove once that's found: see the note in ROADMAP.md.
+  console.log('confirm received', JSON.stringify({ answer: payload.answer, token: payload.token }))
+
   if (payload.answer !== 'yes' && payload.answer !== 'no') {
     return new Response('bad answer', { status: 400, headers: cors })
   }
