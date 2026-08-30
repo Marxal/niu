@@ -82,9 +82,11 @@ uses those, it's the old API; convert it.
 Don't add them without being asked:
 
 - Offline support / service worker caching (deferred, see `NIU.md` §9)
-- Push notifications — **planned now, as round 11.1** (Marçal reversed the v2 call in
-  round 11). Until that round lands, don't add a service worker `push` handler,
-  a VAPID key or an Edge Function ad hoc; see `NIU.md` §9.
+- More push notifications. **Push itself shipped in round 17** — a `push` handler
+  in `public/sw.js`, a VAPID pair, and one Edge Function. It buzzes for exactly
+  two things: a confirmation request, and the answer to one. Adding a third
+  trigger is now easy and is therefore the thing to ask about first; the fastest
+  way to get notifications switched off is to send one nobody needed.
 - Photos, a desktop layout, cooking instructions, prices, barcode scanning
 - Any analytics
 - Any CSS framework, component library or icon npm package

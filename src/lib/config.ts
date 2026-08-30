@@ -64,6 +64,20 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? ''
 const googleClient = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
 
 /**
+ * The VAPID public key — "application server key" in the Push API's wording.
+ *
+ * Public in the strongest sense of any value here: its entire job is to be
+ * handed to Google's push service by the phone, so that the push service can
+ * check that a notification was signed by whoever owns the matching private
+ * key. The private half lives only in a Supabase Edge Function secret and must
+ * never appear in this repo.
+ *
+ * Empty until it is filled in, and the Notifications card in Settings says so
+ * rather than offering a switch that could not work.
+ */
+const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim() ?? ''
+
+/**
  * A service-role key in the bundle would hand every visitor full read/write on
  * the whole database, bypassing every RLS policy. Refuse to start rather than
  * ship it. This throws on purpose — it is the one thing worth breaking loudly
@@ -81,6 +95,8 @@ export const supabaseUrl = url
 export const supabaseAnonKey = anonKey
 
 export const googleClientId = googleClient
+
+export const vapidPublicKey = vapidKey
 
 /** False until the two values are filled in; the app stays usable either way. */
 export const isConfigured = url !== '' && anonKey !== ''

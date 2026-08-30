@@ -83,7 +83,7 @@ his phone and says how it should behave.
 | Domain | None. `marxal.github.io/niu` | Revisit only if this ever goes public |
 | Icons | Open-source set + emoji + first-letter fallback | See §6 |
 | Offline | Not in v1 | Follows from server-first |
-| Push notifications | **v2** | v1 leans on Google Calendar's own reminders |
+| Push notifications | **Round 17** (was v2) | Google's own reminders cover an event's alarm; only a confirmation request needed a real push |
 | Tests | Self-tests for pure logic only | The ranking, the shop-order learning, the stock inference, the quick-add date parser |
 
 ### Why Svelte and not vanilla TypeScript
@@ -511,15 +511,22 @@ lands, it lives in **one token file** — no raw hex anywhere in a component.
   a local copy, and it's a real option later. But it's the change that costs the most to
   retrofit, so if the app ever feels broken in a supermarket, this is the first thing to
   revisit. **Flag it the first time it bites.**
-- **Push notifications are back on, as round 11.1.** This said "v2" and Marçal
-  reversed it in round 11: "this is turning so good that we can integrate
-  notifications". The trigger is the confirmation request — a question that arrives
-  only when you happen to open the app is a question nobody answers in time. Round 11
-  ships the in-app half (the tab badge, live over Realtime) and Google's own alarms
-  for reminders; the real phone notification is its own round because it needs three
-  new things: a service worker that handles `push`, a VAPID key pair, and one small
-  Supabase Edge Function holding the private key. Free tier throughout — flag it if
-  that ever stops being true.
+- **Push notifications shipped in round 17.** This said "v2" and Marçal reversed
+  it in round 11: "this is turning so good that we can integrate notifications".
+  The trigger is the confirmation request — a question that arrives only when you
+  happen to open the app is a question nobody answers in time. Round 11 shipped
+  the in-app half (the tab badge, live over Realtime) and Google's own alarms for
+  reminders; round 17 added the three things the real notification needed: a
+  service worker that handles `push`, a VAPID key pair, and one small Supabase
+  Edge Function holding the private key. **It buzzes for two things only** — being
+  asked to confirm, and an answer to something you asked — and that restraint is
+  the feature, not a limitation to fix later. Free tier throughout (Edge Functions
+  include 500k calls a month); flag it if that ever stops being true.
+- **Niu now has a server-side piece**, which it did not before: one Edge Function,
+  `niu-push`. It is the only thing in the project that holds a secret, and the
+  only thing that can act with the service role. Anything else that "just needs a
+  small function" should be weighed against the fact that this was the first one
+  in seventeen rounds.
 - **Last write wins.** If both phones edit the same item in the same second, one wins.
   Fine for two people; the first thing to fix if the household grows.
 - **No purchase history**, only per-item stats (§5).
@@ -554,7 +561,7 @@ in the repo; this is the shape.
 | 5 | **Dishes** — dish objects, the dishes category in the catalogue, tap-a-dish-adds-its-items | Bundles working from the shopping side |
 | 6 | **Meal planner** — day/week views, meals, plan-to-list *and* list-to-plan, repeat and leftover markers, dragging | A planned week that fills the shopping list (round 10). Month view and auto-suggest-a-week deferred |
 | 7 | **Calendar** — events, reminders, month grid, avatars, confirmations, one-way push to Google | Shared family events on both phones (round 11). Recurrence, dots, swiping and week numbers in round 12; the sheet rebuilt Google-style, richer cards and holding a day in round 13. Quick-add still deferred |
-| 7.1 | **Push notifications** — service worker, VAPID, one Supabase function | The confirmation request buzzes the other phone |
+| 7.1 | **Push notifications** — service worker, VAPID, one Supabase function | The confirmation request buzzes the other phone (round 17). Two triggers only: being asked, and being answered |
 | 8+ | Stock inference, offline, export, icon upgrades | As they earn their place |
 
 Marçal said the smallest version he'd genuinely use daily is "v0.6" — effectively the
