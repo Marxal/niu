@@ -98,14 +98,13 @@ async function recordPushed(eventId: string, pushedAt: string): Promise<void> {
   )
 }
 
+// A row whose removal has gone through has nothing left to say — syncPlan()
+// treats a missing row exactly like one with removedAt set (google-event.ts),
+// so there is no reason to keep it around. See 0017_sync_cleanup.sql.
 async function recordRemoved(eventId: string): Promise<void> {
   if (!supabase || !auth.userId) return
 
-  await supabase
-    .from('event_sync')
-    .update({ removed_at: new Date().toISOString() })
-    .eq('event_id', eventId)
-    .eq('user_id', auth.userId)
+  await supabase.from('event_sync').delete().eq('event_id', eventId).eq('user_id', auth.userId)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -204,6 +203,10 @@ export async function runSync(interactive = false): Promise<void> {
 
     if (failed > 0) sync.error = strings.google.someFailed
     else sync.lastRunAt = Date.now()
+
+    // Fire-and-forget: clears a tombstone once every member's phone has
+    // removed its copy. Cheap to call even when there is nothing to clean.
+    if (supabase) void supabase.rpc('cleanup_event_tombstones')
   } finally {
     sync.running = false
   }
