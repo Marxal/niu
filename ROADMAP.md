@@ -3486,3 +3486,45 @@ worker without the button code takes over.
 4. Tap **Yes** there. It should record correctly this time — check the event
    shows as confirmed, and that the asking phone gets its own "they said yes"
    notification a moment later, same as round 17.
+
+## Round 18 — Sync bookkeeping stops growing forever
+
+**Branch:** `claude/round-17-push-notifications`. Follows a free-tier capacity
+analysis: a settled household's data barely dents Supabase's 500 MB limit, but
+two tables tied to Google Calendar sync — `event_sync` and
+`event_tombstones` — had no cleanup at all, so they grew by roughly one row
+per member per calendar edit, forever. That was the one finding worth acting
+on now; two others from the same analysis (a row cap on the catalogue query,
+pruning old `meal_entries`) turned out on closer inspection not to be real
+problems for this app at its current scale, and were left alone.
+
+### What changed
+
+- `src/lib/google-sync.svelte.ts`: `recordRemoved` now **deletes** its
+  `event_sync` row the moment a member's phone has told Google to remove an
+  event, instead of just stamping `removed_at` on it and keeping it forever.
+  `syncPlan()` already treated a missing row exactly like a removed one, so
+  this changes nothing about how sync behaves — it just stops leaving a row
+  behind once its job is done.
+- The same file now calls a new `cleanup_event_tombstones()` function after
+  every sync. A tombstone (the record that lets a phone which hasn't synced
+  in a while learn an event was deleted) is only safe to remove once *every*
+  household member has caught up — a cross-member check that `event_sync`'s
+  own privacy rule ("another member's sync state is none of your business")
+  won't let a client make directly. The function runs with elevated
+  privilege to do that one check, same pattern as `record_shop()`, and never
+  exposes another member's row to anyone.
+- `supabase/migrations/0017_sync_cleanup.sql`: adds that function, plus a
+  one-off sweep of any `event_sync` rows the old stamp-not-delete behaviour
+  already left behind.
+
+### How to test it
+
+1. **Run `0017_sync_cleanup.sql` once** in the Supabase dashboard's SQL
+   Editor (safe to re-run).
+2. Nothing changes visibly in the app — the calendar and the Sync pill work
+   exactly as before. To confirm the cleanup itself: delete a calendar event
+   that's already been pushed to Google, wait for the Sync pill to clear (or
+   tap it), then in the Supabase Table Editor check that the matching
+   `event_sync` row for your account is gone rather than sitting there with
+   `removed_at` set.
