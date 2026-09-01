@@ -4,6 +4,9 @@ dist/
 *.local
 .vite/
 
+# Supabase CLI local link state (machine-specific)
+supabase/.temp
+
 # Note: `.env` is deliberately NOT ignored. It holds the Supabase project URL and
 # the anon key, both of which are compiled into the public bundle anyway — they
 # are public by design, and Row Level Security is what protects the data. Keeping
