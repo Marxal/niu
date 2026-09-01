@@ -63,6 +63,16 @@ uses those, it's the old API; convert it.
    cost down for every future round.
 7. **Every screen is designed for a thumb.** 412×915 is the reference viewport. Touch
    targets are generous. Test at that size.
+8. **Schema changes are migration files via the Supabase CLI — never the SQL editor.**
+   A new file in `supabase/migrations/`, then `supabase db push` from a real terminal
+   (this has to be Marçal — Claude Code's sandboxed shell can't reach the CLI's login
+   session, and the DB password shouldn't pass through it anyway). This project shares
+   its Supabase project with `pensar` (Marçal's personal task app, its tables prefixed
+   `pensar_`) via the same project ref. The migration-history table lives once in that
+   shared database, so **every migration file, from either app, must exist in both
+   repos' `supabase/migrations/` folders** — otherwise `db push` / `migration list`
+   error about remote versions missing locally. Claude mirrors the file into the other
+   repo automatically; just say which app the change is for.
 
 ## Conventions
 
