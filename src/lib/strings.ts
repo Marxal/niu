@@ -48,7 +48,7 @@ export const strings = {
     },
     calendar: {
       heading: 'The household calendar',
-      blurb: 'Family events and reminders, pushed to a Google calendar called Niu.',
+      blurb: 'Family events and tasks, pushed to a Google calendar called Niu.',
     },
   },
 
@@ -532,7 +532,7 @@ export const strings = {
     comingUp: 'Coming up',
     allDay: 'All day',
     addEvent: 'Event',
-    addReminder: 'Reminder',
+    addReminder: 'Task',
     add: 'Add something',
     loadFailed: "Couldn't load the calendar. It'll be there when you're back online.",
     saveFailed: "Couldn't save that just now. Try again in a moment.",
@@ -542,9 +542,9 @@ export const strings = {
 
     // The sheet
     newEvent: 'New event',
-    newReminder: 'New reminder',
+    newReminder: 'New task',
     editEvent: 'Event',
-    editReminder: 'Reminder',
+    editReminder: 'Task',
     titleLabel: 'Title',
     eventPlaceholder: 'Add a title',
     reminderPlaceholder: 'Remember to…',
@@ -596,10 +596,13 @@ export const strings = {
     // Week numbers down the side of the month (round 12)
     weekAbbrev: 'w',
 
-    // Confirmation
-    askOne: (name: string) => `Ask ${name} to confirm`,
-    askEveryone: 'Ask the others to confirm',
-    askHint: 'It goes to the top of their calendar with Yes / Can’t on it.',
+    // Confirmation. Round 20.2 redrew this as a chip, matching Remind and
+    // Who goes rather than a switch — the label says what the field is for,
+    // the chip names who it goes to, and used to say the same thing twice
+    // ("Ask Marta to confirm" as both label and switch caption).
+    askLabel: 'Ask to confirm',
+    askChipEveryone: 'Everyone',
+    askHint: 'They get a Yes / Can’t to answer.',
     waiting: 'Waiting',
     waitingOn: (name: string) => `Waiting on ${name}`,
     confirmed: 'Confirmed',
@@ -616,21 +619,30 @@ export const strings = {
     confirmSheetTitle: 'Waiting on you',
 
     // The push reminder (round 20.1) — a nudge for everyone, not just the day
-    // on the grid Google's own alarm already covers.
-    remindLabel: 'Remind',
+    // on the grid Google's own alarm already covers. First in the group
+    // (round 20.2, Marçal): deciding whether this needs a nudge comes before
+    // deciding whether it needs agreeing on.
+    remindLabel: 'Set up a reminder',
     remindNames: {
       on_time: 'On time',
       '15_before': '15 min before',
       day_before: 'The day before',
     } as const,
-    remindHint: "Buzzes everyone's phone, whether the app is open or not.",
+    // Who it actually buzzes, spelled out rather than the generic sentence
+    // round 20.1 shipped — three shapes, same as the confirm chip: just you,
+    // you and the one other account, or the whole household.
+    remindHintSolo: "You'll get notified.",
+    remindHintOne: (name: string) => `You and ${name} will get notified.`,
+    remindHintEveryone: 'Everyone will get notified.',
     remindSet: (name: string) => `Reminder: ${name}`,
 
-    // Reminders
+    // Tasks (renamed from "Reminder" in round 20.2 — that word now means the
+    // push nudge above, and one screen having two different things called a
+    // reminder was the actual bug).
     done: 'Done',
     undone: 'Not done after all',
     doneAt: (name: string) => `Ticked off by ${name}`,
-    reminderHint: 'A reminder is just a day and a thing to do. Give it a time if you want the nudge at a particular hour.',
+    reminderHint: 'A task is just a day and a thing to do. Give it a time if you want the nudge at a particular hour.',
   },
 
   google: {

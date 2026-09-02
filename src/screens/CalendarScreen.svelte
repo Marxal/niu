@@ -450,7 +450,9 @@
       </button>
     {/if}
     <button class="add" onclick={() => create('reminder')}>
-      <span aria-hidden="true">⏰</span> {strings.calendar.addReminder}
+      <!-- ✅ rather than round 20.1's ⏰: that icon now reads as the push
+           reminder below, and this button makes a task, not an alarm. -->
+      <span aria-hidden="true">✅</span> {strings.calendar.addReminder}
     </button>
     <button class="add primary" onclick={() => create('event')}>
       <span aria-hidden="true">＋</span> {strings.calendar.addEvent}
