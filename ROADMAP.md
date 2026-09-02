@@ -3701,3 +3701,66 @@ real terminal (not Claude Code's sandboxed shell):
 4. Reopen the event: the Remind row should still show the offset you picked,
    and the read-only view (tap Close instead of Edit) should show a
    "Reminder: On time" line.
+
+## Round 20.2 — Untangling two things both called "reminder"
+
+**Branch:** `claude/round-17-push-notifications`. Round 20.1 gave the app two
+different features called "reminder" in the UI at once — the kind of item
+you add from the calendar's second button (a day and a thing to do, no time
+required), and the new push nudge on an event. Marçal's fix: rename the
+first one **Task**, so "reminder" only ever means the push nudge from here
+on. He also asked for the confirm switch to look like the rest of the group
+instead of standing out as the one field with a different control, and for
+both explanations to say less.
+
+### What changed
+
+- **`src/lib/strings.ts`** — the item kind is "Task" everywhere it showed as
+  "Reminder": the calendar's add button, the sheet's heading, the empty-state
+  blurb, and the hint under an all-day one. Nothing about the data changed —
+  `kind: 'reminder'` is still the column value, same as `kind: 'event'`; only
+  the word shown for it did.
+- **`src/screens/CalendarScreen.svelte`** — the add-task button's icon
+  changed from ⏰ to ✅, since the alarm clock now reads as the push reminder
+  instead.
+- **`src/components/EventSheet.svelte`** —
+  - **Set up a reminder** (renamed from "Remind") now comes **first** in the
+    group, before Ask to confirm: deciding whether something needs a nudge
+    comes before deciding whether it needs agreeing on.
+  - **Ask to confirm** is no longer a switch. It's now a chip, in the same
+    row style as Remind and Who goes: a label saying what the field is for,
+    one button below naming who it goes to (their name, or "Everyone").
+    Tapping it toggles the same as before.
+  - The armed-reminder explanation now says who it actually notifies —
+    "You'll get notified" alone, "You and Marta will get notified" with one
+    other account, or "Everyone will get notified" with more than one —
+    rather than round 20.1's generic sentence.
+- **`src/lib/strings.ts`** — `askHint` shortened from "It goes to the top of
+  their calendar with Yes / Can't on it." to "They get a Yes / Can't to
+  answer."; `askOne`/`askEveryone` retired in favour of the chip just showing
+  the name, with `askLabel` ('Ask to confirm') and `askChipEveryone`
+  ('Everyone') taking their place.
+
+### What it looks like
+
+The calendar's second button now reads **✅ Task** instead of ⏰ Reminder.
+Opening an event now shows, in order: title, when, **Set up a reminder**
+(three round chips), **Ask to confirm** (one chip with the other person's
+name, or "Everyone"), **Who goes**, **Colour**. Arming a reminder shows a
+one-line explanation of who gets buzzed; tapping the confirm chip shows a
+shorter one ("They get a Yes / Can't to answer.") underneath.
+
+### How to test it
+
+1. **Calendar screen** — the second button at the bottom now says **Task**
+   with a ✅, not **Reminder** with an ⏰. Tap it: the sheet still opens the
+   same day-only form as before, just relabelled — heading says "New task".
+2. **Calendar → an event → New (or edit one).** The first field under the
+   time picker should now be **Set up a reminder**, with Ask to confirm
+   right below it as a single tappable chip with your partner's name on it
+   (or "Everyone" if there's more than one other account).
+3. Tap the Ask to confirm chip — it should highlight and show "They get a
+   Yes / Can't to answer." underneath. Tap it again — both disappear.
+4. Arm any reminder offset — the line underneath should say "You and
+   [name] will get notified." (or "Everyone will get notified" with a bigger
+   household).

@@ -407,6 +407,14 @@
     const others = people.accounts.filter((p) => p.userId !== auth.userId)
     return others.length === 1 ? others[0] : null
   })
+
+  /** Who a reminder actually buzzes, in as many words as it takes to be
+   *  accurate: just you, you and the one other account, or the household. */
+  let remindHintText = $derived.by(() => {
+    if (people.alone) return strings.calendar.remindHintSolo
+    if (theOther) return strings.calendar.remindHintOne(personName(theOther))
+    return strings.calendar.remindHintEveryone
+  })
 </script>
 
 <div class="backdrop" role="presentation" onclick={onclose}></div>
@@ -589,25 +597,62 @@
       {/if}
     </div>
 
+    <!-- The push reminder (round 20.1, moved first in round 20.2): three
+         small round chips, ready to tap — no switch above them to turn on
+         first, because picking one *is* turning it on. Tapping the one
+         already on turns it back off. Offered regardless of household size —
+         it buzzes whoever is subscribed, which is yourself alone before
+         anyone else has joined. First in the group because deciding this
+         needs a nudge comes before deciding it needs agreeing on. -->
+    <div class="field">
+      <span class="label">{strings.calendar.remindLabel}</span>
+      <div class="reminders">
+        {#each REMINDER_OFFSETS as offset (offset)}
+          <button
+            class="reminder-chip"
+            class:on={draft.remind === offset}
+            aria-pressed={draft.remind === offset}
+            onclick={() => toggleRemind(offset)}
+          >
+            {strings.calendar.remindNames[offset]}
+          </button>
+        {/each}
+      </div>
+      {#if draft.remind}
+        <p class="hint">{remindHintText}</p>
+      {/if}
+    </div>
+
     <!-- Round 13 moved this out of the edit-only section at the bottom and into
          the ordinary flow: sending something round to be agreed is part of
          writing it down, not an afterthought you come back for. Off unless
          Settings says otherwise — most of what goes on a family calendar is a
          statement rather than a question.
 
-         Round 20.1 moved it to the top of this group: asking whether it's
-         settled comes before nudging people about it. Only when there is
-         somebody with a phone to ask. -->
+         Round 20.2 redrew it as a chip rather than a switch, to match Remind
+         and Who goes above and below it: a label saying what the field does,
+         one tappable option naming who it goes to. The label used to be the
+         only place that said who — "Ask Marta to confirm" doubling as both
+         label and switch caption — which is also what made the explanation
+         underneath need to spell out "to confirm" a second time.
+
+         Only when there is somebody with a phone to ask. -->
     {#if !people.alone}
       <div class="field">
-        <Toggle
-          label={theOther
-            ? strings.calendar.askOne(personName(theOther))
-            : strings.calendar.askEveryone}
-          hint={draft.askConfirm ? strings.calendar.askHint : null}
-          on={draft.askConfirm}
-          onchange={(on) => (draft.askConfirm = on)}
-        />
+        <span class="label">{strings.calendar.askLabel}</span>
+        <div class="reminders">
+          <button
+            class="reminder-chip"
+            class:on={draft.askConfirm}
+            aria-pressed={draft.askConfirm}
+            onclick={() => (draft.askConfirm = !draft.askConfirm)}
+          >
+            {theOther ? personName(theOther) : strings.calendar.askChipEveryone}
+          </button>
+        </div>
+        {#if draft.askConfirm}
+          <p class="hint">{strings.calendar.askHint}</p>
+        {/if}
         {#if willReask}
           <p class="hint warn">{strings.calendar.reconfirm}</p>
         {/if}
@@ -628,30 +673,6 @@
         {/if}
       </div>
     {/if}
-
-    <!-- The push reminder (round 20.1): three small circular chips, ready to
-         tap — no switch above them to turn on first, because picking one *is*
-         turning it on. Tapping the one already on turns it back off. Offered
-         regardless of household size — it buzzes whoever is subscribed, which
-         is yourself alone before anyone else has joined. -->
-    <div class="field">
-      <span class="label">{strings.calendar.remindLabel}</span>
-      <div class="reminders">
-        {#each REMINDER_OFFSETS as offset (offset)}
-          <button
-            class="reminder-chip"
-            class:on={draft.remind === offset}
-            aria-pressed={draft.remind === offset}
-            onclick={() => toggleRemind(offset)}
-          >
-            {strings.calendar.remindNames[offset]}
-          </button>
-        {/each}
-      </div>
-      {#if draft.remind}
-        <p class="hint">{strings.calendar.remindHint}</p>
-      {/if}
-    </div>
 
     {#if people.list.length > 1}
       <div class="field">
