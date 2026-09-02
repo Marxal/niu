@@ -12,6 +12,11 @@
  * Searching "cheddar" finds the cheese drawing because cheddar is a catalogue
  * item that uses it. The slug is a keyword too, so "cheese" finds it directly.
  *
+ * The catalogue only stretches to groceries, though, so icon-extra.ts is a
+ * second word list for emoji that aren't tied to any catalogue item — "party",
+ * "sunny", "birthday" — which the catalogue could never have taught this
+ * search on its own.
+ *
  * Built once at module load from the seed, which is static data compiled into
  * the bundle — no network, no store, nothing to keep in sync.
  *
@@ -19,6 +24,7 @@
  */
 
 import { CATALOGUE_SEED } from './catalogue-seed'
+import { EXTRA_EMOJI } from './icon-extra'
 import { ICONS } from './icons'
 import { matchesSearch } from './list-view'
 
@@ -56,6 +62,10 @@ function build(): { line: Keywords; emoji: Keywords } {
       if (item.icon) add(line, item.icon, category.name)
       if (item.emoji) add(emoji, item.emoji, category.name)
     }
+  }
+
+  for (const { emoji: glyph, words } of EXTRA_EMOJI) {
+    for (const word of words) add(emoji, glyph, word)
   }
 
   return { line, emoji }

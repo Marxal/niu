@@ -3528,3 +3528,89 @@ problems for this app at its current scale, and were left alone.
    tap it), then in the Supabase Table Editor check that the matching
    `event_sync` row for your account is gone rather than sitting there with
    `removed_at` set.
+
+## Round 19 — More icons: general-purpose emoji, and a bigger face row
+
+**Branch:** `claude/round-17-push-notifications`. A study round: the icon
+picker's line drawings, emoji and OpenMoji "inked" pictures were all
+grocery-shaped by design — every one exists because a catalogue item uses
+it — which meant the search field in that picker could only ever find a
+grocery. Typing "party" or "sunny" for a dish's icon found nothing, even
+though nothing about the *drawing* stopped it working there.
+
+### What changed
+
+- `src/lib/icon-extra.ts` — a new, independent list of 47 general-purpose
+  emoji (celebration, weather, activities, tools, work) with their own search
+  keywords, deliberately kept separate from `catalogue-seed.ts` so none of
+  them can accidentally turn up as a shopping list item.
+- `scripts/fetch-openmoji.mjs` now reads emoji out of both that file and the
+  seed catalogue, so the Emoji and Inked tabs in the icon picker carry all
+  144 drawings (97 grocery + 47 general-purpose) — up from 97.
+  `src/lib/icon-search.ts` indexes the new file's keywords the same way it
+  already indexed the catalogue's, so searching "gift", "football" or
+  "birthday" now turns up a result on any item or dish, not just groceries.
+- `src/components/PersonSheet.svelte` — the fixed row of face emoji for a
+  person's avatar grew from 12 to 20 (added 🐶 🐱 🐢 🦄 🌻 🎸 🚀 🔥), same
+  "reads as a person, not as fruit" spirit as the original set.
+- `docs/OPENMOJI.md` updated with the new counts and the second source.
+
+### What it looks like
+
+No screen changed shape. The icon picker (long-press an item or open a
+dish's icon) now shows more pictures in its Emoji/Inked grids, and its search
+field answers to more words. The person-editing sheet shows eight more faces
+to choose from.
+
+### How to test it
+
+1. **Shopping list or a dish:** long-press a tile (or open a dish and tap its
+   icon) to open the picker, switch to the Emoji or Inked tab and scroll —
+   more pictures than before, things like 🎉🎁⚽🔧🚗 mixed in with the food.
+2. Type "party", "gift", "football" or "birthday" into the search field —
+   each should now return a match, where before typing anything non-food
+   returned nothing.
+3. **A person:** Settings → tap a household member → the face row under
+   their name now has 20 options instead of 12, including a dog, cat,
+   turtle, unicorn, sunflower, guitar, rocket and flame.
+
+## Round 20 — Picking a start time keeps the end time honest
+
+**Branch:** `claude/round-17-push-notifications`. Picking a start time in the
+event sheet left the end time wherever it already was, so changing an
+evening's start from 12:00 to 20:00 quietly left an end still sitting at
+13:00 — before the new start. Nothing stopped Save; `cleanDraft` just turned
+it into an open-ended event with no end time at all, silently.
+
+### What changed
+
+- `src/lib/dates.ts` — a new `addMinutesToTime(time, minutes)` helper: a
+  `HH:MM` shifted by some minutes, wrapping at midnight, saying how many
+  midnights (`days`) it crossed.
+- `src/components/EventSheet.svelte` — picking a start time now moves the end
+  time to exactly one hour later. If that shift crosses midnight on what was
+  a single-day event, the end date rolls forward a day with it, so a start
+  picked at 23:30 still produces a sensible 23:30–00:30 rather than tripping
+  the check below.
+- The same file now refuses to save — button disabled, a red line under the
+  time fields — if a hand-edited end time still lands at or before the start
+  on the same day. Before, this saved silently and `cleanDraft` dropped the
+  end time without telling anyone.
+- `src/lib/strings.ts` — the new error line, `timeOrderError`.
+
+### What it looks like
+
+Add or edit a timed event and tap the start-time field: the end time jumps
+to an hour later automatically. If you then drag the end time back before
+the start by hand, the field row gets a red line — "The end time has to be
+after the start time." — and Save is greyed out until it's fixed.
+
+### How to test it
+
+1. **Calendar → +Event**, tap the start time and set it to something like
+   20:00. The end time field should update to 21:00 on its own, no extra tap.
+2. Now open **More** isn't needed — tap the end-time field directly and set
+   it to something before 20:00 (e.g. 19:00). Save should grey out and a red
+   line should appear under the time fields.
+3. Set the end time back to after the start — the red line disappears and
+   Save works again.
