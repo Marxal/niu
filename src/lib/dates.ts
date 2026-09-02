@@ -328,6 +328,23 @@ export function minutesOfDay(time: string | null): number | null {
 }
 
 /**
+ * A time shifted forward or back, wrapping at midnight. `days` says how many
+ * midnights it crossed — 1 for a start of 23:30 pushed on an hour, 0
+ * otherwise — so a caller that also owns a date can carry the date across
+ * with it instead of quietly landing the wrong side of midnight.
+ */
+export function addMinutesToTime(time: string, minutes: number): { time: string; days: number } {
+  const clean = toTime(time)
+  if (clean === null) return { time, days: 0 }
+  const total = Number(clean.slice(0, 2)) * 60 + Number(clean.slice(3, 5)) + minutes
+  const days = Math.floor(total / 1440)
+  const wrapped = total - days * 1440
+  const h = Math.floor(wrapped / 60)
+  const m = wrapped % 60
+  return { time: `${`${h}`.padStart(2, '0')}:${`${m}`.padStart(2, '0')}`, days }
+}
+
+/**
  * How a time reads on a card: "18:30", or "18:30 – 20:00" when there's an end.
  * An end alone is impossible — the database refuses it — so this only has the
  * two shapes.

@@ -553,6 +553,7 @@ export const strings = {
     startTimeLabel: 'Start time',
     endTimeLabel: 'End time',
     allDayLabel: 'All day',
+    timeOrderError: 'The end time has to be after the start time.',
     whoLabel: 'Who goes',
     whoForLabel: "Who's it for",
     whereLabel: 'Where',

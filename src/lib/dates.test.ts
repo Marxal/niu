@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   addDays,
+  addMinutesToTime,
   addMonths,
   dateKey,
   dateRange,
@@ -260,6 +261,12 @@ describe('times', () => {
     expect(timeLabel(null, null)).toBe('')
     // An end with no start cannot be stored, and reads as nothing if it is.
     expect(timeLabel(null, '20:00')).toBe('')
+  })
+
+  it('shifts a time forward, wrapping at midnight', () => {
+    expect(addMinutesToTime('12:00', 60)).toEqual({ time: '13:00', days: 0 })
+    expect(addMinutesToTime('23:30', 60)).toEqual({ time: '00:30', days: 1 })
+    expect(addMinutesToTime('00:00', 60)).toEqual({ time: '01:00', days: 0 })
   })
 })
 

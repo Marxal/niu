@@ -81,9 +81,11 @@
   import type { EditScope } from '../lib/calendar.svelte'
   import {
     addDays,
+    addMinutesToTime,
     dateRange,
     daysBetween,
     longDate,
+    minutesOfDay,
     shortDate,
     shortDayName,
     timeLabel,
@@ -273,6 +275,38 @@
     if (draft.endsOn < draft.startsOn) draft.endsOn = draft.startsOn
   }
 
+  /**
+   * Picking a start time carries the end time an hour along with it, so the
+   * pair never lands back-to-front by default (Marçal, round 19).
+   *
+   * A start of 23:30 pushed an hour crosses midnight — `addMinutesToTime`
+   * says so via `days`, and when this was still a single day that midnight is
+   * folded into `endsOn` rather than left to trip the same-day check below.
+   */
+  function onStartTimeChange() {
+    if (draft.startTime === null) return
+    const shifted = addMinutesToTime(draft.startTime, 60)
+    draft.endTime = shifted.time
+    if (shifted.days > 0 && draft.endsOn === draft.startsOn) {
+      draft.endsOn = addDays(draft.startsOn, shifted.days)
+    }
+  }
+
+  /**
+   * True once a hand-edited end time lands at or before the start on the same
+   * day. The auto-shift above keeps this from happening on its own — this is
+   * only for the end time typed in afterwards — but when it does, Save is
+   * refused with a reason rather than cleanDraft quietly turning the event
+   * open-ended.
+   */
+  let timeError = $derived.by(() => {
+    if (allDay || draft.endsOn > draft.startsOn) return false
+    const startMins = minutesOfDay(draft.startTime)
+    const endMins = minutesOfDay(draft.endTime)
+    if (startMins === null || endMins === null) return false
+    return endMins <= startMins
+  })
+
   /* ---------------------------------------------------------------------- */
   /* Repeating                                                               */
   /* ---------------------------------------------------------------------- */
@@ -333,7 +367,7 @@
    * asking "all ten?" about nothing would be a question with no stakes.
    */
   function save() {
-    if (!canSave(draft)) return
+    if (!canSave(draft) || timeError) return
     if (series !== null && !unchanged) {
       asking = 'save'
       return
@@ -509,6 +543,7 @@
             type="time"
             aria-label={strings.calendar.startTimeLabel}
             bind:value={draft.startTime}
+            onchange={onStartTimeChange}
           />
         {/if}
       </div>
@@ -532,6 +567,10 @@
           />
         {/if}
       </div>
+
+      {#if timeError}
+        <p class="hint error">{strings.calendar.timeOrderError}</p>
+      {/if}
 
       {#if isReminder && allDay}
         <p class="hint">{strings.calendar.reminderHint}</p>
@@ -739,7 +778,7 @@
       <button class="save" onclick={() => (mode = 'edit')}>{strings.calendar.edit}</button>
     {:else}
       <span class="day-note">{shortDayName(draft.startsOn)} {longDate(draft.startsOn)}</span>
-      <button class="save" disabled={!canSave(draft)} onclick={save}>
+      <button class="save" disabled={!canSave(draft) || timeError} onclick={save}>
         {editing ? strings.calendar.save : strings.calendar.saveAdd}
       </button>
     {/if}
@@ -1020,6 +1059,10 @@
 
   .hint.warn {
     color: var(--color-warning);
+  }
+
+  .hint.error {
+    color: var(--color-danger);
   }
 
   .colours {
