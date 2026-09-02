@@ -11,8 +11,10 @@
   preference is about the grid as a whole and this is about one item (see
   icon-ref.ts).
 
-  The Emoji and Inked tabs show the same list — the emoji the catalogue knows —
-  so the tabs differ in how they draw, not in what is on offer.
+  The Emoji and Inked tabs show the same list — every emoji shipped with a
+  drawing, whether a catalogue item uses it (icons.ts) or it's a general-purpose
+  one from icon-extra.ts — so the tabs differ in how they draw, not in what is
+  on offer.
 
   Round 8.1 added the search field, and it changes the shape of the sheet while
   there is a query in it: the tabs go away and all three styles are shown at

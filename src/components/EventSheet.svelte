@@ -67,8 +67,10 @@
     type CalendarEvent,
     type EventDraft,
     type EventKind,
+    type ReminderOffset,
     DEFAULT_END_TIME,
     DEFAULT_START_TIME,
+    REMINDER_OFFSETS,
     canSave,
     confirmState,
     draftFrom,
@@ -81,9 +83,11 @@
   import type { EditScope } from '../lib/calendar.svelte'
   import {
     addDays,
+    addMinutesToTime,
     dateRange,
     daysBetween,
     longDate,
+    minutesOfDay,
     shortDate,
     shortDayName,
     timeLabel,
@@ -273,6 +277,38 @@
     if (draft.endsOn < draft.startsOn) draft.endsOn = draft.startsOn
   }
 
+  /**
+   * Picking a start time carries the end time an hour along with it, so the
+   * pair never lands back-to-front by default (Marçal, round 19).
+   *
+   * A start of 23:30 pushed an hour crosses midnight — `addMinutesToTime`
+   * says so via `days`, and when this was still a single day that midnight is
+   * folded into `endsOn` rather than left to trip the same-day check below.
+   */
+  function onStartTimeChange() {
+    if (draft.startTime === null) return
+    const shifted = addMinutesToTime(draft.startTime, 60)
+    draft.endTime = shifted.time
+    if (shifted.days > 0 && draft.endsOn === draft.startsOn) {
+      draft.endsOn = addDays(draft.startsOn, shifted.days)
+    }
+  }
+
+  /**
+   * True once a hand-edited end time lands at or before the start on the same
+   * day. The auto-shift above keeps this from happening on its own — this is
+   * only for the end time typed in afterwards — but when it does, Save is
+   * refused with a reason rather than cleanDraft quietly turning the event
+   * open-ended.
+   */
+  let timeError = $derived.by(() => {
+    if (allDay || draft.endsOn > draft.startsOn) return false
+    const startMins = minutesOfDay(draft.startTime)
+    const endMins = minutesOfDay(draft.endTime)
+    if (startMins === null || endMins === null) return false
+    return endMins <= startMins
+  })
+
   /* ---------------------------------------------------------------------- */
   /* Repeating                                                               */
   /* ---------------------------------------------------------------------- */
@@ -325,6 +361,12 @@
     draft.colour = colour
   }
 
+  /** Tapping the armed offset again disarms it — there is no separate "off"
+   *  chip, the three options are the whole control (Marçal, round 20.1). */
+  function toggleRemind(offset: ReminderOffset) {
+    draft.remind = draft.remind === offset ? null : offset
+  }
+
   /**
    * Save, or first ask which occurrences it applies to.
    *
@@ -333,7 +375,7 @@
    * asking "all ten?" about nothing would be a question with no stakes.
    */
   function save() {
-    if (!canSave(draft)) return
+    if (!canSave(draft) || timeError) return
     if (series !== null && !unchanged) {
       asking = 'save'
       return
@@ -384,6 +426,10 @@
       <h3 class="detail-title">{draft.title}</h3>
 
       <p class="detail-when">{whenLine}</p>
+
+      {#if draft.remind}
+        <p class="detail-line">{strings.calendar.remindSet(strings.calendar.remindNames[draft.remind])}</p>
+      {/if}
 
       {#if series}
         <p class="detail-line">
@@ -509,6 +555,7 @@
             type="time"
             aria-label={strings.calendar.startTimeLabel}
             bind:value={draft.startTime}
+            onchange={onStartTimeChange}
           />
         {/if}
       </div>
@@ -533,37 +580,24 @@
         {/if}
       </div>
 
+      {#if timeError}
+        <p class="hint error">{strings.calendar.timeOrderError}</p>
+      {/if}
+
       {#if isReminder && allDay}
         <p class="hint">{strings.calendar.reminderHint}</p>
       {/if}
     </div>
 
-    {#if people.list.length > 1}
-      <div class="field">
-        <!-- A reminder is a job rather than an outing: you do not "go" to
-             renewing a parking permit, you are the one who has to. -->
-        <span class="label">
-          {isReminder ? strings.calendar.whoForLabel : strings.calendar.whoLabel}
-        </span>
-        <div class="faces">
-          {#each people.list as person (person.id)}
-            <PersonAvatar
-              {person}
-              size="lg"
-              on={draft.attendees.includes(person.id)}
-              onclick={() => toggleAttendee(person.id)}
-            />
-          {/each}
-        </div>
-      </div>
-    {/if}
     <!-- Round 13 moved this out of the edit-only section at the bottom and into
          the ordinary flow: sending something round to be agreed is part of
          writing it down, not an afterthought you come back for. Off unless
          Settings says otherwise — most of what goes on a family calendar is a
          statement rather than a question.
 
-         Only when there is somebody with a phone to ask. -->
+         Round 20.1 moved it to the top of this group: asking whether it's
+         settled comes before nudging people about it. Only when there is
+         somebody with a phone to ask. -->
     {#if !people.alone}
       <div class="field">
         <Toggle
@@ -592,6 +626,50 @@
             {/each}
           </p>
         {/if}
+      </div>
+    {/if}
+
+    <!-- The push reminder (round 20.1): three small circular chips, ready to
+         tap — no switch above them to turn on first, because picking one *is*
+         turning it on. Tapping the one already on turns it back off. Offered
+         regardless of household size — it buzzes whoever is subscribed, which
+         is yourself alone before anyone else has joined. -->
+    <div class="field">
+      <span class="label">{strings.calendar.remindLabel}</span>
+      <div class="reminders">
+        {#each REMINDER_OFFSETS as offset (offset)}
+          <button
+            class="reminder-chip"
+            class:on={draft.remind === offset}
+            aria-pressed={draft.remind === offset}
+            onclick={() => toggleRemind(offset)}
+          >
+            {strings.calendar.remindNames[offset]}
+          </button>
+        {/each}
+      </div>
+      {#if draft.remind}
+        <p class="hint">{strings.calendar.remindHint}</p>
+      {/if}
+    </div>
+
+    {#if people.list.length > 1}
+      <div class="field">
+        <!-- A reminder is a job rather than an outing: you do not "go" to
+             renewing a parking permit, you are the one who has to. -->
+        <span class="label">
+          {isReminder ? strings.calendar.whoForLabel : strings.calendar.whoLabel}
+        </span>
+        <div class="faces">
+          {#each people.list as person (person.id)}
+            <PersonAvatar
+              {person}
+              size="lg"
+              on={draft.attendees.includes(person.id)}
+              onclick={() => toggleAttendee(person.id)}
+            />
+          {/each}
+        </div>
       </div>
     {/if}
 
@@ -739,7 +817,7 @@
       <button class="save" onclick={() => (mode = 'edit')}>{strings.calendar.edit}</button>
     {:else}
       <span class="day-note">{shortDayName(draft.startsOn)} {longDate(draft.startsOn)}</span>
-      <button class="save" disabled={!canSave(draft)} onclick={save}>
+      <button class="save" disabled={!canSave(draft) || timeError} onclick={save}>
         {editing ? strings.calendar.save : strings.calendar.saveAdd}
       </button>
     {/if}
@@ -1006,6 +1084,34 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Three small round chips rather than a switch — picking one is the whole
+     interaction (see the template comment). Round, not the pill shape of the
+     repeat/colour chips elsewhere, so the eye reads this row as its own
+     control rather than a second repeat row. */
+  .reminders {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .reminder-chip {
+    flex: 1 1 auto;
+    min-height: var(--tap-min);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-full);
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .reminder-chip.on {
+    background: var(--color-tab-calendar);
+    border-color: var(--color-tab-calendar);
+    color: var(--color-accent-ink);
+  }
+
   .faces {
     display: flex;
     flex-wrap: wrap;
@@ -1020,6 +1126,10 @@
 
   .hint.warn {
     color: var(--color-warning);
+  }
+
+  .hint.error {
+    color: var(--color-danger);
   }
 
   .colours {

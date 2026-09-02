@@ -19,5 +19,11 @@ export default defineConfig({
   server: {
     host: true, // so a phone on the same wifi can open the dev server
     port: 5173,
+    // Google OAuth via Supabase can only ever validate a *hostname* redirect,
+    // never a raw LAN IP (Supabase's Auth server hard-rejects any redirect_to
+    // whose host parses as an IP address, unless it's loopback — see CLAUDE.md
+    // rule 8). Bonjour/mDNS gives this Mac a stable "<name>.local" hostname
+    // for free; Vite's own DNS-rebinding guard needs it allow-listed here too.
+    allowedHosts: ['.local', 'dev.bitochess.com'],
   },
 })

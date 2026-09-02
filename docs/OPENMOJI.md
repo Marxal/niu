@@ -47,18 +47,26 @@ emoji for about a third of items in the first place, and several items share one
 style did — an OpenMoji drawing where the item has an emoji, the line drawing
 everywhere else — which keeps coverage at the line set's 99%.
 
+Round "more icons" added a second source, `src/lib/icon-extra.ts`: 47
+general-purpose emoji (celebration, weather, activities, tools, work) that
+aren't tied to any catalogue item, so the icon picker's search can find
+"party" or "sunny" for a dish even though nothing in the shopping list is
+called that. OpenMoji covers all 47 too, so the shipped set is **144
+drawings** in total.
+
 **The €15 icon budget is not needed.** Nothing was bought.
 
 ## How the files got here
 
 `node scripts/fetch-openmoji.mjs` — reads the emoji out of
-`src/lib/catalogue-seed.ts`, downloads each one from OpenMoji's repository at
-the pinned release **17.0.0**, writes them to `public/openmoji/`, and regenerates
-`src/lib/openmoji.ts` (the emoji → filename map).
+`src/lib/catalogue-seed.ts` and `src/lib/icon-extra.ts`, downloads each one
+from OpenMoji's repository at the pinned release **17.0.0**, writes them to
+`public/openmoji/`, and regenerates `src/lib/openmoji.ts` (the emoji →
+filename map).
 
-97 files, 257 kB on disk, served as ordinary static files and cached by the
+144 files, 377 kB on disk, served as ordinary static files and cached by the
 browser. None of it is in the JavaScript bundle, and only the icons actually on
 screen are ever requested.
 
-Re-run the script after adding an emoji to the seed. It needs network; the build
-does not.
+Re-run the script after adding an emoji to either file. It needs network; the
+build does not.

@@ -46,7 +46,28 @@
   let { person, onclose }: { person: Person; onclose: () => void } = $props()
 
   /** A short row of faces that read as people rather than as fruit. */
-  const FACES = ['🙂', '😎', '🦊', '🐻', '🐧', '🌿', '⭐', '🎧', '🍀', '🐿️', '🦉', '🌊']
+  const FACES = [
+    '🙂',
+    '😎',
+    '🦊',
+    '🐻',
+    '🐧',
+    '🌿',
+    '⭐',
+    '🎧',
+    '🍀',
+    '🐿️',
+    '🦉',
+    '🌊',
+    '🐶',
+    '🐱',
+    '🐢',
+    '🦄',
+    '🌻',
+    '🎸',
+    '🚀',
+    '🔥',
+  ]
 
   // Snapshotted once, like every text field in this app: re-syncing from the
   // server would move the cursor under somebody mid-word.

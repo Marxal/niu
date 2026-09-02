@@ -4,9 +4,10 @@
  * Why a script and not an npm package: the icon set is ~4,000 files and we need
  * fewer than a hundred of them. Pulling the whole package in to use 2% of it
  * would cost more than the rest of the app put together, and CLAUDE.md rules out
- * icon packages anyway. So this fetches exactly the emoji the seed catalogue
- * names, straight from OpenMoji's repository at a pinned release, and commits
- * them under public/openmoji/ — the build then needs no network at all.
+ * icon packages anyway. So this fetches exactly the emoji named by the seed
+ * catalogue and by icon-extra.ts's general-purpose list, straight from
+ * OpenMoji's repository at a pinned release, and commits them under
+ * public/openmoji/ — the build then needs no network at all.
  *
  * The files are written byte-for-byte as published. That is deliberate: OpenMoji
  * is CC BY-SA 4.0, and shipping the graphics unmodified keeps us clearly inside
@@ -29,14 +30,17 @@ const RELEASE = '17.0.0'
 const BASE = `https://raw.githubusercontent.com/hfg-gmuend/openmoji/${RELEASE}/color/svg`
 
 const SEED = resolve(ROOT, 'src/lib/catalogue-seed.ts')
+const EXTRA = resolve(ROOT, 'src/lib/icon-extra.ts')
 const OUT_DIR = resolve(ROOT, 'public/openmoji')
 const OUT_MAP = resolve(ROOT, 'src/lib/openmoji.ts')
 
-/** Every distinct emoji named in the seed catalogue. */
-async function emojiInSeed() {
-  const source = await readFile(SEED, 'utf8')
+/** Every distinct emoji named in the seed catalogue or in icon-extra.ts. */
+async function emojiSources() {
   const found = new Set()
-  for (const match of source.matchAll(/emoji: '([^']+)'/g)) found.add(match[1])
+  for (const file of [SEED, EXTRA]) {
+    const source = await readFile(file, 'utf8')
+    for (const match of source.matchAll(/emoji: '([^']+)'/g)) found.add(match[1])
+  }
   return [...found].sort()
 }
 
@@ -53,7 +57,7 @@ function candidates(emoji) {
 }
 
 async function main() {
-  const emoji = await emojiInSeed()
+  const emoji = await emojiSources()
   await mkdir(OUT_DIR, { recursive: true })
 
   const map = []

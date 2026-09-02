@@ -3528,3 +3528,176 @@ problems for this app at its current scale, and were left alone.
    tap it), then in the Supabase Table Editor check that the matching
    `event_sync` row for your account is gone rather than sitting there with
    `removed_at` set.
+
+## Round 19 — More icons: general-purpose emoji, and a bigger face row
+
+**Branch:** `claude/round-17-push-notifications`. A study round: the icon
+picker's line drawings, emoji and OpenMoji "inked" pictures were all
+grocery-shaped by design — every one exists because a catalogue item uses
+it — which meant the search field in that picker could only ever find a
+grocery. Typing "party" or "sunny" for a dish's icon found nothing, even
+though nothing about the *drawing* stopped it working there.
+
+### What changed
+
+- `src/lib/icon-extra.ts` — a new, independent list of 47 general-purpose
+  emoji (celebration, weather, activities, tools, work) with their own search
+  keywords, deliberately kept separate from `catalogue-seed.ts` so none of
+  them can accidentally turn up as a shopping list item.
+- `scripts/fetch-openmoji.mjs` now reads emoji out of both that file and the
+  seed catalogue, so the Emoji and Inked tabs in the icon picker carry all
+  144 drawings (97 grocery + 47 general-purpose) — up from 97.
+  `src/lib/icon-search.ts` indexes the new file's keywords the same way it
+  already indexed the catalogue's, so searching "gift", "football" or
+  "birthday" now turns up a result on any item or dish, not just groceries.
+- `src/components/PersonSheet.svelte` — the fixed row of face emoji for a
+  person's avatar grew from 12 to 20 (added 🐶 🐱 🐢 🦄 🌻 🎸 🚀 🔥), same
+  "reads as a person, not as fruit" spirit as the original set.
+- `docs/OPENMOJI.md` updated with the new counts and the second source.
+
+### What it looks like
+
+No screen changed shape. The icon picker (long-press an item or open a
+dish's icon) now shows more pictures in its Emoji/Inked grids, and its search
+field answers to more words. The person-editing sheet shows eight more faces
+to choose from.
+
+### How to test it
+
+1. **Shopping list or a dish:** long-press a tile (or open a dish and tap its
+   icon) to open the picker, switch to the Emoji or Inked tab and scroll —
+   more pictures than before, things like 🎉🎁⚽🔧🚗 mixed in with the food.
+2. Type "party", "gift", "football" or "birthday" into the search field —
+   each should now return a match, where before typing anything non-food
+   returned nothing.
+3. **A person:** Settings → tap a household member → the face row under
+   their name now has 20 options instead of 12, including a dog, cat,
+   turtle, unicorn, sunflower, guitar, rocket and flame.
+
+## Round 20 — Picking a start time keeps the end time honest
+
+**Branch:** `claude/round-17-push-notifications`. Picking a start time in the
+event sheet left the end time wherever it already was, so changing an
+evening's start from 12:00 to 20:00 quietly left an end still sitting at
+13:00 — before the new start. Nothing stopped Save; `cleanDraft` just turned
+it into an open-ended event with no end time at all, silently.
+
+### What changed
+
+- `src/lib/dates.ts` — a new `addMinutesToTime(time, minutes)` helper: a
+  `HH:MM` shifted by some minutes, wrapping at midnight, saying how many
+  midnights (`days`) it crossed.
+- `src/components/EventSheet.svelte` — picking a start time now moves the end
+  time to exactly one hour later. If that shift crosses midnight on what was
+  a single-day event, the end date rolls forward a day with it, so a start
+  picked at 23:30 still produces a sensible 23:30–00:30 rather than tripping
+  the check below.
+- The same file now refuses to save — button disabled, a red line under the
+  time fields — if a hand-edited end time still lands at or before the start
+  on the same day. Before, this saved silently and `cleanDraft` dropped the
+  end time without telling anyone.
+- `src/lib/strings.ts` — the new error line, `timeOrderError`.
+
+### What it looks like
+
+Add or edit a timed event and tap the start-time field: the end time jumps
+to an hour later automatically. If you then drag the end time back before
+the start by hand, the field row gets a red line — "The end time has to be
+after the start time." — and Save is greyed out until it's fixed.
+
+### How to test it
+
+1. **Calendar → +Event**, tap the start time and set it to something like
+   20:00. The end time field should update to 21:00 on its own, no extra tap.
+2. Now open **More** isn't needed — tap the end-time field directly and set
+   it to something before 20:00 (e.g. 19:00). Save should grey out and a red
+   line should appear under the time fields.
+3. Set the end time back to after the start — the red line disappears and
+   Save works again.
+
+## Round 20.1 — A push reminder on an event, and the sheet reordered
+
+**Branch:** `claude/round-17-push-notifications`. Round 17 shipped push for
+exactly two things — a confirmation request and its answer — and CLAUDE.md
+named adding a third trigger as the thing to ask about first. Marçal asked:
+an event or reminder can now arm a push nudge, three offsets to choose from,
+and it always fires — there's no separate switch on top of it.
+
+### What changed
+
+- **`src/lib/dates.ts`** — a new `localInstant(day, time, minutesBefore)`:
+  turns a day and a wall-clock time into the real instant they name on this
+  device, minus a number of minutes. Everywhere else in the app a day stays a
+  day (see the file's own header on why) — this is the one place that has to
+  turn one into a moment, because `pg_cron` compares against a real clock.
+- **`src/lib/calendar.ts`** — a `ReminderOffset` type (`'on_time' | '15_before'
+  | 'day_before'`), `remindOffset` on `CalendarEvent`, `remind` on
+  `EventDraft`, and `remindInstant(draft)` which computes the ISO instant to
+  arm, or `null` for no reminder. An untimed event defaults to 9am, same
+  reasoning as pensar's own due reminders.
+- **`src/lib/calendar.svelte.ts`** — `remind_offset` read and written
+  alongside the existing columns; `remind_at` recomputed on every save via
+  `remindInstant`, so the cron below only ever re-arms when it actually moved.
+- **`supabase/migrations/20260902150000_event_reminders.sql`** — three new
+  columns on `events` (`remind_offset`, `remind_at`, `reminder_fired_for`),
+  and a `pg_cron` job every five minutes that calls the same Edge Function
+  round 17 already set up, this time addressed to a whole household's
+  subscriptions rather than one recipient. Mirrored into `pensar`'s own
+  migrations folder per CLAUDE.md — the two apps share one migration history.
+- **`supabase/functions/niu-push/index.ts`** — a third `kind`, `'remind'`:
+  reads the event and every push subscription for its household (not just
+  one person — "for the connected users"), and sends "Thu 3 Sep · 18:00 ·
+  Reminder" to all of them. Needs a redeploy: `supabase functions deploy
+  niu-push --no-verify-jwt`.
+- **`src/components/EventSheet.svelte`** — a new row of three small round
+  chips (On time / 15 min before / The day before) under **Ask to confirm**.
+  Tapping one arms it; tapping the same one again turns it off — there's no
+  separate switch, picking an offset *is* the instruction. The sheet's order
+  is now: title, when, **Ask [name] to confirm**, **Remind**, **Who goes**,
+  **Colour**, then More. A reminder already armed shows as a line in the
+  read-only detail view too.
+- **`src/lib/strings.ts`** — `remindLabel`, `remindNames`, `remindHint`,
+  `remindSet`.
+
+One design call worth flagging: "in a circle or small bow" was read as a
+small row of round chips, matching the repeat/colour rows already in the
+sheet — say if you pictured something more literal (icon-only round buttons,
+say) and it should look different.
+
+### What it looks like
+
+Opening an event or reminder now shows, right after the confirm-to-ask
+switch, a **Remind** row with three small pill buttons. None are on by
+default. Tapping one turns it on (and turns off any other); tapping it again
+turns it off. A hint appears underneath while one is on: "Buzzes everyone's
+phone, whether the app is open or not."
+
+### Before this works on a phone
+
+Same as round 17's own rollout — three things Marçal has to do once, from a
+real terminal (not Claude Code's sandboxed shell):
+
+1. `supabase db push` — writes the new columns, the cron job and the pg_cron
+   extension.
+2. `supabase functions deploy niu-push --no-verify-jwt` — redeploys the Edge
+   Function with the new `'remind'` branch. No new secrets: it reuses round
+   17's `NIU_VAPID_KEYS`, `NIU_PUSH_SECRET`, `NIU_CONTACT_EMAIL` and the
+   existing `push_config` row.
+3. Nothing else — `push_subscriptions` and `push_config` already exist from
+   round 17. If confirmation pushes already work on a phone, reminders will
+   too the moment the migration and the function are both live.
+
+### How to test it
+
+1. **Calendar → an event → New (or edit one) → tap "15 min before"** in the
+   new Remind row. It should light up; tapping it again should turn it back
+   off — try both before saving.
+2. Set an event's start time to a few minutes from now, arm **On time**, and
+   Save. Around that time (cron polls every 5 minutes, so allow a little
+   slack) the phone should buzz with the event's title and "Reminder" in the
+   body — even with the app closed.
+3. Tap that notification — it should open the app, same as round 17's
+   confirmation pushes.
+4. Reopen the event: the Remind row should still show the offset you picked,
+   and the read-only view (tap Close instead of Edit) should show a
+   "Reminder: On time" line.

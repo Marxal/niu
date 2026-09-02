@@ -22,6 +22,7 @@ import {
   needsMyAnswer,
   needsReconfirming,
   newDraft,
+  remindInstant,
   seriesShapeChanged,
   sortEvents,
   spanDays,
@@ -42,6 +43,7 @@ function event(over: Partial<CalendarEvent> = {}): CalendarEvent {
     notes: null,
     colour: 'sky',
     confirmRequested: false,
+    remindOffset: null,
     doneAt: null,
     doneBy: null,
     createdBy: 'marcal',
@@ -258,6 +260,32 @@ describe('drafts', () => {
     // An event that has already been sent round opens with the switch on.
     expect(draftFrom(event({ confirmRequested: true })).askConfirm).toBe(true)
     expect(draftFrom(event()).askConfirm).toBe(false)
+  })
+
+  it('starts with no reminder armed, and reads one back off an event', () => {
+    expect(newDraft('event', '2026-09-03').remind).toBe(null)
+    expect(draftFrom(event({ remindOffset: 'day_before' })).remind).toBe('day_before')
+  })
+
+  it('computes when a reminder should fire, or nothing when none is armed', () => {
+    const timed: EventDraft = { ...newDraft('event', '2026-09-03'), startTime: '18:30' }
+    expect(remindInstant(timed)).toBe(null)
+
+    expect(remindInstant({ ...timed, remind: 'on_time' })).toBe(
+      new Date(2026, 8, 3, 18, 30).toISOString(),
+    )
+    expect(remindInstant({ ...timed, remind: '15_before' })).toBe(
+      new Date(2026, 8, 3, 18, 15).toISOString(),
+    )
+    expect(remindInstant({ ...timed, remind: 'day_before' })).toBe(
+      new Date(2026, 8, 2, 18, 30).toISOString(),
+    )
+  })
+
+  it('defaults an all-day reminder to 9am, the least wrong guess', () => {
+    const allDay: EventDraft = { ...newDraft('reminder', '2026-09-03'), remind: 'on_time' }
+    expect(allDay.startTime).toBe(null)
+    expect(remindInstant(allDay)).toBe(new Date(2026, 8, 3, 9, 0).toISOString())
   })
 
   it('starts a new draft as a one-off', () => {

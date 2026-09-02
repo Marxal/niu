@@ -63,7 +63,44 @@ uses those, it's the old API; convert it.
    cost down for every future round.
 7. **Every screen is designed for a thumb.** 412×915 is the reference viewport. Touch
    targets are generous. Test at that size.
-8. **Schema changes are migration files via the Supabase CLI — never the SQL editor.**
+8. **Testing Google sign-in on a phone over LAN needs a hostname, never a raw
+   IP — Supabase's Auth server hard-rejects IP-address redirects, full stop.**
+   Confirmed straight from `supabase/auth` source
+   (`internal/utilities/request.go`, `IsRedirectURLValid`): if the redirect
+   URL's host parses as an IP address, it returns `ip.IsLoopback()` —
+   `127.0.0.1` only — *before* the dashboard's Redirect URLs allow-list is
+   even consulted. No allow-list entry, wildcarded or exact, can make
+   `http://192.168.x.x:5173/…` valid. Don't re-litigate this with more IP
+   wildcards; it cannot work. `localhost` works only because it's a hostname
+   string, not something `net.ParseIP` recognizes.
+
+   The fix is to give the phone a *hostname*. This Mac already has one for
+   free over Bonjour/mDNS — check it with `scutil --get LocalHostName` (it
+   was `iMac-de-Marcal` → `iMac-de-Marcal.local`) — which iOS and most
+   Android phones resolve on the same wifi with no setup. Two one-time
+   changes:
+   1. **Vite** blocks unrecognized `Host:` headers by default (a separate,
+      unrelated DNS-rebinding guard) — `vite.config.ts`'s
+      `server.allowedHosts: ['.local']` (already set here) fixes that; the
+      leading dot matches any `*.local` name, so it survives this app moving
+      to a different Mac.
+   2. **Supabase dashboard → this project ("Niuapp", ref
+      `qrokiaztsbmevrdqaeih`) → Authentication → URL Configuration → Redirect
+      URLs** — add `http://iMac-de-Marcal.local:*/**` (delete the old
+      `192.168.*` entries; they're dead weight, never valid). This one entry
+      covers **both** apps sharing this project — pensar included — every
+      future dev session, on any port. Open the app on the phone as
+      `http://iMac-de-Marcal.local:5173/…`, not the IP. Google itself needs no
+      change: the redirect URI it sees is always this project's fixed HTTPS
+      callback, never the phone's address.
+   **The separate "Connect Google Calendar" feature (`google.svelte.ts`) is
+   NOT covered by this fix and can't be** — it talks to Google Identity
+   Services directly with its own OAuth client, and Google Cloud Console's
+   "Authorized JavaScript origins" flatly rejects any origin that isn't
+   `https` or `http://localhost` — no wildcards, no LAN IPs, no exceptions.
+   Test that one feature from a desktop browser at `localhost`, or don't test
+   it on a phone at all short of an HTTPS tunnel.
+9. **Schema changes are migration files via the Supabase CLI — never the SQL editor.**
    A new file in `supabase/migrations/`, then `supabase db push` from a real terminal
    (this has to be Marçal — Claude Code's sandboxed shell can't reach the CLI's login
    session, and the DB password shouldn't pass through it anyway). This project shares
