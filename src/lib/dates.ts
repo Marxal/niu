@@ -328,6 +328,25 @@ export function minutesOfDay(time: string | null): number | null {
 }
 
 /**
+ * A day and a wall-clock time as the actual instant they name on this device,
+ * minus a number of minutes — an ISO string ready for a `timestamptz` column.
+ *
+ * Everywhere else a day is a day and a time is a time, deliberately never
+ * combined into an instant (see the header). Round 20.1's reminder push is the
+ * one exception: `pg_cron` has to compare against a real clock, so *something*
+ * has to turn "9am here" into a moment, and doing it here — from local parts,
+ * on the device that knows what timezone "here" is — is what keeps that moment
+ * correct. Postgres has no idea what timezone a bare date was meant in; see
+ * the equivalent note in pensar's own due-reminder migration.
+ */
+export function localInstant(day: string, time: string, minutesBefore = 0): string {
+  const date = parseKey(day)
+  const clean = toTime(time) ?? '00:00'
+  date.setHours(Number(clean.slice(0, 2)), Number(clean.slice(3, 5)) - minutesBefore, 0, 0)
+  return date.toISOString()
+}
+
+/**
  * A time shifted forward or back, wrapping at midnight. `days` says how many
  * midnights it crossed — 1 for a start of 23:30 pushed on an hour, 0
  * otherwise — so a caller that also owns a date can carry the date across

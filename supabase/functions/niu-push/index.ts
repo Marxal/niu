@@ -14,6 +14,12 @@
  * time, no names. Everything a person actually reads is looked up here, from
  * the database, with the service role.
  *
+ * Round 20.1 added a third kind, 'remind' — the clock, not a write, decides
+ * when this one fires, so it comes from pg_cron polling in
+ * 20260902150000_event_reminders.sql rather than a trigger, and it names a
+ * household rather than one recipient: a reminder goes to every phone that
+ * household has subscribed, not to whoever happened to set it.
+ *
  * That is not tidiness, it is the security model. The shared secret below is
  * what should stop a forged call, but if it ever leaked, the worst a stranger
  * could do is make a phone repeat something that is already true — not write
@@ -144,10 +150,14 @@ interface Message {
 /* -------------------------------------------------------------------------- */
 
 interface TriggerPayload {
-  kind: 'ask' | 'answer'
+  kind: 'ask' | 'answer' | 'remind'
   event_id: string
-  recipient: string
-  actor: string
+  /** 'ask' and 'answer' only — who to tell. */
+  recipient?: string
+  /** 'ask' and 'answer' only — who did it. */
+  actor?: string
+  /** 'remind' only — whose subscriptions to send to, all of them. */
+  household_id?: string
 }
 
 function ok(note: string): Response {
@@ -171,10 +181,12 @@ async function handleTrigger(request: Request): Promise<Response> {
     return ok('unreadable body')
   }
 
-  const { kind, event_id: eventId, recipient, actor } = payload
-  if (!eventId || !recipient || (kind !== 'ask' && kind !== 'answer')) {
+  const { kind, event_id: eventId, recipient, actor, household_id: householdId } = payload
+  if (!eventId || (kind !== 'ask' && kind !== 'answer' && kind !== 'remind')) {
     return ok('nothing to send')
   }
+  if ((kind === 'ask' || kind === 'answer') && !recipient) return ok('nothing to send')
+  if (kind === 'remind' && !householdId) return ok('nothing to send')
 
   // Everything the person reads, read from the database rather than trusted.
   const [{ data: event }, { data: actorRow }, { data: subs }] = await Promise.all([
@@ -183,16 +195,23 @@ async function handleTrigger(request: Request): Promise<Response> {
       .select('title, starts_on, start_time')
       .eq('id', eventId)
       .maybeSingle(),
-    supabase
-      .from('household_members')
-      .select('display_name')
-      .eq('user_id', actor)
-      .limit(1)
-      .maybeSingle(),
-    supabase
-      .from('push_subscriptions')
-      .select('endpoint, p256dh, auth')
-      .eq('user_id', recipient),
+    kind === 'remind'
+      ? Promise.resolve({ data: null })
+      : supabase
+          .from('household_members')
+          .select('display_name')
+          .eq('user_id', actor)
+          .limit(1)
+          .maybeSingle(),
+    kind === 'remind'
+      ? supabase
+          .from('push_subscriptions')
+          .select('endpoint, p256dh, auth')
+          .eq('household_id', householdId)
+      : supabase
+          .from('push_subscriptions')
+          .select('endpoint, p256dh, auth')
+          .eq('user_id', recipient),
   ])
 
   if (!event) return ok('event is gone')
@@ -208,7 +227,7 @@ async function handleTrigger(request: Request): Promise<Response> {
       body: `${when} · ${who} is asking you to confirm`,
       tag: `ask-${eventId}`,
     }
-  } else {
+  } else if (kind === 'answer') {
     // The answer itself is read here too, so a stale or forged call cannot
     // claim a yes that was never given.
     const { data: confirmation } = await supabase
@@ -224,6 +243,12 @@ async function handleTrigger(request: Request): Promise<Response> {
       title: event.title,
       body: confirmation.answer === 'yes' ? `${who} said yes` : `${who} can't`,
       tag: `answer-${eventId}`,
+    }
+  } else {
+    message = {
+      title: event.title,
+      body: `${when} · Reminder`,
+      tag: `remind-${eventId}`,
     }
   }
 

@@ -615,6 +615,17 @@ export const strings = {
     badgeMany: (n: number) => `${n} to confirm`,
     confirmSheetTitle: 'Waiting on you',
 
+    // The push reminder (round 20.1) — a nudge for everyone, not just the day
+    // on the grid Google's own alarm already covers.
+    remindLabel: 'Remind',
+    remindNames: {
+      on_time: 'On time',
+      '15_before': '15 min before',
+      day_before: 'The day before',
+    } as const,
+    remindHint: "Buzzes everyone's phone, whether the app is open or not.",
+    remindSet: (name: string) => `Reminder: ${name}`,
+
     // Reminders
     done: 'Done',
     undone: 'Not done after all',

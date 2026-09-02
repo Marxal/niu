@@ -19,6 +19,7 @@ function ev(over: Partial<CalendarEvent> = {}): CalendarEvent {
     notes: null,
     colour: 'sky',
     confirmRequested: false,
+    remindOffset: null,
     doneAt: null,
     doneBy: null,
     createdBy: 'me',

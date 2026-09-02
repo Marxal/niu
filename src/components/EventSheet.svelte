@@ -67,8 +67,10 @@
     type CalendarEvent,
     type EventDraft,
     type EventKind,
+    type ReminderOffset,
     DEFAULT_END_TIME,
     DEFAULT_START_TIME,
+    REMINDER_OFFSETS,
     canSave,
     confirmState,
     draftFrom,
@@ -359,6 +361,12 @@
     draft.colour = colour
   }
 
+  /** Tapping the armed offset again disarms it — there is no separate "off"
+   *  chip, the three options are the whole control (Marçal, round 20.1). */
+  function toggleRemind(offset: ReminderOffset) {
+    draft.remind = draft.remind === offset ? null : offset
+  }
+
   /**
    * Save, or first ask which occurrences it applies to.
    *
@@ -418,6 +426,10 @@
       <h3 class="detail-title">{draft.title}</h3>
 
       <p class="detail-when">{whenLine}</p>
+
+      {#if draft.remind}
+        <p class="detail-line">{strings.calendar.remindSet(strings.calendar.remindNames[draft.remind])}</p>
+      {/if}
 
       {#if series}
         <p class="detail-line">
@@ -577,32 +589,15 @@
       {/if}
     </div>
 
-    {#if people.list.length > 1}
-      <div class="field">
-        <!-- A reminder is a job rather than an outing: you do not "go" to
-             renewing a parking permit, you are the one who has to. -->
-        <span class="label">
-          {isReminder ? strings.calendar.whoForLabel : strings.calendar.whoLabel}
-        </span>
-        <div class="faces">
-          {#each people.list as person (person.id)}
-            <PersonAvatar
-              {person}
-              size="lg"
-              on={draft.attendees.includes(person.id)}
-              onclick={() => toggleAttendee(person.id)}
-            />
-          {/each}
-        </div>
-      </div>
-    {/if}
     <!-- Round 13 moved this out of the edit-only section at the bottom and into
          the ordinary flow: sending something round to be agreed is part of
          writing it down, not an afterthought you come back for. Off unless
          Settings says otherwise — most of what goes on a family calendar is a
          statement rather than a question.
 
-         Only when there is somebody with a phone to ask. -->
+         Round 20.1 moved it to the top of this group: asking whether it's
+         settled comes before nudging people about it. Only when there is
+         somebody with a phone to ask. -->
     {#if !people.alone}
       <div class="field">
         <Toggle
@@ -631,6 +626,50 @@
             {/each}
           </p>
         {/if}
+      </div>
+    {/if}
+
+    <!-- The push reminder (round 20.1): three small circular chips, ready to
+         tap — no switch above them to turn on first, because picking one *is*
+         turning it on. Tapping the one already on turns it back off. Offered
+         regardless of household size — it buzzes whoever is subscribed, which
+         is yourself alone before anyone else has joined. -->
+    <div class="field">
+      <span class="label">{strings.calendar.remindLabel}</span>
+      <div class="reminders">
+        {#each REMINDER_OFFSETS as offset (offset)}
+          <button
+            class="reminder-chip"
+            class:on={draft.remind === offset}
+            aria-pressed={draft.remind === offset}
+            onclick={() => toggleRemind(offset)}
+          >
+            {strings.calendar.remindNames[offset]}
+          </button>
+        {/each}
+      </div>
+      {#if draft.remind}
+        <p class="hint">{strings.calendar.remindHint}</p>
+      {/if}
+    </div>
+
+    {#if people.list.length > 1}
+      <div class="field">
+        <!-- A reminder is a job rather than an outing: you do not "go" to
+             renewing a parking permit, you are the one who has to. -->
+        <span class="label">
+          {isReminder ? strings.calendar.whoForLabel : strings.calendar.whoLabel}
+        </span>
+        <div class="faces">
+          {#each people.list as person (person.id)}
+            <PersonAvatar
+              {person}
+              size="lg"
+              on={draft.attendees.includes(person.id)}
+              onclick={() => toggleAttendee(person.id)}
+            />
+          {/each}
+        </div>
       </div>
     {/if}
 
@@ -1043,6 +1082,34 @@
     font-size: var(--text-lg);
     font-weight: var(--weight-bold);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Three small round chips rather than a switch — picking one is the whole
+     interaction (see the template comment). Round, not the pill shape of the
+     repeat/colour chips elsewhere, so the eye reads this row as its own
+     control rather than a second repeat row. */
+  .reminders {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .reminder-chip {
+    flex: 1 1 auto;
+    min-height: var(--tap-min);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-full);
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .reminder-chip.on {
+    background: var(--color-tab-calendar);
+    border-color: var(--color-tab-calendar);
+    color: var(--color-accent-ink);
   }
 
   .faces {

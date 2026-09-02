@@ -10,6 +10,7 @@ import {
   daysInMonth,
   isDayKey,
   isoWeek,
+  localInstant,
   longDate,
   minutesOfDay,
   monthGrid,
@@ -267,6 +268,28 @@ describe('times', () => {
     expect(addMinutesToTime('12:00', 60)).toEqual({ time: '13:00', days: 0 })
     expect(addMinutesToTime('23:30', 60)).toEqual({ time: '00:30', days: 1 })
     expect(addMinutesToTime('00:00', 60)).toEqual({ time: '01:00', days: 0 })
+  })
+})
+
+describe('localInstant', () => {
+  it('turns a day and a time into the instant they name here', () => {
+    expect(localInstant('2026-09-03', '18:30')).toBe(new Date(2026, 8, 3, 18, 30).toISOString())
+  })
+
+  it('subtracts minutes before naming the instant', () => {
+    expect(localInstant('2026-09-03', '18:30', 15)).toBe(
+      new Date(2026, 8, 3, 18, 15).toISOString(),
+    )
+  })
+
+  it('crosses midnight backwards for a full day before', () => {
+    expect(localInstant('2026-09-03', '09:00', 24 * 60)).toBe(
+      new Date(2026, 8, 2, 9, 0).toISOString(),
+    )
+  })
+
+  it('defaults an unparsable time to midnight rather than throwing', () => {
+    expect(localInstant('2026-09-03', 'all day')).toBe(new Date(2026, 8, 3, 0, 0).toISOString())
   })
 })
 

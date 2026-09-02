@@ -36,6 +36,8 @@ import {
   draftFrom,
   draftOccurrences,
   draftRule,
+  isReminderOffset,
+  remindInstant,
   seriesShapeChanged,
   toEventColour,
 } from './calendar'
@@ -103,6 +105,7 @@ interface EventRow {
   notes: string | null
   colour: string | null
   confirm_requested: boolean
+  remind_offset: string | null
   done_at: string | null
   done_by: string | null
   created_by: string
@@ -118,7 +121,7 @@ interface EventRow {
  *  silently null on some screens and not others. */
 const EVENT_COLUMNS =
   'id, kind, title, starts_on, ends_on, start_time, end_time, location, notes, ' +
-  'colour, confirm_requested, done_at, done_by, created_by, updated_at, ' +
+  'colour, confirm_requested, remind_offset, done_at, done_by, created_by, updated_at, ' +
   'series_id, series_index, series_count, series_rule'
 
 function toEvent(
@@ -139,6 +142,7 @@ function toEvent(
     notes: row.notes,
     colour: toEventColour(row.colour),
     confirmRequested: row.confirm_requested,
+    remindOffset: isReminderOffset(row.remind_offset) ? row.remind_offset : null,
     doneAt: row.done_at,
     doneBy: row.done_by,
     createdBy: row.created_by,
@@ -331,6 +335,12 @@ function draftColumns(draft: EventDraft): Record<string, unknown> {
     location: draft.location === '' ? null : draft.location,
     notes: draft.notes === '' ? null : draft.notes,
     colour: draft.colour,
+    remind_offset: draft.remind,
+    // Recomputed on every write, whether or not the reminder itself changed.
+    // The cron that fires it only re-arms when this value actually moves (see
+    // the reminders migration), so a save that leaves the reminder alone is a
+    // no-op there too — the same trick pensar's due reminders use.
+    remind_at: remindInstant(draft),
   }
 }
 

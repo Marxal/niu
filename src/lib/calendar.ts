@@ -38,7 +38,7 @@
  * functions and not one-liners at the call sites.
  */
 
-import { addDays, daysBetween, minutesOfDay, toTime } from './dates'
+import { addDays, daysBetween, localInstant, minutesOfDay, toTime } from './dates'
 import { isTagColour, type TagColour } from './dish-tags'
 import {
   DEFAULT_REPEAT_COUNT,
@@ -55,6 +55,40 @@ export const EVENT_KINDS: readonly EventKind[] = ['event', 'reminder']
 
 export function isEventKind(value: unknown): value is EventKind {
   return EVENT_KINDS.includes(value as EventKind)
+}
+
+/**
+ * The three moments a push reminder can go off (round 20.1). Named for what
+ * they mean, not for whatever offset happens to implement them, so the sheet's
+ * chips and the database's check constraint can both read the same word.
+ */
+export type ReminderOffset = 'on_time' | '15_before' | 'day_before'
+
+export const REMINDER_OFFSETS: readonly ReminderOffset[] = ['on_time', '15_before', 'day_before']
+
+export function isReminderOffset(value: unknown): value is ReminderOffset {
+  return REMINDER_OFFSETS.includes(value as ReminderOffset)
+}
+
+const REMINDER_MINUTES_BEFORE: Record<ReminderOffset, number> = {
+  on_time: 0,
+  '15_before': 15,
+  day_before: 24 * 60,
+}
+
+/**
+ * When a reminder push should fire, as an ISO instant — or null when nothing
+ * is armed. This is the one thing in the whole module that turns a day into a
+ * moment; see localInstant's own note for why that has to happen here, on the
+ * device, rather than in Postgres.
+ *
+ * An untimed event has no hour to count from, so this borrows the same 09:00
+ * pensar's own due reminders default to: the least wrong guess for a day with
+ * no time stated.
+ */
+export function remindInstant(draft: EventDraft): string | null {
+  if (draft.remind === null) return null
+  return localInstant(draft.startsOn, draft.startTime ?? '09:00', REMINDER_MINUTES_BEFORE[draft.remind])
 }
 
 /** How an event's confirmation is going. See the header. */
@@ -83,6 +117,8 @@ export interface CalendarEvent {
   colour: TagColour
   /** Whether anyone was ever asked to confirm this. */
   confirmRequested: boolean
+  /** Which push reminder is armed, or null for none. See remindInstant. */
+  remindOffset: ReminderOffset | null
   /** Reminders only: when it was ticked off, and by whom. */
   doneAt: string | null
   doneBy: string | null
@@ -322,6 +358,12 @@ export interface EventDraft {
    * off again withdraws a question already asked.
    */
   askConfirm: boolean
+  /**
+   * Which push reminder to arm on save, or null for none (round 20.1). "The
+   * reminder will send always a notification" (Marçal) — there is no second
+   * switch on top of this one; picking an offset is the whole instruction.
+   */
+  remind: ReminderOffset | null
 }
 
 /**
@@ -375,6 +417,7 @@ export function newDraft(kind: EventKind, day: string, askConfirm = false): Even
     repeat: 'none',
     repeatCount: DEFAULT_REPEAT_COUNT,
     askConfirm,
+    remind: null,
   }
 }
 
@@ -397,6 +440,7 @@ export function draftFrom(event: CalendarEvent): EventDraft {
     repeatCount: event.seriesRule === null ? DEFAULT_REPEAT_COUNT : event.seriesCount,
     // Already asked is the switch already on. Turning it off withdraws.
     askConfirm: event.confirmRequested,
+    remind: event.remindOffset,
   }
 }
 
@@ -446,6 +490,7 @@ export function cleanDraft(draft: EventDraft): EventDraft | null {
     // a single event on the calendar for no reason.
     repeatCount: draft.repeat === 'none' ? 1 : clampCount(draft.repeatCount),
     askConfirm: draft.askConfirm,
+    remind: draft.remind,
   }
 }
 

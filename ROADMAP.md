@@ -3614,3 +3614,90 @@ after the start time." — and Save is greyed out until it's fixed.
    line should appear under the time fields.
 3. Set the end time back to after the start — the red line disappears and
    Save works again.
+
+## Round 20.1 — A push reminder on an event, and the sheet reordered
+
+**Branch:** `claude/round-17-push-notifications`. Round 17 shipped push for
+exactly two things — a confirmation request and its answer — and CLAUDE.md
+named adding a third trigger as the thing to ask about first. Marçal asked:
+an event or reminder can now arm a push nudge, three offsets to choose from,
+and it always fires — there's no separate switch on top of it.
+
+### What changed
+
+- **`src/lib/dates.ts`** — a new `localInstant(day, time, minutesBefore)`:
+  turns a day and a wall-clock time into the real instant they name on this
+  device, minus a number of minutes. Everywhere else in the app a day stays a
+  day (see the file's own header on why) — this is the one place that has to
+  turn one into a moment, because `pg_cron` compares against a real clock.
+- **`src/lib/calendar.ts`** — a `ReminderOffset` type (`'on_time' | '15_before'
+  | 'day_before'`), `remindOffset` on `CalendarEvent`, `remind` on
+  `EventDraft`, and `remindInstant(draft)` which computes the ISO instant to
+  arm, or `null` for no reminder. An untimed event defaults to 9am, same
+  reasoning as pensar's own due reminders.
+- **`src/lib/calendar.svelte.ts`** — `remind_offset` read and written
+  alongside the existing columns; `remind_at` recomputed on every save via
+  `remindInstant`, so the cron below only ever re-arms when it actually moved.
+- **`supabase/migrations/20260902150000_event_reminders.sql`** — three new
+  columns on `events` (`remind_offset`, `remind_at`, `reminder_fired_for`),
+  and a `pg_cron` job every five minutes that calls the same Edge Function
+  round 17 already set up, this time addressed to a whole household's
+  subscriptions rather than one recipient. Mirrored into `pensar`'s own
+  migrations folder per CLAUDE.md — the two apps share one migration history.
+- **`supabase/functions/niu-push/index.ts`** — a third `kind`, `'remind'`:
+  reads the event and every push subscription for its household (not just
+  one person — "for the connected users"), and sends "Thu 3 Sep · 18:00 ·
+  Reminder" to all of them. Needs a redeploy: `supabase functions deploy
+  niu-push --no-verify-jwt`.
+- **`src/components/EventSheet.svelte`** — a new row of three small round
+  chips (On time / 15 min before / The day before) under **Ask to confirm**.
+  Tapping one arms it; tapping the same one again turns it off — there's no
+  separate switch, picking an offset *is* the instruction. The sheet's order
+  is now: title, when, **Ask [name] to confirm**, **Remind**, **Who goes**,
+  **Colour**, then More. A reminder already armed shows as a line in the
+  read-only detail view too.
+- **`src/lib/strings.ts`** — `remindLabel`, `remindNames`, `remindHint`,
+  `remindSet`.
+
+One design call worth flagging: "in a circle or small bow" was read as a
+small row of round chips, matching the repeat/colour rows already in the
+sheet — say if you pictured something more literal (icon-only round buttons,
+say) and it should look different.
+
+### What it looks like
+
+Opening an event or reminder now shows, right after the confirm-to-ask
+switch, a **Remind** row with three small pill buttons. None are on by
+default. Tapping one turns it on (and turns off any other); tapping it again
+turns it off. A hint appears underneath while one is on: "Buzzes everyone's
+phone, whether the app is open or not."
+
+### Before this works on a phone
+
+Same as round 17's own rollout — three things Marçal has to do once, from a
+real terminal (not Claude Code's sandboxed shell):
+
+1. `supabase db push` — writes the new columns, the cron job and the pg_cron
+   extension.
+2. `supabase functions deploy niu-push --no-verify-jwt` — redeploys the Edge
+   Function with the new `'remind'` branch. No new secrets: it reuses round
+   17's `NIU_VAPID_KEYS`, `NIU_PUSH_SECRET`, `NIU_CONTACT_EMAIL` and the
+   existing `push_config` row.
+3. Nothing else — `push_subscriptions` and `push_config` already exist from
+   round 17. If confirmation pushes already work on a phone, reminders will
+   too the moment the migration and the function are both live.
+
+### How to test it
+
+1. **Calendar → an event → New (or edit one) → tap "15 min before"** in the
+   new Remind row. It should light up; tapping it again should turn it back
+   off — try both before saving.
+2. Set an event's start time to a few minutes from now, arm **On time**, and
+   Save. Around that time (cron polls every 5 minutes, so allow a little
+   slack) the phone should buzz with the event's title and "Reminder" in the
+   body — even with the app closed.
+3. Tap that notification — it should open the app, same as round 17's
+   confirmation pushes.
+4. Reopen the event: the Remind row should still show the offset you picked,
+   and the read-only view (tap Close instead of Edit) should show a
+   "Reminder: On time" line.
