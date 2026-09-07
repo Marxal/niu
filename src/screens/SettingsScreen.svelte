@@ -1,12 +1,12 @@
 <!--
-  Settings. Round 1 has one thing that actually does something — the Install
-  button — plus stubs for what's coming, so the screen isn't a lie about where
-  things will live.
+  Settings — everything that isn't a list, a plan or a calendar lives here.
 
-  The Install button only appears when Chrome has actually offered us a prompt.
-  If the app is already installed, or the browser doesn't support installing
-  (Firefox on Android, or an in-app browser), the row explains itself instead of
-  showing a button that would do nothing.
+  The Install card disappears entirely once the app is already installed
+  (round 21) — a card confirming what the phone's own home screen already
+  proves isn't worth the scroll. While it's still relevant: the button only
+  appears when Chrome has actually offered us a prompt; if the browser doesn't
+  support installing (Firefox on Android, an in-app browser), the row explains
+  itself instead of showing a button that would do nothing.
 -->
 <script lang="ts">
   import { auth, signOut } from '../lib/auth.svelte'
@@ -241,26 +241,26 @@
     </div>
   </div>
 
-  <div class="card">
-    <div class="row">
-      <div class="text">
-        <h2>{strings.settings.installTitle}</h2>
-        <p>
-          {#if install.installed}
-            {strings.settings.installedBody}
-          {:else if install.available}
-            {strings.settings.availableBody}
-          {:else}
-            {strings.settings.unavailableBody}
-            <strong>{strings.settings.unavailableAction}</strong>.
-          {/if}
-        </p>
+  {#if !install.installed}
+    <div class="card">
+      <div class="row">
+        <div class="text">
+          <h2>{strings.settings.installTitle}</h2>
+          <p>
+            {#if install.available}
+              {strings.settings.availableBody}
+            {:else}
+              {strings.settings.unavailableBody}
+              <strong>{strings.settings.unavailableAction}</strong>.
+            {/if}
+          </p>
+        </div>
+        {#if install.available}
+          <button class="button" onclick={promptInstall}>{strings.settings.installButton}</button>
+        {/if}
       </div>
-      {#if install.available}
-        <button class="button" onclick={promptInstall}>{strings.settings.installButton}</button>
-      {/if}
     </div>
-  </div>
+  {/if}
 
   {#if auth.status === 'signed-in'}
     <div class="card">

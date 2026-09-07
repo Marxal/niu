@@ -1,24 +1,28 @@
 <!--
   Who lives here, and the two ways somebody gets added.
 
-  The two are genuinely different things and the card says so rather than
-  hiding it behind one button:
+  The two are genuinely different things, but round 21 stopped saying so with
+  two permanently-open blocks — that read as twice the reading, not twice the
+  clarity. They now share one "Add someone" block behind a two-way toggle
+  (`addMode`), same pattern as the segmented controls in Settings:
 
-   - **Someone with a phone** gets a six-character code, signs in with their own
-     Google account, and can be asked to confirm events. Not an email invite:
-     sending email needs a server, and NIU.md §1 says there is no budget for one.
-   - **Someone without a phone** — a child, a grandparent — is just a name and a
-     face that events can point at. Round 11.2 added them, and they are the
-     reason the app talks about *people* rather than members now.
+   - **Has a phone** gets a six-character code, signs in with their own Google
+     account, and can be asked to confirm events. Not an email invite: sending
+     email needs a server, and NIU.md §1 says there is no budget for one.
+   - **No phone** — a child, a grandparent — is just a name and a face that
+     events can point at. Round 11.2 added them, and they are the reason the
+     app talks about *people* rather than members now.
 
   The code is only fetched when the button is tapped. There is no reason for
   every Settings visit to mint one, and a code sitting permanently on screen is
   a code somebody eventually photographs.
 
-  Joining is the destructive half, so it says what it will do *before* the
-  button rather than after. The database refuses the case that would really lose
-  something — walking out of a household somebody else is already in — so the
-  warning here covers the one case it allows.
+  Joining a *different* household is a separate, once-ever action — not a way
+  of adding someone to this one — so it stays collapsed behind `joinToggle`
+  until tapped. It's the destructive half, so once open it says what it will do
+  *before* the button rather than after. The database refuses the case that
+  would really lose something — walking out of a household somebody else is
+  already in — so the warning here covers the one case it allows.
 -->
 <script lang="ts">
   import { auth } from '../lib/auth.svelte'
@@ -39,9 +43,11 @@
   let code = $state('')
   let problem = $state<string | null>(null)
   let joined = $state(false)
+  let joinOpen = $state(false)
   let adding = $state(false)
   let newName = $state('')
   let editing = $state<Person | null>(null)
+  let addMode = $state<'phone' | 'noPhone'>('phone')
 
   /**
    * The colour a new person gets: the first of the eight nobody is using yet,
@@ -100,70 +106,92 @@
 
   <div class="block">
     <h3>{strings.people.addTitle}</h3>
-    <p class="hint">{strings.people.addBody}</p>
-    {#if adding}
-      <div class="row">
-        <!-- svelte-ignore a11y_autofocus -->
-        <input
-          class="input"
-          type="text"
-          autofocus
-          maxlength="40"
-          placeholder={strings.people.addPlaceholder}
-          bind:value={newName}
-          onkeydown={(e) => {
-            if (e.key === 'Enter') void add()
-          }}
-        />
-        <button class="action" disabled={newName.trim() === ''} onclick={add}>
-          {strings.people.add}
-        </button>
-      </div>
-    {:else}
-      <button class="action" onclick={() => (adding = true)}>{strings.people.addButton}</button>
-    {/if}
-  </div>
-
-  <div class="block">
-    <h3>{strings.people.inviteTitle}</h3>
-    <p class="hint">{strings.people.inviteBody}</p>
-    {#if people.joinCode}
-      <p class="code">{people.joinCode}</p>
-      <button class="quiet" onclick={() => void fetchJoinCode()}>
-        {strings.people.inviteRefresh}
-      </button>
-    {:else}
-      <button class="action" onclick={() => void fetchJoinCode()}>
-        {strings.people.inviteShow}
-      </button>
-    {/if}
-  </div>
-
-  <div class="block">
-    <h3>{strings.people.joinTitle}</h3>
-    <p class="hint">{strings.people.joinBody}</p>
-    <div class="row">
-      <input
-        class="input code-input"
-        type="text"
-        autocapitalize="characters"
-        autocomplete="off"
-        spellcheck="false"
-        maxlength="6"
-        placeholder={strings.people.joinPlaceholder}
-        bind:value={code}
-      />
+    <div class="segmented" role="group" aria-label={strings.people.addTitle}>
       <button
-        class="action"
-        disabled={people.joining || code.trim().length !== 6}
-        onclick={join}
+        class="segment"
+        class:on={addMode === 'phone'}
+        aria-pressed={addMode === 'phone'}
+        onclick={() => (addMode = 'phone')}
       >
-        {people.joining ? strings.people.joining : strings.people.joinButton}
+        {strings.people.addModePhone}
+      </button>
+      <button
+        class="segment"
+        class:on={addMode === 'noPhone'}
+        aria-pressed={addMode === 'noPhone'}
+        onclick={() => (addMode = 'noPhone')}
+      >
+        {strings.people.noAccount}
       </button>
     </div>
-    {#if !joined}<p class="hint warn">{strings.people.joinWarning}</p>{/if}
-    {#if problem}<p class="error">{problem}</p>{/if}
-    {#if joined}<p class="good">{strings.people.joined}</p>{/if}
+
+    {#if addMode === 'phone'}
+      <p class="hint">{strings.people.inviteBody}</p>
+      {#if people.joinCode}
+        <p class="code">{people.joinCode}</p>
+        <button class="quiet" onclick={() => void fetchJoinCode()}>
+          {strings.people.inviteRefresh}
+        </button>
+      {:else}
+        <button class="action" onclick={() => void fetchJoinCode()}>
+          {strings.people.inviteShow}
+        </button>
+      {/if}
+    {:else}
+      <p class="hint">{strings.people.addBody}</p>
+      {#if adding}
+        <div class="row">
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            class="input"
+            type="text"
+            autofocus
+            maxlength="40"
+            placeholder={strings.people.addPlaceholder}
+            bind:value={newName}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') void add()
+            }}
+          />
+          <button class="action" disabled={newName.trim() === ''} onclick={add}>
+            {strings.people.add}
+          </button>
+        </div>
+      {:else}
+        <button class="action" onclick={() => (adding = true)}>{strings.people.addButton}</button>
+      {/if}
+    {/if}
+  </div>
+
+  <div class="block">
+    {#if joinOpen}
+      <h3>{strings.people.joinTitle}</h3>
+      <p class="hint">{strings.people.joinBody}</p>
+      <div class="row">
+        <input
+          class="input code-input"
+          type="text"
+          autocapitalize="characters"
+          autocomplete="off"
+          spellcheck="false"
+          maxlength="6"
+          placeholder={strings.people.joinPlaceholder}
+          bind:value={code}
+        />
+        <button
+          class="action"
+          disabled={people.joining || code.trim().length !== 6}
+          onclick={join}
+        >
+          {people.joining ? strings.people.joining : strings.people.joinButton}
+        </button>
+      </div>
+      {#if !joined}<p class="hint warn">{strings.people.joinWarning}</p>{/if}
+      {#if problem}<p class="error">{problem}</p>{/if}
+      {#if joined}<p class="good">{strings.people.joined}</p>{/if}
+    {:else}
+      <button class="quiet" onclick={() => (joinOpen = true)}>{strings.people.joinToggle}</button>
+    {/if}
   </div>
 
   {#if people.error}<p class="error">{people.error}</p>{/if}
@@ -254,6 +282,31 @@
     gap: var(--space-2);
     padding-top: var(--space-3);
     border-top: 1px solid var(--color-border);
+  }
+
+  /* Picks "has a phone" vs "no phone" — same look as the segmented controls in
+     Settings, so this reads as one control rather than a new widget. */
+  .segmented {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-sunken);
+  }
+
+  .segment {
+    min-height: 2.5rem;
+    border-radius: var(--radius-full);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .segment.on {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
   }
 
   /* Big, spaced and monospaced: this is read out loud across a room, and the

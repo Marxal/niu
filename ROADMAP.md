@@ -3764,3 +3764,61 @@ shorter one ("They get a Yes / Can't to answer.") underneath.
 4. Arm any reminder offset — the line underneath should say "You and
    [name] will get notified." (or "Everyone will get notified" with a bigger
    household).
+
+## Round 21 — Settings, step one: People and Install
+
+**Branch:** `claude/round-17-push-notifications`. Marçal wants Settings
+reorganised end to end — People clearer, Notifications tidier, Appearance
+grouped properly, a compact per-app layout (Shopping / Meals / Calendar), and
+a new feature to reorder or turn off tabs entirely. That's several rounds of
+work, so this one is step one: the two self-contained, low-risk pieces —
+People's copy and layout, and hiding the Install card once it's pointless.
+The rest stays a backlog for the next rounds.
+
+### What changed
+
+- **`src/components/HouseholdCard.svelte`** — the two always-open "Someone
+  without a phone" / "Someone with a phone" blocks are now one "Add someone"
+  block behind a two-way toggle (same segmented-control look as Settings),
+  showing only the form for whichever you picked. "Join a household" — a
+  once-ever action, not a way of adding someone — now stays collapsed behind
+  a quiet "Have a code for a different household?" link until tapped, instead
+  of always showing its input and warning text.
+- **`src/lib/strings.ts`** — `addBody` and `inviteBody` shortened; `addTitle`
+  is now the shared "Add someone" heading; `inviteTitle` retired (no longer a
+  separate heading); new `addModePhone` and `joinToggle` strings. Also
+  dropped `installedBody` (see below), and bumped the version string, which
+  had been stuck at "round 11.3" since round 11.3 — nobody had touched it in
+  ten rounds.
+- **`src/screens/SettingsScreen.svelte`** — the Install card now disappears
+  entirely once `install.installed` is true, instead of staying on screen to
+  announce "you've already got it installed." The phone's own home screen
+  already proves that; the card was just a scroll nobody needed.
+
+### What it looks like
+
+Settings → your household card now shows one "Add someone" block with a
+**Has a phone / No phone** toggle above a single form, and a quiet "Have a
+code for a different household?" link where the always-open Join block used
+to be. Below, the Install card is simply gone once Niu is already installed
+— nothing appears in its place.
+
+### How to test it
+
+1. **Settings**, signed in. Under "Who lives here," you should see one
+   **Add someone** block with two buttons, **Has a phone** and **No phone**.
+   Tap between them — the form below should switch between the invite code
+   and the name field, not show both at once.
+2. Tap **No phone**, add a name, confirm it drops you into that person's
+   sheet as before.
+3. Tap **Has a phone**, tap **Show the code** — the six-character code
+   should appear, same as before.
+4. Below that, you should see a small **Have a code for a different
+   household?** link instead of an always-open join form. Tap it — the join
+   form (input, Join button, the "this leaves your current household"
+   warning) should appear.
+5. If Niu is already installed on your phone (it should be, by now): scroll
+   Settings — there should be **no** "Install Niu" card at all, not even one
+   saying it's already installed. If you test this in a desktop browser tab
+   where it isn't installed, the card should still appear with its Install
+   button as before.

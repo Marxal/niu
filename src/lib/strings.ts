@@ -484,10 +484,10 @@ export const strings = {
     photoWrongType: "That isn't a picture.",
     photoHint:
       'You choose the square. Shrunk to a thumbnail on your phone — nothing big is uploaded.',
-    // People without an account
-    addTitle: 'Someone without a phone',
-    addBody:
-      'Kids, grandparents — anyone who is part of the plans without being part of the logins. They can go on events; they never get asked to confirm anything.',
+    // Adding someone, with or without an account
+    addTitle: 'Add someone',
+    addModePhone: 'Has a phone',
+    addBody: 'Kids, grandparents — on the plans, never asked to confirm anything.',
     addButton: 'Add a person',
     addPlaceholder: 'Their name',
     add: 'Add',
@@ -496,12 +496,14 @@ export const strings = {
     cancel: 'Cancel',
     done: 'Done',
     // The invite
-    inviteTitle: 'Someone with a phone',
-    inviteBody:
-      'Read this code out. They sign in with Google on their own phone, open Settings, and type it in.',
+    inviteBody: 'Read it out loud — they sign in with Google and type it in.',
     inviteShow: 'Show the code',
     inviteRefresh: 'Show it again',
     codeFailed: "Couldn't fetch the code just now.",
+    // Joining someone else's household — collapsed behind joinToggle, since
+    // it's a once-ever action and showing it open by default made the card
+    // longer for the 99% of visits that aren't this.
+    joinToggle: 'Have a code for a different household?',
     joinTitle: 'Join a household',
     joinBody: 'Got a code from someone? Type it here to share their lists.',
     joinPlaceholder: 'ABC234',
@@ -708,7 +710,6 @@ export const strings = {
 
   settings: {
     installTitle: 'Install Niu',
-    installedBody: "You've already got it installed. Open it from your phone's home screen.",
     availableBody: 'Add Niu to your home screen so it opens like an app.',
     unavailableBody: "If you don't see a button, do it from the browser menu:",
     unavailableAction: 'Add to Home screen',
@@ -720,6 +721,6 @@ export const strings = {
     notConnectedTitle: 'Not connected yet',
     notConnectedBody:
       'Niu has no backend wired up in this build, so nothing is saved. Sign-in appears once Supabase is configured.',
-    version: 'Niu · round 11.3',
+    version: 'Niu · round 21',
   },
 } as const
