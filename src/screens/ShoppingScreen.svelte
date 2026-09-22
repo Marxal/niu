@@ -242,16 +242,23 @@
 
   let trimmed = $derived(query.trim())
   let searching = $derived(trimmed !== '')
+  // Whether the search field has focus — the keyboard is up whether or not
+  // anything has been typed yet.
+  let fieldFocused = $state(false)
 
   /**
-   * The bottom nav gets out of the way while a search is running.
+   * The bottom nav gets out of the way while the keyboard is up, not only once
+   * there's a query: tapping the field opens the keyboard before a single
+   * letter is typed, and the nav riding up to sit on top of it for that moment
+   * looks like a glitch. Hidden while focused, or while a query is still there
+   * without focus (e.g. a sheet opened from a search result).
    *
    * The cleanup is the load-bearing half: leave the tab with a query still in
    * the field and the nav has to come back, or the app has no way out of the
    * shopping list. See shell.svelte.ts.
    */
   $effect(() => {
-    setNavHidden(searching)
+    setNavHidden(searching || fieldFocused)
     return () => setNavHidden(false)
   })
 
@@ -337,6 +344,16 @@
 
   function handleAdd(catalogueItemId: string) {
     if (auth.userId) void addToList(catalogueItemId, auth.userId)
+  }
+
+  /**
+   * Adding straight from a search match. Clears the field afterwards so the
+   * next product can be typed right away, rather than leaving the just-added
+   * one's name sitting there to be deleted by hand first.
+   */
+  function handleAddFromSearch(catalogueItemId: string) {
+    handleAdd(catalogueItemId)
+    query = ''
   }
 
   /**
@@ -777,7 +794,7 @@
                       emoji={item.emoji}
                       {layout}
                       state="pick"
-                      onclick={() => handleAdd(item.id)}
+                      onclick={() => handleAddFromSearch(item.id)}
                       onlongpress={() => choosePick(item)}
                     />
                   </div>
@@ -820,6 +837,8 @@
         spellcheck="false"
         enterkeyhint="done"
         aria-label={strings.shopping.searchPlaceholder}
+        onfocus={() => (fieldFocused = true)}
+        onblur={() => (fieldFocused = false)}
       />
       {#if canAddNew}
         <button type="submit" class="add">{strings.shopping.addNewWord}</button>

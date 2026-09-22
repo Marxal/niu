@@ -3822,3 +3822,30 @@ to be. Below, the Install card is simply gone once Niu is already installed
    saying it's already installed. If you test this in a desktop browser tab
    where it isn't installed, the card should still appear with its Install
    button as before.
+
+## Round 22 — Two search-field fixes
+
+**Branch:** `claude/round-17-push-notifications`. Two small annoyances
+Marçal hit while adding products on the shopping list.
+
+### What changed
+
+- **`src/screens/ShoppingScreen.svelte`** — the bottom nav now hides as soon
+  as the search field is *focused*, not only once something is typed into
+  it. Before, tapping the field opened the keyboard while the nav was still
+  there, so it rode up and sat on top of the keyboard for a moment before
+  disappearing on the first keystroke. Tracked with a new `fieldFocused`
+  state, `onfocus`/`onblur` on the input, feeding the same `setNavHidden`
+  call the query already drove.
+- Tapping a search result to add it now clears the field afterwards
+  (`handleAddFromSearch`), the same way submitting a brand-new word already
+  did. Before, the name of the item you just added sat in the field and had
+  to be cleared by hand before typing the next one.
+
+### How to test it
+
+1. **Shopping tab**, tap the search field. The bottom nav should disappear
+   the moment the keyboard opens — before you've typed anything.
+2. Type a product name, tap one of the results to add it to the list. The
+   field should go blank right away, ready to type the next product without
+   clearing it yourself.
