@@ -760,7 +760,19 @@
   <div class="dock" class:searching>
     {#if searching}
       <div class="results">
-        <div class="results-scroll">
+        <!--
+          Tapping a result must not blur the search field — a button taking
+          focus is exactly what would close the keyboard between one product
+          and the next. `mousedown`'s default action is what shifts focus, so
+          heading it off here (before it reaches any tile's button) keeps the
+          field focused and the keyboard up; the tile's own onclick still
+          fires as normal since preventDefault on mousedown doesn't cancel it.
+        -->
+        <div
+          class="results-scroll"
+          role="presentation"
+          onmousedown={(event) => event.preventDefault()}
+        >
           {#if dishMatches.length > 0}
             <section class="block picker">
               <h2 class="heading">{strings.dishes.title}</h2>

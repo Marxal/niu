@@ -3841,11 +3841,19 @@ Marçal hit while adding products on the shopping list.
   (`handleAddFromSearch`), the same way submitting a brand-new word already
   did. Before, the name of the item you just added sat in the field and had
   to be cleared by hand before typing the next one.
+- That tap used to also blur the field — tapping any button steals focus by
+  default — which closed the keyboard right after adding, so the field
+  cleared but you had to tap it again to keep going. The results panel now
+  calls `preventDefault()` on `mousedown` before it reaches a tile's button,
+  which blocks the browser's default focus-shift without blocking the tap
+  itself. Field stays focused, keyboard stays up, cleared and ready for the
+  next product in one motion.
 
 ### How to test it
 
 1. **Shopping tab**, tap the search field. The bottom nav should disappear
    the moment the keyboard opens — before you've typed anything.
 2. Type a product name, tap one of the results to add it to the list. The
-   field should go blank right away, ready to type the next product without
-   clearing it yourself.
+   field should go blank right away, keyboard still up, ready to type the
+   next product straight away — no re-tapping the field, no clearing it
+   yourself.
